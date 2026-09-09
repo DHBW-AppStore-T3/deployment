@@ -236,6 +236,10 @@ services:
       # to deep-link back to the deployment detail page.
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
 
+      # LTI 1.1 — must match what you enter in Moodle's tool settings
+      LTI_CONSUMER_KEY: ${LTI_CONSUMER_KEY:-appstore-lti-key}
+      LTI_CONSUMER_SECRET: ${LTI_CONSUMER_SECRET:-appstore-lti-secret}
+
       # Application
       DEBUG: "True"
       APP_NAME: ${APP_NAME:-Backend API Dev}
