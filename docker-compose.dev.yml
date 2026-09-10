@@ -245,6 +245,10 @@ services:
       APP_NAME: ${APP_NAME:-Backend API Dev}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    # Lets the LTI roster sync reach the Moodle container (published on
+    # the host at :8081) via host.docker.internal from inside this net.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
