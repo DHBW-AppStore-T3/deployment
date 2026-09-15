@@ -43,7 +43,17 @@ services:
     # --port 8080 serves Streamable HTTP at /mcp and SSE at /sse
     # (verified against pkg/podman-mcp-server/cmd/root.go) — matches
     # the mcp_servers.podman.url in agent/config.yaml below.
-    command: ["--port", "8080"]
+    #
+    # --podman-impl cli forces the CLI backend (which agent/
+    # podman-mcp.Dockerfile makes work by aliasing `podman` to
+    # `docker`). Auto-detection prefers the "api" backend (priority
+    # 100 vs. cli's 50) whenever ANY podman-looking socket answers a
+    # ping — including the mounted Docker socket below, since
+    # Available() only pings it, it doesn't speak to it. "api" then
+    # fails on the first real call because it speaks the Podman REST
+    # protocol (pkg/bindings), which the Docker Engine API doesn't
+    # understand. Forcing "cli" skips that trap entirely.
+    command: ["--port", "8080", "--podman-impl", "cli"]
     # Needs the runtime socket to inspect/list/log containers. This is
     # the one place with real docker-group-equivalent access on the
     # host — see docker-compose.agent.yml's header comment for why the
