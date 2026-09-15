@@ -74,6 +74,25 @@ services:
     networks:
       - agent-network
     restart: unless-stopped
+    # Hermes only attempts the MCP connection at its own startup and
+    # parks the server after 3 failed attempts rather than retrying —
+    # if podman-mcp isn't already answering when hermes-agent starts
+    # (e.g. still building, or recovering from the stdin_open bug
+    # above before this fix), the MCP connection stays dead until
+    # hermes-agent is manually restarted. depends_on's default
+    # "started" condition doesn't wait for this — only "service_healthy"
+    # does, hence this healthcheck existing at all.
+    # A plain GET on the Streamable-HTTP /mcp endpoint returns 400 (it
+    # rejects GET without a session), which is fine for a healthcheck:
+    # -f only fails curl on 5xx by default, so a live 400 still counts
+    # as healthy — the server is up and speaking HTTP, which is all
+    # this needs to confirm.
+    healthcheck:
+      test: ["CMD", "curl", "-sS", "-o", "/dev/null", "http://localhost:8080/mcp"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -101,7 +120,8 @@ services:
       - hermes_agent_data:/opt/data
       - ./agent/config.yaml:/opt/data/config.yaml:ro
     depends_on:
-      - podman-mcp
+      podman-mcp:
+        condition: service_healthy
     networks:
       - agent-network
       - backend-network
