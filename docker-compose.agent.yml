@@ -54,6 +54,17 @@ services:
     # protocol (pkg/bindings), which the Docker Engine API doesn't
     # understand. Forcing "cli" skips that trap entirely.
     command: ["--port", "8080", "--podman-impl", "cli"]
+    # cmd.Execute()'s Run callback launches the HTTP server in a
+    # goroutine but then blocks the main thread on ServeStdio(ctx) —
+    # unconditionally, even when --port is set (verified in
+    # pkg/podman-mcp-server/cmd/root.go). Without an open stdin,
+    # ServeStdio hits EOF immediately, the main thread returns, and the
+    # process — and the container with it — exits right after startup,
+    # taking the HTTP server down with it. stdin_open keeps a pipe
+    # open so ServeStdio blocks for real instead of racing edge to
+    # EOF. Caught as a silent restart loop: healthy build, no panic in
+    # the logs, container just exits and gets restarted every ~1s.
+    stdin_open: true
     # Needs the runtime socket to inspect/list/log containers. This is
     # the one place with real docker-group-equivalent access on the
     # host — see docker-compose.agent.yml's header comment for why the
