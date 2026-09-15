@@ -255,7 +255,6 @@ services:
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:?GIT_ACCESS_TOKEN is required}
 
       # CORS
-      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
 
       # Email (Gmail SMTP) — used by the post-deploy notify hook in
       # celery_event_listener.py. SMTP_ENABLED is the explicit
@@ -293,6 +292,7 @@ services:
         condition: service_started
     volumes:
       - backend_git_repos:/tmp/repos
+      - ./.env:/app/.env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
