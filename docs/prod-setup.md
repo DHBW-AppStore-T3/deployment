@@ -211,11 +211,28 @@ Nur nötig, wenn `make agent-up` bzw. `make moodle-up` verwendet werden (siehe [
 ```
 GEMINI_API_KEY=<eigener-key-von-aistudio.google.com>
 
+DISCORD_BOT_TOKEN=<bot-token-von-discord.com/developers/applications>
+DISCORD_ALLOWED_USERS=<eigene-discord-user-id>[,<weitere-id>,...]
+
 MOODLE_DB_PASSWORD=<random>
 MOODLE_ADMIN_PASSWORD=<random>
 MOODLE_ADMIN_EMAIL=admin@dhbw.de
 MOODLE_WWWROOT=https://<VM-IP>:8443
 ```
+
+**Discord-Bot anlegen** (siehe `HARNESS.md` Abschnitt 3.2 für die
+Governance-Begründung):
+
+1. [discord.com/developers/applications](https://discord.com/developers/applications) → "New Application"
+2. Im Menü "Bot" → **Public Bot bleibt OFF** (nur per Manual-Invite-URL einladbar, für niemanden außerhalb der Org auffindbar)
+3. Bei "Privileged Gateway Intents": **Server Members Intent** und **Message Content Intent** beide auf ON — ohne "Message Content Intent" empfängt der Bot leere Nachrichten
+4. "Reset Token" → Wert kopieren (wird nur einmal angezeigt) → `DISCORD_BOT_TOKEN`
+5. Einladen über die Manual-URL (Public Bot ist OFF, die Installation-Tab-Methode funktioniert daher nicht):
+   ```
+   https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=274878286912
+   ```
+6. Eigene Discord User-ID: Discord-Einstellungen → Erweitert → Entwicklermodus AN, dann Rechtsklick auf den eigenen Namen → "ID kopieren" → `DISCORD_ALLOWED_USERS`
+7. **`DISCORD_ALLOWED_USERS` niemals leer lassen** — ohne diese Variable kann jeder, der den Bot in seinem Server @mentioned, mit dem Agenten sprechen.
 
 ## Schritt 3: Self-signed-Zertifikat erzeugen
 
