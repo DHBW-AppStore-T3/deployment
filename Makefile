@@ -28,6 +28,14 @@
 DC_DEV  := docker compose -f docker-compose.dev.yml
 DC_PROD := docker compose -f docker-compose.prod.yml
 
+# Additive overlays on top of the prod stack (HARNESS.md Systems 2 and
+# the moodle_appstore promotion) — always combined with the base prod
+# compose file, never applied standalone, since both reference
+# backend-network-prod / frontend-network-prod as external networks
+# that only exist once docker-compose.prod.yml has created them.
+DC_AGENT  := docker compose -f docker-compose.prod.yml -f docker-compose.agent.yml
+DC_MOODLE := docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml
+
 # Host-Ports (müssen mit den ${...:-default} Werten in den compose-
 # Dateien übereinstimmen, sonst zeigt `make urls` falsche Links).
 FRONTEND_PORT_DEV  ?= 5173
@@ -57,6 +65,8 @@ PGADMIN_PORT       ?= 5050
         prod-up prod-down prod-stop prod-restart prod-pull prod-logs prod-ps \
         prod-migrate prod-seed prod-cert-self-signed prod-reset \
         prod-set-keycloak-urls \
+        agent-up agent-down agent-logs agent-ps \
+        moodle-up moodle-down moodle-logs moodle-ps \
         up down logs build
 
 # ----------------------------------------------------------------
@@ -469,6 +479,37 @@ prod-logs: ## Follow prod logs (all services, or SVC=backend for one)
 
 prod-ps: ## List prod containers + health
 	$(DC_PROD) ps
+
+# ----------------------------------------------------------------
+# Agent stack (Hermes + podman-mcp) — HARNESS.md Systems 2/3
+# ----------------------------------------------------------------
+agent-up: ## Start Hermes + podman-mcp alongside the running prod stack
+	$(DC_AGENT) up -d --pull always podman-mcp hermes-agent
+
+agent-down: ## Stop and remove the agent containers only (prod untouched)
+	$(DC_AGENT) rm -sf podman-mcp hermes-agent
+
+agent-logs: ## Follow Hermes gateway logs
+	$(DC_AGENT) logs -f hermes-agent
+
+agent-ps: ## List agent containers + health
+	$(DC_AGENT) ps podman-mcp hermes-agent
+
+# ----------------------------------------------------------------
+# Moodle stack (LTI prototype) — promoted from moodle/ to prod
+# ----------------------------------------------------------------
+moodle-up: ## Build + start Moodle alongside the running prod stack
+	$(DC_MOODLE) up -d --build moodle-db moodle
+	$(DC_MOODLE) up -d nginx
+
+moodle-down: ## Stop and remove the Moodle containers only (prod untouched)
+	$(DC_MOODLE) rm -sf moodle moodle-db
+
+moodle-logs: ## Follow Moodle container logs
+	$(DC_MOODLE) logs -f moodle
+
+moodle-ps: ## List Moodle containers + health
+	$(DC_MOODLE) ps moodle-db moodle
 
 prod-migrate: ## Apply Alembic migrations against the running backend-prod container
 	docker exec backend-prod python -m alembic upgrade head

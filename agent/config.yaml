@@ -1,0 +1,30 @@
+# Hermes Agent config — the claude-agent replacement described in
+# HARNESS.md System 3.2 / 3.5. Mounted read-only into the hermes-agent
+# container at /opt/data/config.yaml.
+#
+# The container-lifecycle guardrail lives here, not on the Linux user:
+# podman-mcp exposes container start/remove/build/push tools with no
+# built-in allowlist, so Hermes' own per-server MCP tool filter is the
+# only place that boundary can be enforced short of writing a custom
+# MCP proxy. Anything not explicitly included below is invisible to
+# the agent, not merely discouraged.
+
+mcp_servers:
+  podman:
+    url: "http://podman-mcp:8080/mcp"
+    tools:
+      # Allowlist, not blocklist: podman-mcp's tool surface grows over
+      # time, and a blocklist silently admits new tools on upgrade. An
+      # allowlist fails closed instead.
+      include:
+        - container_list
+        - container_inspect
+        - container_logs
+        # No container_run, container_remove, image_build, image_push,
+        # image_remove — those require a human with the ubuntu/sudo
+        # login or the CI/CD pipeline, never this agent directly.
+
+tool_loop_guardrails:
+  # Gateway/cron sessions are unattended by definition — a runaway
+  # tool loop here has no human watching to interrupt it.
+  non_interactive_hard_stop_enabled: true
