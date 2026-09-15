@@ -7,11 +7,13 @@ FROM debian:bookworm-slim
 
 ARG PODMAN_MCP_VERSION=v0.0.15
 
+# curl is kept (not purged after the download below) — the compose
+# healthcheck for this service needs it, since the image otherwise
+# ships neither wget nor nc.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl docker.io \
     && curl -fsSL -o /usr/local/bin/podman-mcp-server \
        "https://github.com/manusa/podman-mcp-server/releases/download/${PODMAN_MCP_VERSION}/podman-mcp-server-linux-amd64" \
     && chmod +x /usr/local/bin/podman-mcp-server \
-    && apt-get purge -y curl \
     && rm -rf /var/lib/apt/lists/*
 
 # podman-mcp-server's "cli" backend (pkg/podman/podman_cli.go) only
