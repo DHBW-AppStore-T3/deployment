@@ -116,6 +116,18 @@ services:
       # forward (System 3.2's SSH-only access rule), never exposed on
       # a published host port. No auth provider is configured because
       # there is no non-loopback listener for the auth gate to guard.
+      #
+      # Discord (HARNESS.md System 3.2 revision): the one deliberate
+      # exception to "SSH-only, no network endpoint" — Discord is the
+      # team's actual communication channel, so this trades the
+      # blanket rule for an explicit one: DISCORD_ALLOWED_USERS is the
+      # real boundary, not network topology. The bot's own Public Bot
+      # flag must stay OFF on Discord's side (manual invite URL only)
+      # so it can't be found or joined by anyone outside the org
+      # either — the allowlist alone isn't the whole story, an
+      # invite-only bot is the other half.
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:?DISCORD_BOT_TOKEN is required — create a private (Public Bot = OFF) bot at discord.com/developers/applications, see docs/prod-setup.md}
+      DISCORD_ALLOWED_USERS: ${DISCORD_ALLOWED_USERS:?DISCORD_ALLOWED_USERS is required — comma-separated Discord user IDs, never leave this unset or every Discord user can talk to the agent}
     volumes:
       - hermes_agent_data:/opt/data
       - ./agent/config.yaml:/opt/data/config.yaml:ro
