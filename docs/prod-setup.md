@@ -226,6 +226,9 @@ Governance-Begründung):
 1. [discord.com/developers/applications](https://discord.com/developers/applications) → "New Application"
 2. Im Menü "Bot" → **Public Bot bleibt OFF** (nur per Manual-Invite-URL einladbar, für niemanden außerhalb der Org auffindbar)
 3. Bei "Privileged Gateway Intents": **Server Members Intent** und **Message Content Intent** beide auf ON — ohne "Message Content Intent" empfängt der Bot leere Nachrichten
+   - **Zwei Stolpersteine, die beim Ersteinrichten tatsächlich aufgetreten sind:**
+     a) Das Umlegen der Toggles allein reicht nicht — unten erscheint ein Banner "Achtung, du hast nicht gespeicherte Änderungen!" mit einem separaten **"Änderungen speichern"**-Button. Ohne diesen Klick bleiben die Intents serverseitig aus, der Bot verbindet sich zur Gateway, bekommt aber `discord.errors.PrivilegedIntentsRequired` und der Container läuft zwar weiter, aber ohne Discord-Verbindung.
+     b) Das Speichern kann mit einem Validierungsfehler abbrechen ("Private Anwendungen können keinen Standard-Autorisierungslink haben"), wenn im **Installation**-Tab noch ein Standard-Autorisierungslink gesetzt ist. Dort auf **"Keine"** stellen (die Manual-URL aus Schritt 5 wird ohnehin verwendet), dann zurück zur Bot-Seite und die Intents erneut speichern.
 4. "Reset Token" → Wert kopieren (wird nur einmal angezeigt) → `DISCORD_BOT_TOKEN`
 5. Einladen über die Manual-URL (Public Bot ist OFF, die Installation-Tab-Methode funktioniert daher nicht):
    ```
@@ -233,6 +236,7 @@ Governance-Begründung):
    ```
 6. Eigene Discord User-ID: Discord-Einstellungen → Erweitert → Entwicklermodus AN, dann Rechtsklick auf den eigenen Namen → "ID kopieren" → `DISCORD_ALLOWED_USERS`
 7. **`DISCORD_ALLOWED_USERS` niemals leer lassen** — ohne diese Variable kann jeder, der den Bot in seinem Server @mentioned, mit dem Agenten sprechen.
+8. Nach `make agent-up`: den Bot per DM oder `@<Bot-Name>` in einem Kanal ansprechen. Läuft alles, antwortet er direkt und bietet `/sethome` (Home-Channel für Cron-Job-Ergebnisse) sowie ein optionales Nutzerprofil an — beides freiwillig, nicht Teil dieses Setups.
 
 ## Schritt 3: Self-signed-Zertifikat erzeugen
 
