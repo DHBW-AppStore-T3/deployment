@@ -29,8 +29,20 @@ services:
   # No host port published: reachable exclusively from agent-network.
   # ----------------------------------------------------------------
   podman-mcp:
-    image: quay.io/manusa/podman-mcp-server:latest
+    # manusa/podman-mcp-server publishes no container image (verified
+    # against its .github/workflows/: build.yaml has no docker push
+    # step, release.yaml only publishes to npm) — only an npm/PyPI
+    # wrapper and raw linux-amd64 GitHub release binaries. This builds
+    # a minimal image from the official binary instead of pulling a
+    # nonexistent quay.io tag (which is what an earlier version of
+    # this file did, and failed on first real deploy).
+    build:
+      context: ./agent
+      dockerfile: podman-mcp.Dockerfile
     container_name: podman-mcp-prod
+    # --port 8080 serves Streamable HTTP at /mcp and SSE at /sse
+    # (verified against pkg/podman-mcp-server/cmd/root.go) — matches
+    # the mcp_servers.podman.url in agent/config.yaml below.
     command: ["--port", "8080"]
     # Needs the runtime socket to inspect/list/log containers. This is
     # the one place with real docker-group-equivalent access on the
