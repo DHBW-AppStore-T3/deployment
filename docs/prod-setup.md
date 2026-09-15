@@ -204,6 +204,19 @@ SMTP_FROM_EMAIL=
 SMTP_FROM_NAME=Click-n-Deploy
 ```
 
+### 2k. Agent- und Moodle-Overlays (optional)
+
+Nur nötig, wenn `make agent-up` bzw. `make moodle-up` verwendet werden (siehe [Optional: Agent-Stack](#optional-agent-stack-hermes--podman-mcp) und [Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp) unten):
+
+```
+GEMINI_API_KEY=<eigener-key-von-aistudio.google.com>
+
+MOODLE_DB_PASSWORD=<random>
+MOODLE_ADMIN_PASSWORD=<random>
+MOODLE_ADMIN_EMAIL=admin@dhbw.de
+MOODLE_WWWROOT=https://<VM-IP>:8443
+```
+
 ## Schritt 3: Self-signed-Zertifikat erzeugen
 
 In Dev terminiert das Frontend HTTP direkt; in Prod sitzt `nginx-prod` davor und erwartet zwei TLS-Dateien unter `nginx/certs/`. Generiere beides mit einem Make-Target:
@@ -315,6 +328,26 @@ Anders als in Dev entfällt der Vorlauf mit `make keycloak-disable-ssl` — ngin
    ```
 
 Ab jetzt kann das Backend Tokens validieren.
+
+## Optional: Agent-Stack (Hermes + podman-mcp)
+
+Additiv zum laufenden Prod-Stack, siehe `HARNESS.md` in `.github` für die volle Begründung (Systeme 2, 3.2, 3.5). Kurzform:
+
+1. Eigenen `GEMINI_API_KEY` unter [aistudio.google.com](https://aistudio.google.com) erzeugen und in `.env` eintragen — nie einen geteilten Key verwenden, das ist bewusst der Key jedes Betreibers einzeln.
+2. `make agent-up` startet `podman-mcp` (kein Host-Port, nur intern erreichbar) und `hermes-agent` (Gateway-Modus, Dashboard nur auf `127.0.0.1:9119`, also nur per SSH-Portforward erreichbar — nie öffentlich exponieren).
+3. `agent/config.yaml` filtert, welche podman-mcp-Tools Hermes überhaupt sieht — aktuell nur `container_list`/`container_inspect`/`container_logs`. Das ist die eigentliche Guardrail, nicht der Container selbst; podman-mcp hat kein eingebautes Allowlist/Read-Only-Feature.
+4. `make agent-logs` zum Verifizieren, `make agent-down` zum Entfernen — der Prod-Stack selbst bleibt davon unberührt.
+
+## Optional: Moodle-Stack (LTI-Prototyp)
+
+Promoted aus `moodle/` (bisher nur lokal). Läuft auf einem eigenen Port, weil die VM keine Domain hat (siehe `docker-compose.moodle.yml`-Kommentarkopf für die Begründung):
+
+1. In `.env`: `MOODLE_DB_PASSWORD`, `MOODLE_ADMIN_PASSWORD`, `MOODLE_ADMIN_EMAIL`, `MOODLE_WWWROOT=https://<VM-IP>:8443` eintragen.
+2. `make moodle-up` baut das Image (kein GHCR-Image, siehe `moodle/Dockerfile`) und startet `moodle-db` + `moodle`, danach lädt es `nginx` neu, damit der neue 8443-Listener aktiv wird.
+3. `https://<VM-IP>:8443` im Browser öffnen (Cert-Warnung wie beim Haupt-Host akzeptieren — dasselbe selbstsignierte Zertifikat, kein zweites nötig).
+4. `make moodle-down` entfernt nur die Moodle-Container, nicht den Rest des Stacks.
+
+`moodle-network` hat keinen Zugriff auf `backend-network`, `worker-network` oder `keycloak-network` — die Instanz ist bewusst vom AppStore-Kern isoliert, bis eine echte LTI-Integration das rechtfertigt.
 
 ## Verifikation
 

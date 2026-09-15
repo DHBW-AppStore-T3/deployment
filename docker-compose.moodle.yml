@@ -1,0 +1,167 @@
+# ================================================================
+# Moodle stack — the LTI-integration prototype from moodle/, promoted
+# from local-only dev to the production VM. Additive to
+# docker-compose.prod.yml:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml \
+#     up -d --build
+#
+# ``--build`` is required on first run and after any Dockerfile change:
+# unlike backend/worker/frontend, this image has no GHCR counterpart —
+# it's built from ../moodle/Dockerfile, which clones Moodle core at
+# build time (see that Dockerfile for why).
+#
+# Isolation: moodle-network is NOT bridged to backend-network,
+# worker-network, or keycloak-network. This is a standalone LTI
+# prototype with no runtime dependency on the AppStore backend/worker/
+# DB or its identity provider — giving it a path into those networks
+# would be attack surface with no matching feature. It IS bridged to
+# frontend-network, but only so nginx (which lives there) can reach it
+# as a reverse-proxy upstream — see nginx/nginx-moodle.conf.
+#
+# Public exposure: appstore-prod-01 has no DNS domain, only a
+# self-signed cert on its bare IPv6 address (see nginx/certs/), so a
+# moodle.<domain> subdomain isn't possible. Moodle is exposed on a
+# second nginx listener, port 8443 on the same host/certificate,
+# instead — see nginx/nginx-moodle.conf and the nginx service's added
+# port mapping in this file.
+#
+# The local moodle/docker-compose.yml hardcodes dev credentials
+# (moodle/moodle, admin/admin1234) — those are replaced here with
+# required .env variables so a stray `git blame` never turns up a
+# production Moodle admin password.
+# ================================================================
+services:
+  moodle-db:
+    image: postgres:16-alpine
+    container_name: moodle-db-prod
+    environment:
+      POSTGRES_DB: ${MOODLE_DB_NAME:-moodle}
+      POSTGRES_USER: ${MOODLE_DB_USER:-moodle}
+      POSTGRES_PASSWORD: ${MOODLE_DB_PASSWORD:?MOODLE_DB_PASSWORD is required}
+    volumes:
+      - moodle_db_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MOODLE_DB_USER:-moodle}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - moodle-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  moodle:
+    build:
+      context: ../moodle
+      dockerfile: Dockerfile
+    container_name: moodle-prod
+    depends_on:
+      moodle-db:
+        condition: service_healthy
+    environment:
+      MOODLE_DB_TYPE: pgsql
+      MOODLE_DB_HOST: moodle-db
+      MOODLE_DB_PORT: 5432
+      MOODLE_DB_NAME: ${MOODLE_DB_NAME:-moodle}
+      MOODLE_DB_USER: ${MOODLE_DB_USER:-moodle}
+      MOODLE_DB_PASS: ${MOODLE_DB_PASSWORD:?MOODLE_DB_PASSWORD is required}
+      MOODLE_ADMIN: ${MOODLE_ADMIN_USER:-admin}
+      MOODLE_ADMIN_PASSWORD: ${MOODLE_ADMIN_PASSWORD:?MOODLE_ADMIN_PASSWORD is required}
+      MOODLE_ADMIN_EMAIL: ${MOODLE_ADMIN_EMAIL:?MOODLE_ADMIN_EMAIL is required}
+      MOODLE_SITE_NAME: ${MOODLE_SITE_NAME:-DHBW AppStore LTI Prototype}
+      # Must exactly match the nginx-moodle.conf listener, including
+      # the :8443 port — Moodle rejects requests whose Host header
+      # doesn't match its configured wwwroot.
+      MOODLE_WWWROOT: ${MOODLE_WWWROOT:?MOODLE_WWWROOT is required, e.g. https://[2001:7c0:1b20:c913:1::15a]:8443}
+      APACHE_DOCUMENT_ROOT: /var/www/html
+    volumes:
+      - moodle_data_prod:/var/www/moodledata
+      - moodle_source_prod:/var/www/html
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/login/index.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - moodle-network
+      - frontend-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------
+  # nginx override — adds the 8443 Moodle listener on top of
+  # docker-compose.prod.yml's nginx service. Compose merges list
+  # fields (ports, volumes) by replacing the whole list, not
+  # appending — this re-states 80/443 so they aren't lost.
+  #
+  # ./nginx/conf.d is mounted as a DIRECTORY, not a single file: a
+  # directory bind mount fully replaces the image's own
+  # /etc/nginx/conf.d, which otherwise still ships nginx:1.27-alpine's
+  # default.conf (a `listen 80 server_name localhost` block) — that
+  # would silently start alongside nginx.conf's own `listen 80`
+  # redirect server once nginx.conf's `include conf.d/*.conf` picks it
+  # up. Mounting the directory keeps only what we put in
+  # ./nginx/conf.d/ (currently just moodle.conf).
+  # ----------------------------------------------------------------
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+      - keycloak
+      - moodle
+    networks:
+      - frontend-network
+      - backend-network
+      - keycloak-network
+      - moodle-network
+
+volumes:
+  moodle_db_prod_data:
+    driver: local
+  moodle_data_prod:
+    driver: local
+  moodle_source_prod:
+    driver: local
+
+networks:
+  moodle-network:
+    driver: bridge
+    name: moodle-network-prod
+  frontend-network:
+    external: true
+    name: frontend-network-prod
+  backend-network:
+    external: true
+    name: backend-network-prod
+  keycloak-network:
+    external: true
+    name: keycloak-network-prod

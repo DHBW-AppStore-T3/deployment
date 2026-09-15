@@ -1,0 +1,103 @@
+# ================================================================
+# Agent stack — Hermes (Nous Research) as the claude-agent replacement
+# from HARNESS.md System 3.2 / 3.5, plus the podman-mcp-server it talks
+# to for container diagnosis. Additive to docker-compose.prod.yml:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.agent.yml up -d
+#
+# Governance, spelled out so it isn't just implicit in the YAML:
+#
+#   - Hermes never gets the Docker/Podman socket directly. All container
+#     access goes through podman-mcp, and podman-mcp is only reachable
+#     from the agent-network — it publishes no host port.
+#   - podman-mcp's tool surface is fully read/write (container_run,
+#     container_remove, image_push, ...) with no built-in allowlist.
+#     The actual boundary is Hermes' own per-server MCP tool filter in
+#     agent/config.yaml (include: container_list/inspect/logs only) —
+#     see that file for why an allowlist and not a blocklist.
+#   - agent-network is bridged to backend-network so Hermes can reach
+#     backend/worker/rabbitmq/redis by name for diagnosis, but it is
+#     NOT on frontend-network or keycloak-network — no path to the
+#     user-facing services or the identity provider.
+#   - GEMINI_API_KEY is the operator's own key (Google AI Studio),
+#     never committed; required-env enforcement below fails the compose
+#     invocation loudly instead of silently starting keyless.
+# ================================================================
+services:
+  # ----------------------------------------------------------------
+  # Podman MCP server — the only thing with real container access.
+  # No host port published: reachable exclusively from agent-network.
+  # ----------------------------------------------------------------
+  podman-mcp:
+    image: quay.io/manusa/podman-mcp-server:latest
+    container_name: podman-mcp-prod
+    command: ["--port", "8080"]
+    # Needs the runtime socket to inspect/list/log containers. This is
+    # the one place with real docker-group-equivalent access on the
+    # host — see docker-compose.agent.yml's header comment for why the
+    # actual guardrail is the Hermes-side tool filter, not this mount.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - agent-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ----------------------------------------------------------------
+  # Hermes Agent — self-improving agent, Gemini-backed, MCP client
+  # for podman-mcp. Gateway mode only (no TUI on a headless prod VM).
+  # ----------------------------------------------------------------
+  hermes-agent:
+    image: nousresearch/hermes-agent:latest
+    pull_policy: always
+    container_name: hermes-agent-prod
+    command: ["gateway", "run"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required — create your own key at aistudio.google.com and set it in .env, never commit it}
+      HERMES_DASHBOARD: "1"
+      HERMES_DASHBOARD_HOST: "127.0.0.1"
+      # Loopback-only bind: the dashboard is reached via SSH port-
+      # forward (System 3.2's SSH-only access rule), never exposed on
+      # a published host port. No auth provider is configured because
+      # there is no non-loopback listener for the auth gate to guard.
+    volumes:
+      - hermes_agent_data:/opt/data
+      - ./agent/config.yaml:/opt/data/config.yaml:ro
+    depends_on:
+      - podman-mcp
+    networks:
+      - agent-network
+      - backend-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  hermes_agent_data:
+    driver: local
+
+networks:
+  agent-network:
+    driver: bridge
+    name: agent-network-prod
+  # backend-network must already exist (created by docker-compose.prod.yml).
+  # Declared external here so this file can be composed on top of prod
+  # without redefining it.
+  backend-network:
+    external: true
+    name: backend-network-prod
