@@ -214,6 +214,7 @@ GEMINI_API_KEY=<eigener-key-von-aistudio.google.com>
 DISCORD_BOT_TOKEN=<bot-token-von-discord.com/developers/applications>
 DISCORD_ALLOWED_USERS=<eigene-discord-user-id>[,<weitere-id>,...]
 
+MOODLE_REPO_PATH=/opt/app-store/moodle_appstore
 MOODLE_DB_PASSWORD=<random>
 MOODLE_ADMIN_PASSWORD=<random>
 MOODLE_ADMIN_EMAIL=admin@dhbw.de
@@ -361,12 +362,40 @@ Additiv zum laufenden Prod-Stack, siehe `HARNESS.md` in `.github` für die volle
 
 ## Optional: Moodle-Stack (LTI-Prototyp)
 
-Promoted aus `moodle/` (bisher nur lokal). Läuft auf einem eigenen Port, weil die VM keine Domain hat (siehe `docker-compose.moodle.yml`-Kommentarkopf für die Begründung):
+Deployt den echten `moodle_appstore`-Fork
+(github.com/DHBW-AppStore-T3/moodle_appstore), nicht ein separates
+`moodle/`-Verzeichnis — eine frühere Revision dieser Anleitung und von
+`docker-compose.moodle.yml` nahm fälschlich einen eigenen
+`moodle/Dockerfile`-Build mit Env-Var-gesteuerter Auto-Installation an;
+beides existiert nicht. `moodle_appstore` bringt sein eigenes
+`docker-compose.yml` mit (`moodlehq/moodle-php-apache:8.3` +
+Repo-Bind-Mount als Document Root, keine Custom-Image), das hier nur
+mit produktionstauglichen Secrets statt Dev-Defaults nachgebaut wird.
+Läuft auf einem eigenen Port, weil die VM keine Domain hat (siehe
+`docker-compose.moodle.yml`-Kommentarkopf für die Begründung):
 
-1. In `.env`: `MOODLE_DB_PASSWORD`, `MOODLE_ADMIN_PASSWORD`, `MOODLE_ADMIN_EMAIL`, `MOODLE_WWWROOT=https://<VM-IP>:8443` eintragen.
-2. `make moodle-up` baut das Image (kein GHCR-Image, siehe `moodle/Dockerfile`) und startet `moodle-db` + `moodle`, danach lädt es `nginx` neu, damit der neue 8443-Listener aktiv wird.
-3. `https://<VM-IP>:8443` im Browser öffnen (Cert-Warnung wie beim Haupt-Host akzeptieren — dasselbe selbstsignierte Zertifikat, kein zweites nötig).
-4. `make moodle-down` entfernt nur die Moodle-Container, nicht den Rest des Stacks.
+1. `moodle_appstore` neben `deployment/` auf die VM klonen (z. B.
+   `/opt/app-store/moodle_appstore`) — ohne diesen Checkout hat
+   `moodle`-Service in `docker-compose.moodle.yml` keinen Document
+   Root zum Mounten.
+2. In `.env`: `MOODLE_REPO_PATH=/opt/app-store/moodle_appstore`,
+   `MOODLE_DB_PASSWORD`, `MOODLE_ADMIN_PASSWORD`, `MOODLE_ADMIN_EMAIL`,
+   `MOODLE_WWWROOT=https://<VM-IP>:8443` eintragen.
+3. `make moodle-up` startet `moodle-db` + `moodle` (kein Build, pullt
+   nur das offizielle Image), danach lädt es `nginx` neu, damit der
+   neue 8443-Listener aktiv wird.
+4. `make moodle-install` — **einmalig**, nach dem ersten `moodle-up`:
+   `moodlehq/moodle-php-apache` hat keinen Auto-Installer, das ist ein
+   echter `admin/cli/install.php --non-interactive`-Lauf gegen die
+   leere DB. Ohne diesen Schritt zeigt Port 8443 nur Moodles eigenen
+   Installations-Wizard, keine fertige Seite.
+5. `https://<VM-IP>:8443` im Browser öffnen (Cert-Warnung wie beim
+   Haupt-Host akzeptieren — dasselbe selbstsignierte Zertifikat, kein
+   zweites nötig).
+6. `make moodle-down` entfernt nur die Moodle-Container, nicht den
+   Rest des Stacks. Der DB-Inhalt bleibt im `moodle_db_prod_data`-Volume
+   erhalten, `moodle-install` ist bei einem erneuten `moodle-up` also
+   nicht nochmal nötig, solange das Volume nicht gelöscht wurde.
 
 `moodle-network` hat keinen Zugriff auf `backend-network`, `worker-network` oder `keycloak-network` — die Instanz ist bewusst vom AppStore-Kern isoliert, bis eine echte LTI-Integration das rechtfertigt.
 

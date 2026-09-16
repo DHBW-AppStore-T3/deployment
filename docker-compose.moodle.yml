@@ -1,39 +1,42 @@
 # ================================================================
-# Moodle stack — the LTI-integration prototype from moodle/, promoted
-# from local-only dev to the production VM. Additive to
+# Moodle stack — deploys the org's actual moodle_appstore fork
+# (github.com/DHBW-AppStore-T3/moodle_appstore, a fork of Moodle core
+# with its own committed docker-compose.yml at repo root). Additive to
 # docker-compose.prod.yml:
 #
-#   docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml \
-#     up -d --build
+#   docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml up -d
 #
-# ``--build`` is required on first run and after any Dockerfile change:
-# unlike backend/worker/frontend, this image has no GHCR counterpart —
-# it's built from ../moodle/Dockerfile, which clones Moodle core at
-# build time (see that Dockerfile for why).
+# Corrected version of this file: an earlier revision built from a
+# `../moodle/Dockerfile` that cloned Moodle core at build time and
+# expected MOODLE_ADMIN/MOODLE_DB_* env vars to drive an unattended
+# install — neither exists. moodle_appstore is the real source, it
+# ships no Dockerfile (it uses the official moodlehq/moodle-php-apache
+# image with the repo bind-mounted as document root, verified against
+# its own docker-compose.yml), and moodlehq/moodle-php-apache has no
+# env-var-driven auto-install — first boot needs one manual
+# `admin/cli/install.php` run, same as any Moodle install (see
+# docs/prod-setup.md's Moodle section for the exact command).
 #
 # Isolation: moodle-network is NOT bridged to backend-network,
-# worker-network, or keycloak-network. This is a standalone LTI
+# worker-network, or keycloak-network — this is a standalone LTI
 # prototype with no runtime dependency on the AppStore backend/worker/
-# DB or its identity provider — giving it a path into those networks
-# would be attack surface with no matching feature. It IS bridged to
-# frontend-network, but only so nginx (which lives there) can reach it
-# as a reverse-proxy upstream — see nginx/nginx-moodle.conf.
+# DB or its identity provider. It IS bridged to frontend-network, but
+# only so nginx (which lives there) can reach it as a reverse-proxy
+# upstream — see nginx/nginx-moodle.conf.
 #
 # Public exposure: appstore-prod-01 has no DNS domain, only a
 # self-signed cert on its bare IPv6 address (see nginx/certs/), so a
 # moodle.<domain> subdomain isn't possible. Moodle is exposed on a
 # second nginx listener, port 8443 on the same host/certificate,
-# instead — see nginx/nginx-moodle.conf and the nginx service's added
-# port mapping in this file.
+# instead — see nginx/conf.d/moodle.conf.
 #
-# The local moodle/docker-compose.yml hardcodes dev credentials
-# (moodle/moodle, admin/admin1234) — those are replaced here with
-# required .env variables so a stray `git blame` never turns up a
-# production Moodle admin password.
+# moodle_appstore's own docker-compose.yml hardcodes dev credentials
+# (moodle/moodlepass) — replaced here with required .env variables so
+# a stray `git blame` never turns up a production Moodle DB password.
 # ================================================================
 services:
   moodle-db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: moodle-db-prod
     environment:
       POSTGRES_DB: ${MOODLE_DB_NAME:-moodle}
@@ -58,35 +61,36 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  # moodle_appstore itself provides no image — its docker-compose.yml
+  # bind-mounts the checked-out repo into moodlehq/moodle-php-apache.
+  # This does the same against ${MOODLE_REPO_PATH}, the repo's own
+  # checkout path on the host (sibling to deployment/, matching how
+  # backend/frontend/worker are laid out), instead of a build step.
   moodle:
-    build:
-      context: ../moodle
-      dockerfile: Dockerfile
+    image: moodlehq/moodle-php-apache:8.3
     container_name: moodle-prod
     depends_on:
       moodle-db:
         condition: service_healthy
     environment:
-      MOODLE_DB_TYPE: pgsql
-      MOODLE_DB_HOST: moodle-db
-      MOODLE_DB_PORT: 5432
-      MOODLE_DB_NAME: ${MOODLE_DB_NAME:-moodle}
-      MOODLE_DB_USER: ${MOODLE_DB_USER:-moodle}
-      MOODLE_DB_PASS: ${MOODLE_DB_PASSWORD:?MOODLE_DB_PASSWORD is required}
-      MOODLE_ADMIN: ${MOODLE_ADMIN_USER:-admin}
-      MOODLE_ADMIN_PASSWORD: ${MOODLE_ADMIN_PASSWORD:?MOODLE_ADMIN_PASSWORD is required}
-      MOODLE_ADMIN_EMAIL: ${MOODLE_ADMIN_EMAIL:?MOODLE_ADMIN_EMAIL is required}
-      MOODLE_SITE_NAME: ${MOODLE_SITE_NAME:-DHBW AppStore LTI Prototype}
-      # Must exactly match the nginx-moodle.conf listener, including
-      # the :8443 port — Moodle rejects requests whose Host header
-      # doesn't match its configured wwwroot.
-      MOODLE_WWWROOT: ${MOODLE_WWWROOT:?MOODLE_WWWROOT is required, e.g. https://[2001:7c0:1b20:c913:1::15a]:8443}
-      APACHE_DOCUMENT_ROOT: /var/www/html
+      MOODLE_DOCKER_DBTYPE: pgsql
+      MOODLE_DOCKER_DBHOST: moodle-db
+      MOODLE_DOCKER_DBNAME: ${MOODLE_DB_NAME:-moodle}
+      MOODLE_DOCKER_DBUSER: ${MOODLE_DB_USER:-moodle}
+      MOODLE_DOCKER_DBPASS: ${MOODLE_DB_PASSWORD:?MOODLE_DB_PASSWORD is required}
     volumes:
+      - ${MOODLE_REPO_PATH:?MOODLE_REPO_PATH is required, e.g. /opt/app-store/moodle_appstore}:/var/www/html
       - moodle_data_prod:/var/www/moodledata
-      - moodle_source_prod:/var/www/html
+      # moodle_appstore ships its own apache.conf at .docker/apache.conf
+      # (same repo checkout as the html mount above) — reused as-is
+      # rather than duplicated into this repo, so an upstream change to
+      # it doesn't silently drift out of sync here.
+      - ${MOODLE_REPO_PATH:?MOODLE_REPO_PATH is required}/.docker/apache.conf:/etc/apache2/sites-enabled/000-default.conf:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/login/index.php"]
+      # / redirects to /login/index.php pre-install and serves the
+      # dashboard post-install — either way a 2xx/3xx confirms Apache
+      # and PHP are actually serving, which is all this needs to know.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -148,8 +152,6 @@ volumes:
   moodle_db_prod_data:
     driver: local
   moodle_data_prod:
-    driver: local
-  moodle_source_prod:
     driver: local
 
 networks:
