@@ -3,9 +3,17 @@
 module "vm" {
   source = "../../modules/openstack_vm"
 
-  name       = "staging-dhbw-appstore"
-  image      = "Ubuntu 22.04"
-  flavor     = "gp1.large"
+  name = "staging-dhbw-appstore"
+  # "Ubuntu 22.04" doesn't exist in this project's image catalog
+  # (`openstack image list` against ma_wwi_24sea_appstore_g3: Cirros,
+  # Debian 13, Rocky 10.1, Ubuntu 24.04, Ubuntu Server 26.04 LTS,
+  # Windows variants) — Terraform failed with "Unable to find image
+  # with name Ubuntu 22.04". Ubuntu 24.04 is what appstore-prod-01
+  # itself runs (`openstack server show appstore-prod-01`), so this
+  # keeps staging on the same base OS as prod rather than picking
+  # something newer/different.
+  image  = "Ubuntu 24.04"
+  flavor = "gp1.large"
   public_key = var.ssh_public_key
 
   # IPv6 works here only because the certificate is obtained over dns-01.
