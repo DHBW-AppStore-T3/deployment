@@ -1,0 +1,422 @@
+{
+  "forgejo/01-create-vm.sh": {
+    "mtime": 1788511496.446096,
+    "seen": 1789543261.969069,
+    "ast_hash": "b2648344c6da1cff2d13f0f76bc1438a",
+    "semantic_hash": "b2648344c6da1cff2d13f0f76bc1438a"
+  },
+  "forgejo/02-configure.sh": {
+    "mtime": 1788511496.4462304,
+    "seen": 1789543261.969069,
+    "ast_hash": "9b08d6b71140f0a470fcabca4ed7d540",
+    "semantic_hash": "9b08d6b71140f0a470fcabca4ed7d540"
+  },
+  "forgejo/03-add-ipv4.sh": {
+    "mtime": 1788511496.4463427,
+    "seen": 1789543261.9690702,
+    "ast_hash": "4a43c53968f558b1748805c86e257817",
+    "semantic_hash": "4a43c53968f558b1748805c86e257817"
+  },
+  "forgejo/runner/entrypoint.sh": {
+    "mtime": 1788511496.4475374,
+    "seen": 1789543261.9690711,
+    "ast_hash": "1361a594c5b35f8a972279d46aff3309",
+    "semantic_hash": "1361a594c5b35f8a972279d46aff3309"
+  },
+  "infrastructure/ansible/inventory-forgejo.sh": {
+    "mtime": 1788511496.4484136,
+    "seen": 1789543261.9690711,
+    "ast_hash": "ca2e7c67d354ac0a0d452d6f9f7402c5",
+    "semantic_hash": "ca2e7c67d354ac0a0d452d6f9f7402c5"
+  },
+  "infrastructure/scripts/tf-local.sh": {
+    "mtime": 1788511496.448808,
+    "seen": 1789543261.969072,
+    "ast_hash": "a36f8ee0eb3d0906915c47727e193ed3",
+    "semantic_hash": "a36f8ee0eb3d0906915c47727e193ed3"
+  },
+  "infrastructure/terraform/envs/forgejo/.terraform.lock.hcl": {
+    "mtime": 1788511496.449073,
+    "seen": 1789543261.9690728,
+    "ast_hash": "13c736817ceff44c2e495f0b6e0f214e",
+    "semantic_hash": "13c736817ceff44c2e495f0b6e0f214e"
+  },
+  "infrastructure/terraform/envs/forgejo/backend.tf": {
+    "mtime": 1788511496.4492042,
+    "seen": 1789543261.9690728,
+    "ast_hash": "5367726f6eb0a2aa94eccdfdedc3b8aa",
+    "semantic_hash": "5367726f6eb0a2aa94eccdfdedc3b8aa"
+  },
+  "infrastructure/terraform/envs/forgejo/main.tf": {
+    "mtime": 1788511496.449343,
+    "seen": 1789543261.969074,
+    "ast_hash": "20f8171cc887d7df9530fc607d306023",
+    "semantic_hash": "20f8171cc887d7df9530fc607d306023"
+  },
+  "infrastructure/terraform/envs/forgejo/providers.tf": {
+    "mtime": 1788511496.4495058,
+    "seen": 1789543261.969074,
+    "ast_hash": "a99158bbcfe5542bab1e0cad8f32734e",
+    "semantic_hash": "a99158bbcfe5542bab1e0cad8f32734e"
+  },
+  "infrastructure/terraform/envs/forgejo/security_group.tf": {
+    "mtime": 1788511496.4496062,
+    "seen": 1789543261.969075,
+    "ast_hash": "51466b754015e23d3bf033652db96cae",
+    "semantic_hash": "51466b754015e23d3bf033652db96cae"
+  },
+  "infrastructure/terraform/envs/forgejo/variables.tf": {
+    "mtime": 1788511496.4497128,
+    "seen": 1789543261.969075,
+    "ast_hash": "8204a61f194d9acc0cabecd46d536fd1",
+    "semantic_hash": "8204a61f194d9acc0cabecd46d536fd1"
+  },
+  "infrastructure/terraform/envs/staging/.terraform.lock.hcl": {
+    "mtime": 1788511496.4498584,
+    "seen": 1789543261.969076,
+    "ast_hash": "66024b106a0785710c889d5e97098085",
+    "semantic_hash": "66024b106a0785710c889d5e97098085"
+  },
+  "infrastructure/terraform/envs/staging/backend.tf": {
+    "mtime": 1788511496.449949,
+    "seen": 1789543261.969076,
+    "ast_hash": "4dba22f6ca4b21e16a9bc1c283032ced",
+    "semantic_hash": "4dba22f6ca4b21e16a9bc1c283032ced"
+  },
+  "infrastructure/terraform/envs/staging/main.tf": {
+    "mtime": 1788511496.4500575,
+    "seen": 1789543261.969076,
+    "ast_hash": "813213d78278a8dc533554e4ea701c57",
+    "semantic_hash": "813213d78278a8dc533554e4ea701c57"
+  },
+  "infrastructure/terraform/envs/staging/providers.tf": {
+    "mtime": 1788511496.4501405,
+    "seen": 1789543261.969077,
+    "ast_hash": "bd1a6460b925a6a9c94e3d4c78c98912",
+    "semantic_hash": "bd1a6460b925a6a9c94e3d4c78c98912"
+  },
+  "infrastructure/terraform/envs/staging/security_group.tf": {
+    "mtime": 1788511496.450247,
+    "seen": 1789543261.969077,
+    "ast_hash": "1a7e59c69aa6646c4181bac87f51b420",
+    "semantic_hash": "1a7e59c69aa6646c4181bac87f51b420"
+  },
+  "infrastructure/terraform/envs/staging/variables.tf": {
+    "mtime": 1788511496.450341,
+    "seen": 1789543261.969078,
+    "ast_hash": "bebe8b4bcfcd218de6cf5f48a044960a",
+    "semantic_hash": "bebe8b4bcfcd218de6cf5f48a044960a"
+  },
+  "infrastructure/terraform/modules/openstack_vm/main.tf": {
+    "mtime": 1788511496.4505582,
+    "seen": 1789543261.969078,
+    "ast_hash": "4bca3ed0f6e605fe1a1b4158f0c411f3",
+    "semantic_hash": "4bca3ed0f6e605fe1a1b4158f0c411f3"
+  },
+  "infrastructure/terraform/modules/openstack_vm/outputs.tf": {
+    "mtime": 1788511496.4506555,
+    "seen": 1789543261.969079,
+    "ast_hash": "526c0a0072dae48ff720e90c68f3dda4",
+    "semantic_hash": "526c0a0072dae48ff720e90c68f3dda4"
+  },
+  "infrastructure/terraform/modules/openstack_vm/secondary_network.tf": {
+    "mtime": 1788511496.4507554,
+    "seen": 1789543261.969079,
+    "ast_hash": "4e9b2bcc32db9ecd017e70ae1b5ae3c5",
+    "semantic_hash": "4e9b2bcc32db9ecd017e70ae1b5ae3c5"
+  },
+  "infrastructure/terraform/modules/openstack_vm/variables.tf": {
+    "mtime": 1788511496.4508445,
+    "seen": 1789543261.96908,
+    "ast_hash": "64187e3b77f1c3209880f3eb63700a7c",
+    "semantic_hash": "64187e3b77f1c3209880f3eb63700a7c"
+  },
+  "keycloak/keycloak-export.json": {
+    "mtime": 1788511496.451097,
+    "seen": 1789543261.96908,
+    "ast_hash": "c263e1efd59bb2511c90782ec6203d59",
+    "semantic_hash": "c263e1efd59bb2511c90782ec6203d59"
+  },
+  "keycloak/realm-export.json": {
+    "mtime": 1788511496.4512308,
+    "seen": 1789543261.9690812,
+    "ast_hash": "7a3f37b43a808bf828fa8d87c2dbb53a",
+    "semantic_hash": "7a3f37b43a808bf828fa8d87c2dbb53a"
+  },
+  "seed/seed_data.py": {
+    "mtime": 1788511496.452558,
+    "seen": 1789543261.9690812,
+    "ast_hash": "c4f81a2d8d3b3f9b6a818aad7c222dd8",
+    "semantic_hash": "c4f81a2d8d3b3f9b6a818aad7c222dd8"
+  },
+  "seed/set_keycloak_urls.py": {
+    "mtime": 1788511496.452673,
+    "seen": 1789543261.9690812,
+    "ast_hash": "d1a84e807d3e458e9d7e9ed2da7e34b9",
+    "semantic_hash": "d1a84e807d3e458e9d7e9ed2da7e34b9"
+  },
+  ".forgejo/workflows/staging.yml": {
+    "mtime": 1788511496.443351,
+    "seen": 1789543261.969082,
+    "ast_hash": "17ae6808b9d2de512f99f0eac8237615",
+    "semantic_hash": "17ae6808b9d2de512f99f0eac8237615"
+  },
+  ".github/workflows/staging.yml": {
+    "mtime": 1788511496.443748,
+    "seen": 1789543261.969082,
+    "ast_hash": "a019e5261b79391d9b78278f8580942e",
+    "semantic_hash": "a019e5261b79391d9b78278f8580942e"
+  },
+  "README.md": {
+    "mtime": 1788511496.444475,
+    "seen": 1789543261.9690828,
+    "ast_hash": "0fbf0fd521f581ac0276e440b29b1696",
+    "semantic_hash": "0fbf0fd521f581ac0276e440b29b1696"
+  },
+  "agent/config.yaml": {
+    "mtime": 1789501766.3326375,
+    "seen": 1789543261.9690828,
+    "ast_hash": "189f1748c81e1e29ab43ab465f1ebd51",
+    "semantic_hash": "189f1748c81e1e29ab43ab465f1ebd51"
+  },
+  "docker-compose.agent.yml": {
+    "mtime": 1789503250.674964,
+    "seen": 1789543261.969086,
+    "ast_hash": "4e58bd630e16df4e623e2a10f5547789",
+    "semantic_hash": "4e58bd630e16df4e623e2a10f5547789"
+  },
+  "docker-compose.dev.yml": {
+    "mtime": 1788511496.44497,
+    "seen": 1789543261.969087,
+    "ast_hash": "012e3c2758744981cce73285d30b79f8",
+    "semantic_hash": "012e3c2758744981cce73285d30b79f8"
+  },
+  "docker-compose.moodle.yml": {
+    "mtime": 1789486267.4801836,
+    "seen": 1789543261.969087,
+    "ast_hash": "45866c72795a5ebe40af3d0742400007",
+    "semantic_hash": "45866c72795a5ebe40af3d0742400007"
+  },
+  "docker-compose.prod.yml": {
+    "mtime": 1789469968.8590155,
+    "seen": 1789543261.969088,
+    "ast_hash": "e0eea820151795b53ec419a85464f6ea",
+    "semantic_hash": "e0eea820151795b53ec419a85464f6ea"
+  },
+  "docker-compose.staging.yml": {
+    "mtime": 1788511496.4452696,
+    "seen": 1789543261.969088,
+    "ast_hash": "9377a890f752cdeba736a93851aeb844",
+    "semantic_hash": "9377a890f752cdeba736a93851aeb844"
+  },
+  "docs/dev-setup.md": {
+    "mtime": 1788511496.4455154,
+    "seen": 1789543261.969088,
+    "ast_hash": "abdad096d00a3feff324ed14e507b52a",
+    "semantic_hash": "abdad096d00a3feff324ed14e507b52a"
+  },
+  "docs/prod-setup.md": {
+    "mtime": 1789504666.6101582,
+    "seen": 1789543261.969089,
+    "ast_hash": "9446a83b2679acac34af243d598b3a8a",
+    "semantic_hash": "9446a83b2679acac34af243d598b3a8a"
+  },
+  "docs/staging-setup.md": {
+    "mtime": 1788511496.44582,
+    "seen": 1789543261.969089,
+    "ast_hash": "f54277d4efdd60fd579b58e4a6b5addb",
+    "semantic_hash": "f54277d4efdd60fd579b58e4a6b5addb"
+  },
+  "forgejo/README.md": {
+    "mtime": 1788511496.4464715,
+    "seen": 1789543261.96909,
+    "ast_hash": "8b09b08e7b3b82fb1e5f34a0bf273f40",
+    "semantic_hash": "8b09b08e7b3b82fb1e5f34a0bf273f40"
+  },
+  "forgejo/SCRIPTS.md": {
+    "mtime": 1788511496.446609,
+    "seen": 1789543261.96909,
+    "ast_hash": "5b040f0eba02656a90f444baa47af83f",
+    "semantic_hash": "5b040f0eba02656a90f444baa47af83f"
+  },
+  "forgejo/docker-compose.yml": {
+    "mtime": 1788511496.4470081,
+    "seen": 1789543261.9690912,
+    "ast_hash": "44c8508299dde161ae25708d97bf2a8f",
+    "semantic_hash": "44c8508299dde161ae25708d97bf2a8f"
+  },
+  "forgejo/job-image/requirements.yml": {
+    "mtime": 1788511496.4472725,
+    "seen": 1789543261.9690912,
+    "ast_hash": "ae574226785e0e58fe1c606d47a80d64",
+    "semantic_hash": "ae574226785e0e58fe1c606d47a80d64"
+  },
+  "forgejo/runner/config.yml": {
+    "mtime": 1788511496.447439,
+    "seen": 1789543261.9690921,
+    "ast_hash": "8f673ccf40125bdde87b9c14f0f0e8d2",
+    "semantic_hash": "8f673ccf40125bdde87b9c14f0f0e8d2"
+  },
+  "infrastructure/EXTRACT.md": {
+    "mtime": 1788511496.4477894,
+    "seen": 1789543261.9690921,
+    "ast_hash": "300be0c203e7d5c133a65589a9a04841",
+    "semantic_hash": "300be0c203e7d5c133a65589a9a04841"
+  },
+  "infrastructure/README.md": {
+    "mtime": 1788511496.4479387,
+    "seen": 1789543261.9690921,
+    "ast_hash": "6d49c8fc9f3cda1d996d4a4d6540c571",
+    "semantic_hash": "6d49c8fc9f3cda1d996d4a4d6540c571"
+  },
+  "infrastructure/ansible/forgejo.yml": {
+    "mtime": 1788511496.4483204,
+    "seen": 1789543261.969093,
+    "ast_hash": "4f6e35e396fc445c0ba12fadce84fc2b",
+    "semantic_hash": "4f6e35e396fc445c0ba12fadce84fc2b"
+  },
+  "infrastructure/ansible/requirements.yml": {
+    "mtime": 1788511496.4484975,
+    "seen": 1789543261.969093,
+    "ast_hash": "b6d2b2bd22d2c63fce797f91ced7f7c5",
+    "semantic_hash": "b6d2b2bd22d2c63fce797f91ced7f7c5"
+  },
+  "infrastructure/ansible/staging.yml": {
+    "mtime": 1788511496.4486365,
+    "seen": 1789543261.9690938,
+    "ast_hash": "c9e7c565a4ec7a67c8c5634c6d2a6dc0",
+    "semantic_hash": "c9e7c565a4ec7a67c8c5634c6d2a6dc0"
+  },
+  "seed/README.md": {
+    "mtime": 1788511496.4517062,
+    "seen": 1789543261.9690938,
+    "ast_hash": "996044779a1261cfd7e9d1b5a24e47d9",
+    "semantic_hash": "996044779a1261cfd7e9d1b5a24e47d9"
+  },
+  "seed/app_descriptions/GitLab-CE.md": {
+    "mtime": 1788511496.451867,
+    "seen": 1789543261.9690938,
+    "ast_hash": "4e92beac3e1b2aea7ec465385ac231f0",
+    "semantic_hash": "4e92beac3e1b2aea7ec465385ac231f0"
+  },
+  "seed/app_descriptions/Jupyter-Notebook.md": {
+    "mtime": 1788511496.451962,
+    "seen": 1789543261.969095,
+    "ast_hash": "22f91ea9f42ab4aa52cb51b7b5976262",
+    "semantic_hash": "22f91ea9f42ab4aa52cb51b7b5976262"
+  },
+  "seed/app_descriptions/Monitoring-Stack.md": {
+    "mtime": 1788511496.452051,
+    "seen": 1789543261.969095,
+    "ast_hash": "2f78e3c902730b809045bbf2319624f0",
+    "semantic_hash": "2f78e3c902730b809045bbf2319624f0"
+  },
+  "seed/app_descriptions/Online-IDE.md": {
+    "mtime": 1788511496.4521396,
+    "seen": 1789543261.969096,
+    "ast_hash": "68cb47cbb1a072c0367b2d7a1b7cba6d",
+    "semantic_hash": "68cb47cbb1a072c0367b2d7a1b7cba6d"
+  },
+  "seed/app_descriptions/Ubuntu-App.md": {
+    "mtime": 1788511496.4522345,
+    "seen": 1789543261.969096,
+    "ast_hash": "ffff0aa6869235b197ac280b178428c4",
+    "semantic_hash": "ffff0aa6869235b197ac280b178428c4"
+  },
+  "seed/app_descriptions/Web-LaTeX.md": {
+    "mtime": 1788511496.4523296,
+    "seen": 1789543261.969097,
+    "ast_hash": "9dc9563a7edf009eb123ee2f61a76017",
+    "semantic_hash": "9dc9563a7edf009eb123ee2f61a76017"
+  },
+  "seed/app_descriptions/pgAdmin.md": {
+    "mtime": 1788511496.4524243,
+    "seen": 1789543261.969097,
+    "ast_hash": "be1b640d8678d264be80d887a86597b2",
+    "semantic_hash": "be1b640d8678d264be80d887a86597b2"
+  },
+  ".claude/hooks/appstore-prod-guardrail.py": {
+    "mtime": 1789543114.5129817,
+    "seen": 1789543261.969064,
+    "ast_hash": "2e9b21af6ab15a907817d78bcd3ec244",
+    "semantic_hash": "2e9b21af6ab15a907817d78bcd3ec244"
+  },
+  ".claude/settings.json": {
+    "mtime": 1789505444.0432796,
+    "seen": 1789543261.969067,
+    "ast_hash": "ff2cef8dc27378ef1f097cf15b52cd7d",
+    "semantic_hash": "ff2cef8dc27378ef1f097cf15b52cd7d"
+  },
+  "claude_docs/decisions/2026-hermes-over-custom-mcp.md": {
+    "mtime": 1789506566.7659047,
+    "seen": 1789543261.9690838,
+    "ast_hash": "436a45365834fda3d4179ddb39d9df33",
+    "semantic_hash": "436a45365834fda3d4179ddb39d9df33"
+  },
+  "claude_docs/log/2026-W38.md": {
+    "mtime": 1789542841.2738569,
+    "seen": 1789543261.9690838,
+    "ast_hash": "471372dc6c6430a929c20ef2bf6d98f5",
+    "semantic_hash": "471372dc6c6430a929c20ef2bf6d98f5"
+  },
+  "claude_docs/rollback/database.md": {
+    "mtime": 1789542810.5383084,
+    "seen": 1789543261.9690838,
+    "ast_hash": "4be728f336301f6cf263d760fe4df8d2",
+    "semantic_hash": "4be728f336301f6cf263d760fe4df8d2"
+  },
+  "claude_docs/rollback/service.md": {
+    "mtime": 1789542827.7160387,
+    "seen": 1789543261.969085,
+    "ast_hash": "6f226c07bad37de4ea386cb8b6fe32f9",
+    "semantic_hash": "6f226c07bad37de4ea386cb8b6fe32f9"
+  },
+  "claude_docs/topology/boot-order.md": {
+    "mtime": 1789506540.8381975,
+    "seen": 1789543261.969085,
+    "ast_hash": "a5f866f8412b0ec69364e45d84eed2cd",
+    "semantic_hash": "a5f866f8412b0ec69364e45d84eed2cd"
+  },
+  "claude_docs/topology/environments.md": {
+    "mtime": 1789506527.1253955,
+    "seen": 1789543261.969085,
+    "ast_hash": "185dc9d11b20bd71845c923f8fa50432",
+    "semantic_hash": "185dc9d11b20bd71845c923f8fa50432"
+  },
+  "claude_docs/topology/networking.md": {
+    "mtime": 1789506555.1815953,
+    "seen": 1789543261.969086,
+    "ast_hash": "88ce81da8256d64934d2977b77b1ed61",
+    "semantic_hash": "88ce81da8256d64934d2977b77b1ed61"
+  },
+  ".claude/skills/deploy-status/SKILL.md": {
+    "mtime": 1789543015.1427834,
+    "seen": 1789543319.930665,
+    "ast_hash": "8f12d1b596b0c76bb332d4bddc3fb504",
+    "semantic_hash": ""
+  },
+  ".claude/skills/diagnose-production/SKILL.md": {
+    "mtime": 1789543000.4051447,
+    "seen": 1789543319.930666,
+    "ast_hash": "e655c8d91e7fd11712d569092b20a2fe",
+    "semantic_hash": ""
+  },
+  ".claude/skills/restart-service/SKILL.md": {
+    "mtime": 1789543032.0461388,
+    "seen": 1789543319.930666,
+    "ast_hash": "639269c005f81819f94c579e07e5cde9",
+    "semantic_hash": ""
+  },
+  ".claude/skills/ship-feature/SKILL.md": {
+    "mtime": 1789543138.9303868,
+    "seen": 1789543319.930667,
+    "ast_hash": "e1b4389aad9db6d4da3f8a51adab06e3",
+    "semantic_hash": ""
+  },
+  ".claude/skills/tdd/SKILL.md": {
+    "mtime": 1789543194.7070575,
+    "seen": 1789543319.930667,
+    "ast_hash": "46c4c5a211804505973a3d9e79fe2f48",
+    "semantic_hash": ""
+  }
+}
