@@ -11,13 +11,21 @@
 # no extra OpenStack quota needed, at the cost of running CI on the
 # same host as prod. Isolation, to keep that cost bounded:
 #
-#   - No network entry here at all: this service gets Compose's
-#     implicit default network only, joining none of prod's networks
-#     (backend-network, frontend-network, worker-network,
-#     keycloak-network, moodle-network, agent-network). It has no path
-#     to any prod container by service name — only the internet
-#     (OpenStack API, the staging VM it provisions, GitHub) and
-#     whatever SSH targets staging.yml's own job steps configure.
+#   - worker-network only, of prod's six networks (backend-network,
+#     frontend-network, worker-network, keycloak-network,
+#     moodle-network, agent-network) — needed because
+#     infrastructure/terraform/envs/staging/backend.tf's `pg` backend
+#     stores Terraform state in postgres-tfstate (worker-network, no
+#     published host port), not on the runner's own disk (a job
+#     container's disk doesn't survive between runs, see that file's
+#     own comment for why local state was replaced). Learned the hard
+#     way: the first real run got past SSH-key setup only to fail at
+#     `terraform init` with `dial tcp [::1]:5432: connection refused`
+#     — PG_CONN_STR resolving to nothing reachable with no network
+#     path to postgres-tfstate at all. Still no path to backend,
+#     frontend, keycloak, moodle, or the agent stack by service name —
+#     only the internet (OpenStack API, the staging VM it provisions,
+#     GitHub) plus this one DB.
 #   - No Docker socket mount. staging.yml's steps are Terraform,
 #     Ansible, and SSH — none of them build or run containers, so
 #     this runner never needs docker-in-docker or host Docker access,
@@ -48,6 +56,12 @@ services:
       LABELS: staging-deploy
       ACCESS_TOKEN: ${GITHUB_ACCESS_TOKEN:?GITHUB_ACCESS_TOKEN is required — a fine-grained PAT with just the deployment repo's Administration:write permission (to self-register), see docs/prod-setup.md}
       EPHEMERAL: "false"
+      # staging.yml's Terraform step reads this directly (backend.tf's
+      # `pg` backend) — same DB and credentials as postgres-tfstate's
+      # own env, just addressed by its worker-network service name.
+      PG_CONN_STR: postgres://${TFSTATE_DB_USER:?TFSTATE_DB_USER is required}:${TFSTATE_DB_PASSWORD:?TFSTATE_DB_PASSWORD is required}@postgres-tfstate:5432/${TFSTATE_DB_NAME:?TFSTATE_DB_NAME is required}?sslmode=disable
+    networks:
+      - worker-network
     restart: unless-stopped
     deploy:
       resources:
@@ -62,3 +76,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  worker-network:
+    external: true
+    name: worker-network-prod
