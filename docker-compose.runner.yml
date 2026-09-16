@@ -43,7 +43,13 @@
 # ================================================================
 services:
   staging-runner:
-    image: myoung34/github-runner:latest
+    # :latest resolves to the Ubuntu 20.04 (focal) base — Python 3.8, which
+    # `pip install ansible>=8.0` (staging.yml's own requirement) can't
+    # satisfy: Ansible 8+ needs Python >=3.10, so pip silently offers only
+    # the pre-8.0 releases and the install fails with "No matching
+    # distribution found". :ubuntu-noble is the same image/maintainer on a
+    # 24.04 base with a current Python.
+    image: myoung34/github-runner:ubuntu-noble
     container_name: staging-runner-prod
     environment:
       RUNNER_SCOPE: repo
