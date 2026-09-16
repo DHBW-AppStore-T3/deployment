@@ -63,3 +63,15 @@ State which step found the issue and why the earlier steps didn't —
 "Step 1 showed `podman-mcp-prod` restarting; Step 2's logs showed
 `PrivilegedIntentsRequired`" is useful, "something's wrong with
 Discord" is not.
+
+## Before proposing a fix
+
+Root cause first, not a symptom patch — see
+[obra/superpowers' systematic-debugging skill](https://github.com/obra/superpowers/blob/main/skills/systematic-debugging/SKILL.md):
+"NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST". The four `podman-mcp`
+bugs in `HARNESS.md` System 2.1 were each found this way — reading the
+actual upstream source (`pkg/podman/podman_cli.go`,
+`pkg/podman-mcp-server/cmd/root.go`) rather than guessing from an error
+string. A restart that "fixes" a symptom without an identified root
+cause is a coin flip, not a diagnosis — say so explicitly if you're
+proposing one anyway under time pressure.
