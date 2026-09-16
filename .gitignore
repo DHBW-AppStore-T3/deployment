@@ -18,3 +18,9 @@ __pycache__/
 
 # `terraform plan -out=tfplan` in the deploy workflow.
 tfplan
+graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_labels.json
+graphify-out/.graphify_labels.json.sig
