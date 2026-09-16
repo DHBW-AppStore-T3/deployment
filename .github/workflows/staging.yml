@@ -95,7 +95,12 @@ jobs:
           # OS's own apt-managed packages, so overriding the guard here is
           # the same risk profile 20.04/22.04 had by not needing it.
           pip3 install --user --break-system-packages "ansible>=8.0"
+          # $GITHUB_PATH only takes effect in steps AFTER this one — the
+          # ansible-galaxy calls below run in this same step, so without
+          # also exporting PATH here directly they fail with "command not
+          # found" (exit 127) despite the binary now existing.
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
           ansible-galaxy role install -r infrastructure/ansible/requirements.yml -p infrastructure/ansible/roles_external
           ansible-galaxy collection install -r infrastructure/ansible/requirements.yml
 
