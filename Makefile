@@ -35,6 +35,11 @@ DC_PROD := docker compose -f docker-compose.prod.yml
 # that only exist once docker-compose.prod.yml has created them.
 DC_AGENT  := docker compose -f docker-compose.prod.yml -f docker-compose.agent.yml
 DC_MOODLE := docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml
+# Runner overlay joins no prod network at all (see docker-compose.runner.yml's
+# header), so unlike DC_AGENT/DC_MOODLE it's fine standalone — kept combined
+# with the base file anyway, purely so `docker compose ps` from either
+# invocation shows the same full picture.
+DC_RUNNER := docker compose -f docker-compose.prod.yml -f docker-compose.runner.yml
 
 # Host-Ports (müssen mit den ${...:-default} Werten in den compose-
 # Dateien übereinstimmen, sonst zeigt `make urls` falsche Links).
@@ -67,6 +72,7 @@ PGADMIN_PORT       ?= 5050
         prod-set-keycloak-urls \
         agent-up agent-down agent-logs agent-ps \
         moodle-up moodle-install moodle-down moodle-logs moodle-ps \
+        runner-up runner-down runner-logs runner-ps \
         up down logs build
 
 # ----------------------------------------------------------------
@@ -525,6 +531,23 @@ moodle-logs: ## Follow Moodle container logs
 
 moodle-ps: ## List Moodle containers + health
 	$(DC_MOODLE) ps moodle-db moodle
+
+# ----------------------------------------------------------------
+# Self-hosted GitHub Actions runner for staging.yml — see
+# docker-compose.runner.yml for why this runs as a container here
+# instead of a separate VM, and what it deliberately can't reach.
+# ----------------------------------------------------------------
+runner-up: ## Start the self-hosted runner for staging.yml (needs GITHUB_ACCESS_TOKEN in .env)
+	$(DC_RUNNER) up -d --pull always staging-runner
+
+runner-down: ## Stop and remove the runner container (deregisters on graceful stop)
+	$(DC_RUNNER) rm -sf staging-runner
+
+runner-logs: ## Follow the runner's registration/job logs
+	$(DC_RUNNER) logs -f staging-runner
+
+runner-ps: ## Show runner container status
+	$(DC_RUNNER) ps staging-runner
 
 prod-migrate: ## Apply Alembic migrations against the running backend-prod container
 	docker exec backend-prod python -m alembic upgrade head
