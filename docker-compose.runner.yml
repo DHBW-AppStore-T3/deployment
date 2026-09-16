@@ -11,21 +11,28 @@
 # no extra OpenStack quota needed, at the cost of running CI on the
 # same host as prod. Isolation, to keep that cost bounded:
 #
-#   - worker-network only, of prod's six networks (backend-network,
-#     frontend-network, worker-network, keycloak-network,
-#     moodle-network, agent-network) — needed because
-#     infrastructure/terraform/envs/staging/backend.tf's `pg` backend
-#     stores Terraform state in postgres-tfstate (worker-network, no
-#     published host port), not on the runner's own disk (a job
-#     container's disk doesn't survive between runs, see that file's
-#     own comment for why local state was replaced). Learned the hard
-#     way: the first real run got past SSH-key setup only to fail at
-#     `terraform init` with `dial tcp [::1]:5432: connection refused`
-#     — PG_CONN_STR resolving to nothing reachable with no network
-#     path to postgres-tfstate at all. Still no path to backend,
-#     frontend, keycloak, moodle, or the agent stack by service name —
-#     only the internet (OpenStack API, the staging VM it provisions,
-#     GitHub) plus this one DB.
+#   - network_mode: host, not a Docker network — staging.yml's Ansible
+#     step SSHes to the freshly-provisioned staging VM over its public
+#     IPv6 address, and Docker's own bridge networks (verified: `docker
+#     network inspect bridge` shows EnableIPv6=false, and there's no
+#     /etc/docker/daemon.json enabling it daemon-wide) give containers
+#     no IPv6 route at all — every real run failed at "Run Ansible
+#     Playbook" with "Network is unreachable" until this. Turning on
+#     IPv6 daemon-wide was the alternative; rejected because it needs a
+#     Docker daemon restart, which restarts every other container on
+#     this host — host networking touches only this one container.
+#   - Trade-off of host networking: no Docker network isolation at all
+#     for this container (it can reach any port on the host, same as
+#     any other host process) — a step up in blast radius from the
+#     previous worker-network-only setup, accepted because there's no
+#     narrower Docker-native way to hand a container the host's IPv6
+#     route. Still no Docker socket mount (see below), and still no
+#     path to backend/frontend/keycloak/moodle containers that isn't
+#     equally available to anything else running on the VM.
+#   - postgres-tfstate's 5432 is published on the host (127.0.0.1 only)
+#     via docker-compose.prod.yml override below, since host-networking
+#     containers can't resolve other containers by Docker DNS name —
+#     PG_CONN_STR points at 127.0.0.1 instead of the service name.
 #   - No Docker socket mount. staging.yml's steps are Terraform,
 #     Ansible, and SSH — none of them build or run containers, so
 #     this runner never needs docker-in-docker or host Docker access,
@@ -64,10 +71,11 @@ services:
       EPHEMERAL: "false"
       # staging.yml's Terraform step reads this directly (backend.tf's
       # `pg` backend) — same DB and credentials as postgres-tfstate's
-      # own env, just addressed by its worker-network service name.
-      PG_CONN_STR: postgres://${TFSTATE_DB_USER:?TFSTATE_DB_USER is required}:${TFSTATE_DB_PASSWORD:?TFSTATE_DB_PASSWORD is required}@postgres-tfstate:5432/${TFSTATE_DB_NAME:?TFSTATE_DB_NAME is required}?sslmode=disable
-    networks:
-      - worker-network
+      # own env, now addressed via the host-published port below
+      # (127.0.0.1, not the container's Docker DNS name — host
+      # networking means this container has no Docker DNS at all).
+      PG_CONN_STR: postgres://${TFSTATE_DB_USER:?TFSTATE_DB_USER is required}:${TFSTATE_DB_PASSWORD:?TFSTATE_DB_PASSWORD is required}@127.0.0.1:55432/${TFSTATE_DB_NAME:?TFSTATE_DB_NAME is required}?sslmode=disable
+    network_mode: host
     restart: unless-stopped
     deploy:
       resources:
@@ -83,7 +91,14 @@ services:
         max-size: "10m"
         max-file: "3"
 
-networks:
-  worker-network:
-    external: true
-    name: worker-network-prod
+  # Publishes postgres-tfstate's port to 127.0.0.1 only (never
+  # 0.0.0.0) — staging-runner reaches it over host networking via
+  # loopback, same as any other localhost service, without exposing
+  # Terraform state to the rest of the network. 55432, not 5432:
+  # postgres-prod already publishes 0.0.0.0:5432 (docker-compose.prod.yml),
+  # which covers 127.0.0.1 too, so 5432 is taken. Everything else about
+  # this service (image, env, volume, healthcheck) comes from
+  # docker-compose.prod.yml; this only adds the port mapping.
+  postgres-tfstate:
+    ports:
+      - "127.0.0.1:55432:5432"
