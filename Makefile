@@ -512,12 +512,17 @@ moodle-up: ## Start Moodle alongside the running prod stack (needs MOODLE_REPO_P
 	$(DC_MOODLE) up -d nginx
 
 moodle-install: ## One-time Moodle site install (run once after first moodle-up)
+	@# moodle_appstore currently tracks Moodle's unstable 5.3dev branch
+	@# (verified: `git log` shows "weekly release 5.3dev" as the base
+	@# commit) — install.php refuses without --allow-unstable, exiting
+	@# before touching the DB. This is a fork-of-upstream-Moodle-core
+	@# state, not something this repo's own history controls.
 	@set -a; . ./.env; set +a; \
 	if [ -z "$$MOODLE_WWWROOT" ] || [ -z "$$MOODLE_ADMIN_PASSWORD" ] || [ -z "$$MOODLE_ADMIN_EMAIL" ]; then \
 	  echo "❌ MOODLE_WWWROOT / MOODLE_ADMIN_PASSWORD / MOODLE_ADMIN_EMAIL fehlen in .env"; exit 1; \
 	fi; \
 	$(DC_MOODLE) exec -T -u www-data moodle php admin/cli/install.php \
-	  --non-interactive --agree-license \
+	  --non-interactive --agree-license --allow-unstable \
 	  --wwwroot="$$MOODLE_WWWROOT" \
 	  --dbtype=pgsql --dbhost=moodle-db --dbname=$${MOODLE_DB_NAME:-moodle} --dbuser=$${MOODLE_DB_USER:-moodle} --dbpass="$$MOODLE_DB_PASSWORD" \
 	  --fullname="$${MOODLE_SITE_NAME:-DHBW AppStore LTI Prototype}" --shortname=AppStoreLTI \
