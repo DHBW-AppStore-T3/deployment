@@ -12,8 +12,8 @@ module "vm" {
   # itself runs (`openstack server show appstore-prod-01`), so this
   # keeps staging on the same base OS as prod rather than picking
   # something newer/different.
-  image  = "Ubuntu 24.04"
-  flavor = "gp1.large"
+  image      = "Ubuntu 24.04"
+  flavor     = "gp1.large"
   public_key = var.ssh_public_key
 
   # IPv6 works here only because the certificate is obtained over dns-01.
