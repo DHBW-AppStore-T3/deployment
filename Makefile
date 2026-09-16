@@ -66,7 +66,7 @@ PGADMIN_PORT       ?= 5050
         prod-migrate prod-seed prod-cert-self-signed prod-reset \
         prod-set-keycloak-urls \
         agent-up agent-down agent-logs agent-ps \
-        moodle-up moodle-down moodle-logs moodle-ps \
+        moodle-up moodle-install moodle-down moodle-logs moodle-ps \
         up down logs build
 
 # ----------------------------------------------------------------
@@ -496,11 +496,26 @@ agent-ps: ## List agent containers + health
 	$(DC_AGENT) ps podman-mcp hermes-agent
 
 # ----------------------------------------------------------------
-# Moodle stack (LTI prototype) — promoted from moodle/ to prod
+# Moodle stack (LTI prototype) — deploys the moodle_appstore fork,
+# checked out as a sibling directory to this repo (MOODLE_REPO_PATH
+# in .env). No image build: moodle-php-apache + the repo bind-mounted
+# as document root, same as moodle_appstore's own docker-compose.yml.
 # ----------------------------------------------------------------
-moodle-up: ## Build + start Moodle alongside the running prod stack
-	$(DC_MOODLE) up -d --build moodle-db moodle
+moodle-up: ## Start Moodle alongside the running prod stack (needs MOODLE_REPO_PATH cloned first)
+	$(DC_MOODLE) up -d --pull always moodle-db moodle
 	$(DC_MOODLE) up -d nginx
+
+moodle-install: ## One-time Moodle site install (run once after first moodle-up)
+	@set -a; . ./.env; set +a; \
+	if [ -z "$$MOODLE_WWWROOT" ] || [ -z "$$MOODLE_ADMIN_PASSWORD" ] || [ -z "$$MOODLE_ADMIN_EMAIL" ]; then \
+	  echo "❌ MOODLE_WWWROOT / MOODLE_ADMIN_PASSWORD / MOODLE_ADMIN_EMAIL fehlen in .env"; exit 1; \
+	fi; \
+	$(DC_MOODLE) exec -T -u www-data moodle php admin/cli/install.php \
+	  --non-interactive --agree-license \
+	  --wwwroot="$$MOODLE_WWWROOT" \
+	  --dbtype=pgsql --dbhost=moodle-db --dbname=$${MOODLE_DB_NAME:-moodle} --dbuser=$${MOODLE_DB_USER:-moodle} --dbpass="$$MOODLE_DB_PASSWORD" \
+	  --fullname="$${MOODLE_SITE_NAME:-DHBW AppStore LTI Prototype}" --shortname=AppStoreLTI \
+	  --adminuser=$${MOODLE_ADMIN_USER:-admin} --adminpass="$$MOODLE_ADMIN_PASSWORD" --adminemail="$$MOODLE_ADMIN_EMAIL"
 
 moodle-down: ## Stop and remove the Moodle containers only (prod untouched)
 	$(DC_MOODLE) rm -sf moodle moodle-db
