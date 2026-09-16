@@ -1,0 +1,64 @@
+# ================================================================
+# Self-hosted GitHub Actions runner for .github/workflows/staging.yml —
+# without this, every push to main queues a staging deploy that never
+# runs (verified: `gh api repos/.../actions/runners` returned an empty
+# list, and every staging.yml run since 2026-09-15 sat at
+# status=queued indefinitely). Additive to docker-compose.prod.yml:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.runner.yml up -d
+#
+# Runs on appstore-prod-01 as a container rather than a separate VM —
+# no extra OpenStack quota needed, at the cost of running CI on the
+# same host as prod. Isolation, to keep that cost bounded:
+#
+#   - No network entry here at all: this service gets Compose's
+#     implicit default network only, joining none of prod's networks
+#     (backend-network, frontend-network, worker-network,
+#     keycloak-network, moodle-network, agent-network). It has no path
+#     to any prod container by service name — only the internet
+#     (OpenStack API, the staging VM it provisions, GitHub) and
+#     whatever SSH targets staging.yml's own job steps configure.
+#   - No Docker socket mount. staging.yml's steps are Terraform,
+#     Ansible, and SSH — none of them build or run containers, so
+#     this runner never needs docker-in-docker or host Docker access,
+#     unlike podman-mcp (which explicitly does need the host socket
+#     for its one job — see docker-compose.agent.yml).
+#   - RUNNER_SCOPE=repo, single-repo token — this runner only ever
+#     appears as a runner for DHBW-AppStore-T3/deployment, never
+#     registered org-wide, so a compromise here can't be used to plant
+#     a job on an unrelated repo's workflow.
+#   - GITHUB_ACCESS_TOKEN needs `repo` scope only (to self-register via
+#     the registration-token endpoint) — never the same PAT used for
+#     the (currently inactive) github-mcp-server block in
+#     agent/config.yaml, so a leak of one doesn't also expose the
+#     other's scope.
+# ================================================================
+services:
+  staging-runner:
+    image: myoung34/github-runner:latest
+    container_name: staging-runner-prod
+    environment:
+      RUNNER_SCOPE: repo
+      REPO_URL: https://github.com/DHBW-AppStore-T3/deployment
+      RUNNER_NAME: appstore-prod-01-staging-runner
+      RUNNER_WORKDIR: /tmp/runner/work
+      # Labels are used only to make `runs-on: self-hosted` in
+      # staging.yml unambiguous if a second self-hosted runner is ever
+      # added for a different purpose — not a security boundary.
+      LABELS: staging-deploy
+      ACCESS_TOKEN: ${GITHUB_ACCESS_TOKEN:?GITHUB_ACCESS_TOKEN is required — a fine-grained PAT with just the deployment repo's Administration:write permission (to self-register), see docs/prod-setup.md}
+      EPHEMERAL: "false"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

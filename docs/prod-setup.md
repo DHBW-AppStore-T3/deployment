@@ -204,9 +204,12 @@ SMTP_FROM_EMAIL=
 SMTP_FROM_NAME=Click-n-Deploy
 ```
 
-### 2k. Agent- und Moodle-Overlays (optional)
+### 2k. Agent-, Moodle- und Runner-Overlays (optional)
 
-Nur nötig, wenn `make agent-up` bzw. `make moodle-up` verwendet werden (siehe [Optional: Agent-Stack](#optional-agent-stack-hermes--podman-mcp) und [Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp) unten):
+Nur nötig, wenn `make agent-up`, `make moodle-up` bzw. `make
+runner-up` verwendet werden (siehe [Optional: Agent-Stack](#optional-agent-stack-hermes--podman-mcp),
+[Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp) und
+[Optional: Self-Hosted Runner](#optional-self-hosted-runner-für-stagingyml) unten):
 
 ```
 GEMINI_API_KEY=<eigener-key-von-aistudio.google.com>
@@ -219,6 +222,8 @@ MOODLE_DB_PASSWORD=<random>
 MOODLE_ADMIN_PASSWORD=<random>
 MOODLE_ADMIN_EMAIL=admin@dhbw.de
 MOODLE_WWWROOT=https://<VM-IP>:8443
+
+GITHUB_ACCESS_TOKEN=<fine-grained-pat-nur-fuer-deployment-repo,-Administration:-Read-and-write>
 ```
 
 **Discord-Bot anlegen** (siehe `HARNESS.md` Abschnitt 3.2 für die
@@ -398,6 +403,40 @@ Läuft auf einem eigenen Port, weil die VM keine Domain hat (siehe
    nicht nochmal nötig, solange das Volume nicht gelöscht wurde.
 
 `moodle-network` hat keinen Zugriff auf `backend-network`, `worker-network` oder `keycloak-network` — die Instanz ist bewusst vom AppStore-Kern isoliert, bis eine echte LTI-Integration das rechtfertigt.
+
+## Optional: Self-Hosted Runner (für `staging.yml`)
+
+`.github/workflows/staging.yml` ist auf `runs-on: self-hosted`
+konfiguriert, aber ohne registrierten Runner bleibt jeder Lauf für
+immer auf `status: queued` hängen — verifiziert am 2026-09-16: kein
+einziger Run seit Aktivierung von GitHub Actions kam je zum
+Abschluss, `gh api repos/.../actions/runners` lieferte eine leere
+Liste. Dieser Runner läuft als Container auf `appstore-prod-01` (siehe
+`docker-compose.runner.yml`-Kommentarkopf für die Isolations-Begründung:
+kein Zugriff auf irgendein Prod-Netzwerk, kein Docker-Socket).
+
+1. Fine-grained PAT erstellen (github.com/settings/personal-access-tokens/new):
+   Repository access → nur `DHBW-AppStore-T3/deployment` → Permission
+   `Administration: Read and write` (wird für die Selbst-Registrierung
+   des Runners gebraucht, sonst nichts).
+2. In `.env`: `GITHUB_ACCESS_TOKEN=<dieser-pat>` eintragen.
+3. `make runner-up` startet den Container; er registriert sich beim
+   Boot selbst über die GitHub-API und erscheint danach unter
+   Settings → Actions → Runners im `deployment`-Repo mit dem Label
+   `staging-deploy`.
+4. `make runner-logs` zum Verifizieren der Registrierung, `make
+   runner-ps` für den Container-Status.
+5. Nächster Push auf `main` (oder ein manueller
+   `workflow_dispatch`-Trigger) sollte jetzt tatsächlich laufen statt
+   ewig zu queuen — mit `gh run list --workflow=staging.yml` oder im
+   Actions-Tab verifizieren.
+6. `make runner-down` deregistriert den Runner sauber und entfernt den
+   Container — der restliche Prod-Stack bleibt unberührt.
+
+**Wichtig:** `staging.yml` provisioniert per Terraform eine eigene,
+separate VM (`staging-dhbw-appstore`), nicht `appstore-prod-01` selbst
+— der Runner läuft auf `appstore-prod-01` nur als Ausführungsort für
+den CI-Job, verändert diese VM aber nicht.
 
 ## Verifikation
 
