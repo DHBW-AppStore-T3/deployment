@@ -31,6 +31,66 @@ mcp_servers:
         # human with the ubuntu/sudo login or the CI/CD pipeline,
         # never this agent directly.
 
+  # HARNESS.md System 2 — github-mcp-server, planned but not yet
+  # activated (no GITHUB_TOKEN provisioned). Unlike podman-mcp, this
+  # needs no self-hosted container at all: GitHub runs the MCP server
+  # itself at this URL (docs/remote-server.md in github/github-mcp-
+  # server), reachable over Streamable HTTP with a PAT in the
+  # Authorization header. X-MCP-Readonly forces read-only tools
+  # regardless of what the PAT's scopes would otherwise allow —
+  # belt-and-suspenders with using a read-only-scoped PAT in the first
+  # place. Uncomment once GITHUB_TOKEN is set in the deployment .env
+  # (a PAT with `repo` read access, no admin:org, never the same token
+  # used for git operations by a human).
+  # github:
+  #   url: "https://api.githubcopilot.com/mcp/"
+  #   headers:
+  #     Authorization: "Bearer ${env:GITHUB_TOKEN}"
+  #     X-MCP-Readonly: "true"
+  #     X-MCP-Toolsets: "repos,actions,pull_requests"
+
+  # HARNESS.md System 2 — openstack-kr/python-openstackmcp-server,
+  # planned but not yet activated. NOT avinas234/openstack-mcp (an
+  # earlier draft of this file named that one): that project SSHes
+  # into the OpenStack controller host itself to run CLI commands,
+  # which this org does not have — only project-level clouds.yaml API
+  # credentials, like any OpenStack tenant. This one uses the
+  # OpenStack SDK against the REST API instead, the same access level
+  # `openstack server list` already has.
+  #
+  # No built-in read-only mode (verified against
+  # src/openstack_mcp_server/tools/*.py — get_*/create_*/delete_*/
+  # update_*/action_* all coexist as plain mcp.tool() registrations).
+  # Same pattern as podman-mcp: the allowlist below IS the guardrail,
+  # not a flag on the server. get_* only, across compute/network/
+  # identity — no create_server, no delete_*, no update_*, no
+  # action_server, no attach_volume/detach_volume.
+  # openstack:
+  #   url: "http://openstack-mcp:PORT/mcp"  # port TBD, check the
+  #                                          # project's own default
+  #                                          # once actually deployed
+  #   tools:
+  #     include:
+  #       - get_servers
+  #       - get_server
+  #       - get_flavors
+  #       - get_networks
+  #       - get_network_detail
+  #       - get_subnets
+  #       - get_subnet_detail
+  #       - get_ports
+  #       - get_port_detail
+  #       - get_regions
+  #       - get_region
+  #       - get_domains
+  #       - get_domain
+  #       - get_projects
+  #       - get_project
+  #       # Extend with get_images/get_volumes/etc. as needed — always
+  #       # verify against the current source before adding a name,
+  #       # the same way podman-mcp's tool names were verified rather
+  #       # than assumed (see HARNESS.md 2.1).
+
 tool_loop_guardrails:
   # Gateway/cron sessions are unattended by definition — a runaway
   # tool loop here has no human watching to interrupt it.

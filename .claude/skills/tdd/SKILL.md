@@ -6,7 +6,14 @@ description: "Use when implementing new backend/worker/frontend functionality th
 # /tdd
 
 One loop, three sets of commands — branch on which repo you're in.
-HARNESS.md System 4.3.
+HARNESS.md System 4.2/4.3.
+
+For the underlying principle (why TDD, not just how), see
+[obra/superpowers' test-driven-development skill](https://github.com/obra/superpowers/blob/main/skills/test-driven-development/SKILL.md) —
+"NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST", including its
+answer for when a shortcut feels justified: it isn't. This skill is
+the repo-specific how (the exact commands per language/toolchain);
+that one is the discipline.
 
 ## The loop (same regardless of repo)
 

@@ -128,6 +128,12 @@ services:
       # invite-only bot is the other half.
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:?DISCORD_BOT_TOKEN is required — create a private (Public Bot = OFF) bot at discord.com/developers/applications, see docs/prod-setup.md}
       DISCORD_ALLOWED_USERS: ${DISCORD_ALLOWED_USERS:?DISCORD_ALLOWED_USERS is required — comma-separated Discord user IDs, never leave this unset or every Discord user can talk to the agent}
+      # Optional — only resolved if agent/config.yaml's commented-out
+      # `github` MCP server block is uncommented. Not required (no
+      # :?) because the feature itself is not yet activated (HARNESS.md
+      # System 2 status). A read-only-scoped PAT, never the token a
+      # human uses for git operations.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
       - hermes_agent_data:/opt/data
       - ./agent/config.yaml:/opt/data/config.yaml:ro
