@@ -87,7 +87,14 @@ jobs:
       - name: Install Ansible and Dependencies
         run: |
           sudo apt-get install -y rsync python3-pip
-          pip3 install --user "ansible>=8.0"
+          # --break-system-packages: Ubuntu 24.04's pip refuses to touch the
+          # system Python at all otherwise (PEP 668, "externally-managed-
+          # environment") — hit switching the runner from Ubuntu 20.04 to
+          # 24.04 for a newer Python (ansible>=8.0 needs >=3.10, focal's 3.8
+          # can't satisfy it at all). --user already isolates this from the
+          # OS's own apt-managed packages, so overriding the guard here is
+          # the same risk profile 20.04/22.04 had by not needing it.
+          pip3 install --user --break-system-packages "ansible>=8.0"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           ansible-galaxy role install -r infrastructure/ansible/requirements.yml -p infrastructure/ansible/roles_external
           ansible-galaxy collection install -r infrastructure/ansible/requirements.yml
