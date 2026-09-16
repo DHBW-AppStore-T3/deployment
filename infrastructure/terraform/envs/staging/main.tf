@@ -26,10 +26,18 @@ module "vm" {
   # Second interface so clients without IPv6 can reach the app. Ansible connects
   # over IPv6 as before; only the A record is new.
   #
-  # The subnet is named because DHBWv4 has two, and the address has to come from
-  # the one whose gateway Ansible routes through.
-  secondary_network_name = "DHBWv4"
-  secondary_subnet_name  = "DHBWv4-188"
+  # Temporarily disabled (both null): this OpenStack project
+  # (ma_wwi_24sea_appstore_g3) currently has no "DHBWv4" network at all —
+  # `openstack network list` shows only DHBWV6 and NAT, so the `data
+  # "openstack_networking_network_v2" "secondary"` lookup in the module
+  # fails with "Your query returned no results" before Terraform ever
+  # gets to creating anything. appstore-prod-01 is IPv6-only for the same
+  # reason. The module keeps full dual-stack support (see
+  # secondary_network.tf) for whenever this project's IPv4 allocation
+  # comes back — re-set these two to "DHBWv4"/"DHBWv4-188" then, don't
+  # rebuild the feature.
+  secondary_network_name = null
+  secondary_subnet_name  = null
 
   # Referencing the resource rather than a bare name gives Terraform the
   # dependency, so the group and its rules exist before the instance is built.
