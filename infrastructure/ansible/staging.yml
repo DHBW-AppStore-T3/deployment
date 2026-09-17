@@ -310,6 +310,30 @@
       when: docker_data_device | length > 0
       changed_when: true
 
+    # Dockers eigene Container-Metadaten unter /var/lib/docker/containers/
+    # (auf dem Datenvolume, nicht vom containerd-Reset betroffen) können auf
+    # Container verweisen, deren containerd-Snapshot-Layer nach dem Reset
+    # nicht mehr existiert — "Error response from daemon: RWLayer of
+    # container ... is unexpectedly nil" beim nächsten `up`.
+    #
+    # Unconditional bei gesetztem docker_data_device, nicht nur "wenn der
+    # Mount in diesem Lauf changed war": derselbe Grund wie beim
+    # Docker-Neustart-Task oben — ein Mount, der in einem früheren, an einem
+    # späteren Task gescheiterten Durchlauf schon passiert ist, meldet sich
+    # selbst als "ok", und genau dieser Zwischenzustand (containerd frisch
+    # zurückgesetzt, Docker kennt noch alte Container) ist real aufgetreten.
+    # Für staging (kein Uptime-SLA) ist ein `up -d --build` gleich danach
+    # billiger als die Erkennung, ob es diesmal wirklich nötig wäre.
+    - name: Verwaiste Container nach einem containerd-Reset entfernen
+      ansible.builtin.shell: |
+        set -eu
+        ids=$(docker ps -aq)
+        if [ -n "$ids" ]; then
+          docker rm -f $ids
+        fi
+      when: docker_data_device | length > 0
+      changed_when: true
+
     - name: Verzeichnis für App erstellen
       ansible.builtin.file:
         path: "{{ project_root }}"
