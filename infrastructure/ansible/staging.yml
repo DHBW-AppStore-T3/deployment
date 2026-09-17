@@ -521,6 +521,27 @@
       register: compose_output
       changed_when: true
 
+    # TEMPORARY debugging task for the moodle-staging TLS certificate issue —
+    # remove once resolved. Waits for Caddy's ACME retry cycle to run at
+    # least once, then surfaces its logs directly in the GitHub Actions
+    # output, since a live SSH window during the run is too short to
+    # reliably grab them from outside.
+    - name: DEBUG - warten und Caddy-Logs ausgeben (temporär)
+      when: moodle_enabled | bool
+      ansible.builtin.pause:
+        seconds: 90
+
+    - name: DEBUG - Caddy-Logs (temporär)
+      when: moodle_enabled | bool
+      ansible.builtin.command: docker logs caddy-prod
+      register: debug_caddy_logs
+      changed_when: false
+
+    - name: DEBUG - Caddy-Logs ausgeben (temporär)
+      when: moodle_enabled | bool
+      ansible.builtin.debug:
+        msg: "{{ debug_caddy_logs.stdout_lines + debug_caddy_logs.stderr_lines }}"
+
     # `up -d --build` baut Caddy neu, ersetzt den Container aber nicht, wenn
     # sich nur die Image-ID geändert hat: Compose entscheidet darüber anhand der
     # Service-Definition, und die bleibt gleich. Der Container läuft dann weiter
