@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      moodle_enabled:
+        description: "Also deploy the Moodle LTI prototype (docker-compose.staging.moodle.yml)"
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -121,11 +126,15 @@ jobs:
             -e "secondary_ipv4=${VM_IPV4}" \
             -e "secondary_gateway=${VM_IPV4_GATEWAY}" \
             -e "secondary_mac=${VM_IPV4_MAC}" \
+            -e "moodle_enabled=${MOODLE_ENABLED:-false}" \
             staging.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
           ANSIBLE_FORCE_COLOR: 'True'
           STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+          # inputs.moodle_enabled is only set on a workflow_dispatch run; a
+          # plain push has no inputs context at all, hence the fallback.
+          MOODLE_ENABLED: ${{ inputs.moodle_enabled || 'false' }}
 
       - name: Cleanup Sensitive Files
         if: always()

@@ -247,6 +247,13 @@ describe the zone that answers the dns-01 challenge.
 domains, never for bare addresses — there is no longer any `<VM-IP>` to substitute, and no
 self-signed fallback.
 
+**Moodle (optional, `moodle_enabled=true`):** `MOODLE_HOSTNAME` (its own DNS name, same zone as
+`APP_HOSTNAME` — Caddy issues one certificate per site block's domain, see `caddy/Caddyfile`'s
+second block), `MOODLE_DB_PASSWORD`. `MOODLE_REPO_PATH` should match `moodle_repo_path` in
+`infrastructure/ansible/staging.yml` (default `/home/ubuntu/moodle_appstore`) — the playbook clones
+`moodle_appstore` there itself when `moodle_enabled` is set, no manual step needed (unlike prod's
+`docker-compose.moodle.yml`, which still expects a manual clone).
+
 **Do not define a key twice.** Compose takes the *last* occurrence, while the playbook's
 `grep … | head -n1` for `APP_BASE_URL` takes the *first*. A duplicated key therefore does not
 merely pick one value — it hands the containers and the Keycloak realm template two *different*

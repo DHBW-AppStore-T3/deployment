@@ -1,0 +1,125 @@
+# ================================================================
+# Moodle stack for the STAGING environment — optional overlay, mirrors
+# docker-compose.moodle.yml (the prod version) but plugs into Caddy
+# instead of nginx, since staging terminates TLS with Caddy's automatic
+# per-domain certificates rather than nginx's second-port/self-signed
+# pattern. Additive to docker-compose.staging.yml:
+#
+#   docker compose -f docker-compose.staging.yml -f docker-compose.staging.moodle.yml up -d --build
+#
+# infrastructure/ansible/staging.yml's `moodle_enabled` var (default
+# false, set via -e) controls whether this file is included at all —
+# see that playbook's `compose_files` var.
+#
+# Same source as prod: the moodle_appstore fork checked out as a
+# sibling directory to this repo (MOODLE_REPO_PATH), bind-mounted into
+# moodlehq/moodle-php-apache — no custom image, no build. See
+# docker-compose.moodle.yml's header for why (that file was originally
+# wrong about this — built from a nonexistent moodle/Dockerfile before
+# being corrected; this file starts from the corrected version).
+#
+# Hostname, not a second port: Caddy issues one certificate per site
+# block's domain (see caddy/Caddyfile's second block), so this needs
+# its own DNS name in the same zone as APP_HOSTNAME — set MOODLE_HOSTNAME
+# and add an AAAA record for it (the zone's existing TSIG key covers
+# both hostnames, no second key needed).
+#
+# Isolation: moodle-network is NOT bridged to backend-network or
+# worker-network — this is a standalone LTI prototype with no runtime
+# dependency on the AppStore backend/worker/DB or its identity
+# provider. It IS bridged to frontend-network, but only so Caddy (which
+# lives there) can reach it as a reverse-proxy upstream.
+# ================================================================
+services:
+  moodle-db:
+    image: postgres:17-alpine
+    container_name: moodle-db-prod
+    environment:
+      POSTGRES_DB: ${MOODLE_DB_NAME:-moodle}
+      POSTGRES_USER: ${MOODLE_DB_USER:-moodle}
+      POSTGRES_PASSWORD: ${MOODLE_DB_PASSWORD:?MOODLE_DB_PASSWORD is required}
+    volumes:
+      - moodle_db_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MOODLE_DB_USER:-moodle}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - moodle-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  moodle:
+    image: moodlehq/moodle-php-apache:8.3
+    container_name: moodle-prod
+    depends_on:
+      moodle-db:
+        condition: service_healthy
+    environment:
+      MOODLE_DOCKER_DBTYPE: pgsql
+      MOODLE_DOCKER_DBHOST: moodle-db
+      MOODLE_DOCKER_DBNAME: ${MOODLE_DB_NAME:-moodle}
+      MOODLE_DOCKER_DBUSER: ${MOODLE_DB_USER:-moodle}
+      MOODLE_DOCKER_DBPASS: ${MOODLE_DB_PASSWORD:?MOODLE_DB_PASSWORD is required}
+    volumes:
+      - ${MOODLE_REPO_PATH:?MOODLE_REPO_PATH is required, e.g. /home/ubuntu/moodle_appstore}:/var/www/html
+      - moodle_data_staging:/var/www/moodledata
+      - ${MOODLE_REPO_PATH:?MOODLE_REPO_PATH is required}/.docker/apache.conf:/etc/apache2/sites-enabled/000-default.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - moodle-network
+      - frontend-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Caddy picks up the second site block in caddy/Caddyfile once
+  # MOODLE_HOSTNAME resolves to something other than the .invalid
+  # default — no volume/config change needed here, just the env var
+  # and the moodle-network attachment so it can actually reach the
+  # moodle service by name.
+  caddy:
+    environment:
+      MOODLE_HOSTNAME: ${MOODLE_HOSTNAME:?MOODLE_HOSTNAME is required when moodle_enabled is set}
+    networks:
+      - moodle-network
+    depends_on:
+      - moodle
+
+volumes:
+  moodle_db_staging_data:
+    driver: local
+  moodle_data_staging:
+    driver: local
+
+networks:
+  moodle-network:
+    driver: bridge
+    name: moodle-network-staging
+  frontend-network:
+    external: true
+    name: frontend-network-prod

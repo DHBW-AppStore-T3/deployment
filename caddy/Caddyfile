@@ -59,3 +59,38 @@
 		max_size 50MB
 	}
 }
+
+# Moodle LTI prototype — optional second site block (see
+# docker-compose.staging.moodle.yml). A separate domain, not a second port on
+# {$APP_HOSTNAME}: Caddy issues one certificate per site block's domain, so a
+# distinct host is the natural way to add a second TLS-terminated service,
+# unlike nginx's second-port pattern on prod (docker-compose.moodle.yml there
+# uses :8443 because that stack's self-signed cert isn't tied to any one
+# hostname).
+#
+# MOODLE_HOSTNAME defaults to a name inside .invalid (reserved by RFC 2606,
+# guaranteed to never resolve) rather than being left unset — an empty or
+# missing site-block address is a Caddyfile syntax error, so the moodle-up
+# overlay is optional at the Ansible/compose level but this block always
+# exists; without MOODLE_HOSTNAME set, Caddy just never gets a matching
+# request and never attempts an ACME order for it.
+#
+# Reuses the zone's TSIG key (DNS_TSIG_KEY*) rather than requesting a second
+# one — both hostnames live in the same DNS zone, and RFC 2136 TSIG keys
+# authenticate against the zone, not a specific record name.
+{$MOODLE_HOSTNAME:moodle-disabled.invalid} {
+	tls {
+		dns rfc2136 {
+			key_name {$DNS_TSIG_KEY_NAME}
+			key_alg {$DNS_TSIG_KEY_ALG}
+			key {$DNS_TSIG_KEY}
+			server {$DNS_SERVER}
+		}
+	}
+
+	reverse_proxy moodle:80
+
+	request_body {
+		max_size 100MB
+	}
+}

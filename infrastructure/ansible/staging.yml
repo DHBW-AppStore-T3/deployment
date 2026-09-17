@@ -16,6 +16,19 @@
     # Muss zu docker_data_volume_size_gb in envs/staging passen: "" solange dort
     # 0 steht, /dev/vdb sobald wieder ein Volume angelegt wird.
     docker_data_device: ""
+    # Vom Workflow über -e gesetzt (moodle_enabled=true), Default false: ein
+    # Deploy bringt Moodle nicht ungefragt mit. compose_files wird an jeder
+    # `docker compose -f ...`-Stelle unten verwendet statt die Datei jedes Mal
+    # einzeln zu benennen, damit ein zweites Overlay an nur einer Stelle
+    # hinzukommt statt an den derzeit acht.
+    moodle_enabled: false
+    # Muss zu MOODLE_REPO_PATH im STAGING_ENV_FILE-Secret passen, wenn
+    # moodle_enabled gesetzt ist — docker-compose.staging.moodle.yml liest
+    # MOODLE_REPO_PATH aus .env, dieser Task-Satz klont dorthin.
+    moodle_repo_path: "/home/ubuntu/moodle_appstore"
+    compose_files: >-
+      -f docker-compose.staging.yml
+      {{ '-f docker-compose.staging.moodle.yml' if moodle_enabled | bool else '' }}
 
   pre_tasks:
     # Das zweite Interface hängt Terraform an die laufende VM, konfiguriert ist
@@ -226,6 +239,32 @@
         group: ubuntu
         mode: '0600'
 
+    # moodle_appstore ist ein eigenes Repo (Moodle-Core-Fork), kein Teil
+    # dieses rsync-Schritts — docker-compose.staging.moodle.yml mountet
+    # es über MOODLE_REPO_PATH als Document Root. Auf Prod (docker-
+    # compose.moodle.yml) wurde das einmalig von Hand geklont; hier
+    # automatisiert, damit `moodle_enabled=true` allein reicht.
+    - name: moodle_appstore für die Moodle-Instanz klonen
+      when: moodle_enabled | bool
+      ansible.builtin.git:
+        repo: https://github.com/DHBW-AppStore-T3/moodle_appstore.git
+        dest: "{{ moodle_repo_path }}"
+        version: main
+        force: yes
+
+    # www-data im moodlehq/moodle-php-apache-Image ist UID/GID 33 — ohne das
+    # hier zu setzen bleibt der frische Klon root-eigen, und Apache kann
+    # weder config.php schreiben noch moodledata beschreiben (derselbe
+    # Permission-denied-Fehler, der auf appstore-prod-01 einen nachträglichen
+    # manuellen `chown 33:33` nötig machte).
+    - name: Repo-Rechte für www-data (UID 33) setzen
+      when: moodle_enabled | bool
+      ansible.builtin.file:
+        path: "{{ moodle_repo_path }}"
+        owner: "33"
+        group: "33"
+        recurse: yes
+
     - name: APP_BASE_URL aus .env lesen
       ansible.builtin.shell:
         cmd: |
@@ -280,7 +319,7 @@
         # gebaut wird und in keiner Registry liegt - der Pull scheitert und
         # bricht das Playbook an dieser Stelle ab, noch bevor der Stack
         # überhaupt neu gestartet wird.
-        cmd: docker compose -f docker-compose.staging.yml pull --ignore-buildable
+        cmd: docker compose {{ compose_files }} pull --ignore-buildable
         chdir: "{{ project_root }}"
       changed_when: true
       async: 600
@@ -304,7 +343,7 @@
     # nennt im Fehlerfall die betroffene Variable — Ansible zeigt stderr an.
     - name: Compose-Konfiguration validieren
       ansible.builtin.command:
-        cmd: docker compose -f docker-compose.staging.yml config -q
+        cmd: docker compose {{ compose_files }} config -q
         chdir: "{{ project_root }}"
       changed_when: false
 
@@ -328,7 +367,7 @@
     # auf einem entsorgten Image zurück.
     - name: Start the application with Docker Compose
       ansible.builtin.command:
-        cmd: docker compose -f docker-compose.staging.yml up -d --build
+        cmd: docker compose {{ compose_files }} up -d --build
         chdir: "{{ project_root }}"
       register: compose_output
       changed_when: true
@@ -359,7 +398,7 @@
     - name: Caddy auf das neu gebaute Image heben
       ansible.builtin.command:
         cmd: >-
-          docker compose -f docker-compose.staging.yml
+          docker compose {{ compose_files }}
           up -d --force-recreate --no-deps caddy
         chdir: "{{ project_root }}"
       when: caddy_image_state.stdout == "stale"
@@ -395,7 +434,7 @@
         set -eu
         cd {{ project_root }}
         for _ in $(seq 1 60); do
-          if docker compose -f docker-compose.staging.yml exec -T backend \
+          if docker compose {{ compose_files }} exec -T backend \
                python -c "import socket; socket.create_connection(('keycloak', 8080), 2)" \
                >/dev/null 2>&1; then
             exit 0
@@ -413,7 +452,7 @@
     - name: Seed-Skript und Beschreibungen in den Backend-Container kopieren
       ansible.builtin.command:
         cmd: >-
-          docker compose -f docker-compose.staging.yml
+          docker compose {{ compose_files }}
           cp {{ item.src }} backend:{{ item.dest }}
         chdir: "{{ project_root }}"
       loop:
@@ -435,7 +474,7 @@
             echo "KEYCLOAK_ADMIN_USER / KEYCLOAK_ADMIN_PASSWORD fehlen in der .env" >&2
             exit 1
           fi
-          docker compose -f docker-compose.staging.yml exec -T \
+          docker compose {{ compose_files }} exec -T \
             -e KEYCLOAK_ADMIN_USER="$KEYCLOAK_ADMIN_USER" \
             -e KEYCLOAK_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
             -e REALM_EXPORT_PATH=/tmp/realm-export.json \
@@ -466,7 +505,7 @@
     # Schritt den Zustand deshalb selbst ab.
     - name: Status der Deployment anzeigen
       ansible.builtin.command:
-        cmd: docker compose -f docker-compose.staging.yml ps
+        cmd: docker compose {{ compose_files }} ps
         chdir: "{{ project_root }}"
       register: compose_ps
       changed_when: false
