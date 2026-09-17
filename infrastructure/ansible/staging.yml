@@ -188,6 +188,19 @@
       changed_when: false
       when: docker_data_device | length > 0
 
+    # Docker muss stehen, bevor das Volume über /var/lib/docker gemountet
+    # wird — sonst hält der laufende Daemon offene Dateihandles auf die
+    # Root-Disk-Kopie darunter, ein `mounted`-State-Wechsel allein bringt ihn
+    # nicht dazu, sie loszulassen oder das neue, leere Volume überhaupt zu
+    # bemerken. Auf einer frischen VM ist der Service noch gar nicht
+    # angelegt, daher failed_when statt einem harten Fehler bei "not found".
+    - name: Docker vor dem Volume-Mount stoppen (falls schon aktiv)
+      ansible.builtin.systemd:
+        name: docker
+        state: stopped
+      when: docker_data_device | length > 0
+      failed_when: false
+
     - name: Datenvolume unter /var/lib/docker einhängen
       ansible.posix.mount:
         path: /var/lib/docker
@@ -195,6 +208,22 @@
         fstype: ext4
         opts: defaults,noatime
         state: mounted
+      when: docker_data_device | length > 0
+      register: docker_data_mount
+
+    # Immer starten, nicht nur bei "mount is changed": der vorausgehende
+    # "stoppen"-Task lässt Docker so oder so tot zurück, wenn er lief, und
+    # ein Lauf, der das Volume schon in einem früheren Playbook-Durchlauf
+    # gemountet, den Daemon aber nie neu gestartet hatte, meldet den Mount
+    # selbst als "ok" (unverändert) und würde diesen Schritt sonst
+    # überspringen — genau der Zustand, der den ersten Moodle-Deploy mit
+    # "no space left on device" hat scheitern lassen, obwohl das Volume
+    # längst angehängt war.
+    - name: Docker nach dem Volume-Mount (wieder) starten
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        daemon_reload: true
       when: docker_data_device | length > 0
 
     - name: Verzeichnis für App erstellen
