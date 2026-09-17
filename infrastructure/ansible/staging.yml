@@ -222,6 +222,18 @@
     # Volume-Mount läuft, also auch bei einem docker_data_device="" (Root-
     # Disk-only) niemals Root-Disk-Speicher wegwirft, den man tatsächlich
     # noch braucht.
+    # Idempotenz: ein früherer Lauf kann /var/lib/containerd bereits
+    # bind-gemountet haben (z. B. teilweise durchgelaufen, dann an einem
+    # späteren Task gescheitert) — ein "absent" gegen ein gemountetes
+    # Verzeichnis scheitert mit "Device or resource busy", weil der Kernel
+    # kein rmdir/rmtree über eine aktive Mountpoint-Grenze hinweg erlaubt.
+    - name: /var/lib/containerd aushängen, falls von einem früheren Lauf bereits gemountet
+      ansible.posix.mount:
+        path: /var/lib/containerd
+        state: unmounted
+      when: docker_data_device | length > 0
+      failed_when: false
+
     - name: Alten containerd-Inhalt unter der neuen Root-Disk-Ansicht löschen
       ansible.builtin.file:
         path: /var/lib/containerd
