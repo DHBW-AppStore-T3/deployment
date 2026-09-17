@@ -13,9 +13,10 @@
     # Hand läuft: ein Deploy fasst keine Anwendungsdaten an, solange es nicht
     # ausdrücklich verlangt wird.
     seed_data: false
-    # Muss zu docker_data_volume_size_gb in envs/staging passen: "" solange dort
-    # 0 steht, /dev/vdb sobald wieder ein Volume angelegt wird.
-    docker_data_device: ""
+    # Muss zu docker_data_volume_size_gb in envs/staging passen — beide jetzt
+    # aktiv (50GB / /dev/vdb, wie beim Forgejo-Host), nachdem die Root-Disk
+    # (10GB) mit Moodle dazu tatsächlich ausging ("no space left on device").
+    docker_data_device: "/dev/vdb"
     # Vom Workflow über -e gesetzt (moodle_enabled=true), Default false: ein
     # Deploy bringt Moodle nicht ungefragt mit. compose_files wird an jeder
     # `docker compose -f ...`-Stelle unten verwendet statt die Datei jedes Mal

@@ -55,10 +55,15 @@ module "vm" {
   # /var/lib/docker hold both databases, and a volume also survives a
   # replacement of the instance.
   #
-  # Held at 0 because the first attempt hung in "creating" and made every apply
-  # wait out its ten-minute timeout. Raise it once Cinder hands out volumes
-  # again.
-  docker_data_volume_size_gb = 0
+  # Was 0 because an earlier attempt hung in "creating" and made every apply
+  # wait out its ten-minute timeout. Verified directly against this project's
+  # Cinder before re-enabling: `openstack volume create --size 1` now reaches
+  # "available" within 15s, not stuck — the outage that caused the original
+  # attempt to hang is over. Confirmed necessary, not just theoretical: the
+  # first real Moodle-enabled deploy ran the 10GB root disk out of space
+  # entirely (`no space left on device` mid-pull, moodlehq/moodle-php-apache
+  # alone is a large image on top of the existing stack).
+  docker_data_volume_size_gb = 50
 
   metadata = {
     env  = "staging"
