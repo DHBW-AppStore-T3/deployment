@@ -245,6 +245,17 @@
     # es über MOODLE_REPO_PATH als Document Root. Auf Prod (docker-
     # compose.moodle.yml) wurde das einmalig von Hand geklont; hier
     # automatisiert, damit `moodle_enabled=true` allein reicht.
+    # Ansible läuft mit become: yes (root), git prüft den Owner des .git-Verzeichnisses
+    # gegen den ausführenden User (CVE-2022-24765-Härtung) — ein Verzeichnis, das aus
+    # irgendeinem Grund nicht root gehört (z. B. ein vorheriger manueller Debug-Zugriff
+    # als anderer User), lässt jeden weiteren git-Aufruf mit "dubious ownership"
+    # scheitern, bevor er den eigentlichen Klon/Pull überhaupt versucht.
+    - name: Git safe.directory für den Moodle-Klon setzen
+      when: moodle_enabled | bool
+      ansible.builtin.command:
+        cmd: git config --global --add safe.directory {{ moodle_repo_path }}
+      changed_when: false
+
     - name: moodle_appstore für die Moodle-Instanz klonen
       when: moodle_enabled | bool
       ansible.builtin.git:
