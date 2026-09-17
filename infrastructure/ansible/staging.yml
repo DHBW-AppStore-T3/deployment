@@ -295,6 +295,21 @@
       loop: [containerd, docker]
       when: docker_data_device | length > 0
 
+    # BuildKits eigener Cache liegt separat von den Image-Layern und
+    # überlebt den obigen containerd-Reset als Referenzen auf Content-Blobs,
+    # die dort nicht mehr existieren — der nächste appstore-caddy-Build
+    # scheiterte mit "failed to get reader from content store: ... not
+    # found", weil BuildKit einen zwischengespeicherten Layer wiederverwenden
+    # wollte, den es unter der neuen, leeren containerd-Instanz nicht mehr
+    # gibt. `docker builder prune` statt containerd selbst anzufassen, weil
+    # das nur BuildKits eigenen State betrifft, nicht die bereits gepullten
+    # Runtime-Images (die kommen aus demselben Content-Store, sind aber zu
+    # diesem Zeitpunkt schon vollständig heruntergeladen und intakt).
+    - name: BuildKit-Cache leeren (überlebt den containerd-Reset als stale Referenzen)
+      ansible.builtin.command: docker builder prune -af
+      when: docker_data_device | length > 0
+      changed_when: true
+
     - name: Verzeichnis für App erstellen
       ansible.builtin.file:
         path: "{{ project_root }}"
