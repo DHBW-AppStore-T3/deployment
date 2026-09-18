@@ -2,7 +2,7 @@ name: CD - Staging Deployment
 
 on:
   push:
-    branches: [ main ]
+    branches: [ dev ]
   workflow_dispatch:
     inputs:
       moodle_enabled:
@@ -142,3 +142,14 @@ jobs:
           rm -f ~/.ssh/openstack-key ~/.ssh/openstack-key.pub
           rm -f infrastructure/ansible/inventory.ini
           echo "Sensitive deployment artifacts removed."
+
+      - name: Verify Staging System Health & Hermes Discord Notification
+        if: always()
+        run: |
+          python3 infrastructure/scripts/notify_staging_health.py
+        env:
+          VM_IP: ${{ env.VM_IP }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF: ${{ github.ref_name }}
+          JOB_STATUS: ${{ job.status }}
