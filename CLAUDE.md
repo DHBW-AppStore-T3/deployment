@@ -9,3 +9,8 @@ Details zu diesem Repo:
 - Architektur-Entscheidungen: `claude_docs/decisions/`
 - Rollback-Strategien: `claude_docs/rollback/`
 - Ops-Skills & Guardrails: `.claude/skills/` und `.claude/hooks/appstore-prod-guardrail.py`
+
+## Repo-Lokale Skills & Befehle
+- Lokale Skills: `/deploy-status`, `/diagnose-production`, `/restart-service`
+- Staging-Healthcheck & Hermes Discord Notification: `python infrastructure/scripts/notify_staging_health.py`
+
