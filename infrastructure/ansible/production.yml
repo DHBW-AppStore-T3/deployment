@@ -1,0 +1,443 @@
+---
+- name: 3. CONFIGURE Docker and Deploy Application on Production Environment
+  hosts: docker_vm
+  become: yes
+  gather_facts: yes
+
+  vars:
+    docker_users: ["ubuntu"]
+    docker_install_compose: true
+    project_root: "/home/ubuntu/app"
+    local_compose_path: "{{ playbook_dir }}/../../"
+    # Vom Workflow über -e gesetzt. Der Default gilt, wenn das Playbook von
+    # Hand läuft: ein Deploy fasst keine Anwendungsdaten an, solange es nicht
+    # ausdrücklich verlangt wird. Auf Prod noch wichtiger als auf Staging -
+    # das Seed-Skript legt Nutzer mit dem Passwort "1234" an.
+    seed_data: false
+    docker_data_device: "/dev/vdb"
+    compose_files: "-f docker-compose.prod.yml"
+
+  pre_tasks:
+    # Das zweite Interface hängt Terraform an die laufende VM, konfiguriert ist
+    # es damit nicht - cloud-init läuft nur beim ersten Boot. Aktuell ungenutzt
+    # (envs/production hat secondary_network_name = null, siehe main.tf), aber
+    # identisch zu staging.yml gehalten, falls das Projekt später wieder eine
+    # DHBWv4-Zuteilung bekommt und secondary_ipv4/gateway/mac tatsächlich
+    # gesetzt werden. Siehe staging.yml für die volle Begründung der
+    # Connection-Mark-Regeln (Docker-DNAT-Antworten verlassen sonst über das
+    # falsche Interface und werden von Neutrons Port-Security verworfen).
+    - name: Netplan für das sekundäre IPv4-Interface schreiben
+      when: secondary_mac | default('') | length > 0
+      ansible.builtin.copy:
+        dest: /etc/netplan/60-secondary-ipv4.yaml
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          network:
+            version: 2
+            ethernets:
+              secondary:
+                match:
+                  macaddress: "{{ secondary_mac }}"
+                dhcp4: true
+                dhcp4-overrides:
+                  use-routes: false
+                routes:
+                  - to: default
+                    via: "{{ secondary_gateway }}"
+                    table: 100
+                routing-policy:
+                  - from: "{{ secondary_ipv4 }}"
+                    table: 100
+      register: netplan_secondary
+      tags: [network]
+
+    - name: Netplan anwenden
+      when: netplan_secondary is changed
+      ansible.builtin.command: netplan apply
+      changed_when: true
+      tags: [network]
+
+    - name: Connmark-Skript installieren
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/secondary-ipv4-marks.sh
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          #!/bin/sh
+          set -eu
+
+          iface=$(ip -o -4 addr show \
+            | awk '$4 ~ /^{{ secondary_ipv4 }}\// {print $2; exit}')
+          [ -n "$iface" ] || exit 0
+
+          add() {
+            iptables -t mangle -C "$@" 2>/dev/null || iptables -t mangle -A "$@"
+          }
+
+          iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark \
+            2>/dev/null || true
+
+          add PREROUTING -i "$iface" -m conntrack --ctstate NEW \
+            -j CONNMARK --set-mark 100
+
+          add PREROUTING ! -i "$iface" -j CONNMARK --restore-mark
+          add OUTPUT -j CONNMARK --restore-mark
+
+          ip rule show | grep -q 'fwmark 0x64 lookup 100' \
+            || ip rule add fwmark 100 table 100 priority 32764
+      register: marks_script
+      tags: [network]
+
+    - name: Unit installieren, die die Marken beim Booten neu setzt
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/secondary-ipv4-marks.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Connection marks for the secondary IPv4 interface
+          After=network-online.target docker.service
+          Wants=network-online.target
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart=/usr/local/sbin/secondary-ipv4-marks.sh
+
+          [Install]
+          WantedBy=multi-user.target
+      register: marks_unit
+      tags: [network]
+
+    - name: Aktivieren und ausführen
+      when: marks_script is changed or marks_unit is changed
+      ansible.builtin.systemd:
+        name: secondary-ipv4-marks.service
+        enabled: true
+        state: restarted
+        daemon_reload: true
+      tags: [network]
+
+    - name: Datenvolume vorhanden?
+      ansible.builtin.stat:
+        path: "{{ docker_data_device }}"
+      register: data_volume
+
+    - name: Abbrechen, wenn das erwartete Volume fehlt
+      ansible.builtin.assert:
+        that: data_volume.stat.exists
+        fail_msg: >-
+          {{ docker_data_device }} existiert nicht - passt docker_data_device
+          zu docker_data_volume_size_gb in envs/production/main.tf?
+      when: docker_data_device | length > 0
+
+    - name: Dateisystem auf dem Datenvolume anlegen
+      when: docker_data_device | length > 0
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ docker_data_device }}"
+
+    - name: UUID des Datenvolumes lesen
+      when: docker_data_device | length > 0
+      ansible.builtin.command: blkid -s UUID -o value {{ docker_data_device }}
+      register: data_uuid
+      changed_when: false
+
+    # Auf einer frischen VM existieren die Services noch gar nicht, daher
+    # failed_when statt einem harten Fehler bei "not found" - siehe
+    # staging.yml für die volle Begründung (gleicher Bug, gleicher Fix).
+    - name: Docker und containerd vor dem Volume-Mount stoppen (falls schon aktiv)
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop: [docker, containerd]
+      when: docker_data_device | length > 0
+      failed_when: false
+
+    - name: Datenvolume unter /var/lib/docker einhängen
+      ansible.posix.mount:
+        path: /var/lib/docker
+        src: "UUID={{ data_uuid.stdout | trim }}"
+        fstype: ext4
+        state: mounted
+      when: docker_data_device | length > 0
+
+    - name: /var/lib/containerd aushängen, falls von einem früheren Lauf bereits gemountet
+      ansible.posix.mount:
+        path: /var/lib/containerd
+        state: absent
+      when: docker_data_device | length > 0
+
+    - name: Alten containerd-Inhalt unter der neuen Root-Disk-Ansicht löschen
+      ansible.builtin.file:
+        path: /var/lib/containerd
+        state: absent
+      when: docker_data_device | length > 0
+
+    - name: /var/lib/containerd neu anlegen (jetzt auf der Root-Disk, gleich bind-gemountet)
+      ansible.builtin.file:
+        path: /var/lib/containerd
+        state: directory
+        mode: '0711'
+      when: docker_data_device | length > 0
+
+    - name: Verzeichnis für containerd-Daten auf dem Datenvolume anlegen
+      ansible.builtin.file:
+        path: /var/lib/docker/containerd-data
+        state: directory
+        mode: '0711'
+      when: docker_data_device | length > 0
+
+    - name: /var/lib/containerd auf das Datenvolume bind-mounten
+      ansible.posix.mount:
+        path: /var/lib/containerd
+        src: /var/lib/docker/containerd-data
+        fstype: none
+        opts: bind
+        state: mounted
+      when: docker_data_device | length > 0
+
+    - name: containerd und Docker nach den Volume-Mounts (wieder) starten
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+        daemon_reload: true
+      loop: [containerd, docker]
+      when: docker_data_device | length > 0
+      failed_when: false
+
+    - name: Prüfen, ob die docker-CLI schon existiert
+      ansible.builtin.stat:
+        path: /usr/bin/docker
+      register: docker_cli
+
+    - name: BuildKit-Cache leeren (überlebt den containerd-Reset als stale Referenzen)
+      ansible.builtin.command: docker builder prune -af
+      when: docker_data_device | length > 0 and docker_cli.stat.exists
+      changed_when: true
+
+    - name: Verwaiste Container nach einem containerd-Reset entfernen
+      ansible.builtin.shell: |
+        set -eu
+        ids=$(docker ps -aq)
+        if [ -n "$ids" ]; then
+          docker rm -f $ids
+        fi
+      when: docker_data_device | length > 0 and docker_cli.stat.exists
+      changed_when: true
+
+    - name: Verzeichnis für App erstellen
+      ansible.builtin.file:
+        path: "{{ project_root }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+  roles:
+    - role: geerlingguy.docker
+      tags: [docker_install]
+
+  tasks:
+    - name: Docker-Compose Datei kopieren
+      ansible.posix.synchronize:
+        src: "{{ local_compose_path }}"
+        dest: "{{ project_root }}"
+        recursive: yes
+        delete: yes
+        rsync_opts:
+          - "--exclude=.ssh"
+          - "--exclude=.git"
+          - "--exclude=.history"
+          - "--exclude=docker-compose.override.yml"
+          - "--exclude=node_modules"
+          - "--exclude=__pycache__"
+          - "--exclude=.venv"
+          - "--exclude=.terraform"
+          - "--exclude=frontend/dist"
+          - "--exclude=frontend/test-results"
+          - "--exclude=frontend/blob-report"
+          - "--exclude=.DS_Store"
+          - "--exclude=*.pyc"
+          - "--exclude=.env"
+
+    - name: .env auf VM schreiben
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'PRODUCTION_ENV_FILE') }}"
+        dest: "{{ project_root }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: APP_BASE_URL aus .env lesen
+      ansible.builtin.shell:
+        cmd: |
+          grep -E '^APP_BASE_URL=' "{{ project_root }}/.env" \
+            | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'
+        executable: /bin/bash
+      register: app_base_url_raw
+      changed_when: false
+
+    - name: Keycloak realm-export.json aus Template rendern
+      ansible.builtin.template:
+        src: "{{ local_compose_path }}/keycloak/realm-export.json.j2"
+        dest: "{{ project_root }}/keycloak/realm-export.json"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+      vars:
+        app_base_url: "{{ app_base_url_raw.stdout | trim }}"
+        app_api_url: "{{ app_base_url_raw.stdout | trim }}/api"
+
+    - name: Log in to GHCR using credentials from the deployed .env
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          env_file="{{ project_root }}/.env"
+          token=$(grep -E '^GIT_ACCESS_TOKEN=' "$env_file" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\042\047\r' || true)
+          user=$(grep -E '^GIT_USER=' "$env_file" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\042\047\r' || true)
+          if [ -z "$token" ]; then
+            echo "no GIT_ACCESS_TOKEN in $env_file - skipping GHCR login"
+            exit 0
+          fi
+          echo "$token" | docker login ghcr.io --username "${user:-x}" --password-stdin
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Pull alle Images
+      ansible.builtin.shell:
+        # --ignore-buildable überspringt appstore-caddy:rfc2136, das nur
+        # lokal gebaut wird - siehe staging.yml für die volle Begründung.
+        cmd: docker compose {{ compose_files }} pull --ignore-buildable
+        chdir: "{{ project_root }}"
+      changed_when: true
+      async: 600
+      poll: 30
+
+    - name: GHCR credentials aus root-Store entfernen
+      ansible.builtin.file:
+        path: /root/.docker/config.json
+        state: absent
+
+    - name: Compose-Konfiguration validieren
+      ansible.builtin.command:
+        cmd: docker compose {{ compose_files }} config -q
+        chdir: "{{ project_root }}"
+      changed_when: false
+
+    - name: Start the application with Docker Compose
+      ansible.builtin.command:
+        cmd: docker compose {{ compose_files }} up -d --build
+        chdir: "{{ project_root }}"
+      register: compose_output
+      changed_when: true
+
+    # Gleiche Begründung wie staging.yml: up -d --build ersetzt Caddy nicht
+    # zuverlässig, wenn sich nur die (untaggte) Image-ID geändert hat.
+    - name: Prüfen, ob Caddy auf dem aktuellen Image läuft
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          tagged=$(docker image inspect appstore-caddy:rfc2136 \
+                   --format '{% raw %}{{.Id}}{% endraw %}')
+          running=$(docker inspect caddy-prod \
+                    --format '{% raw %}{{.Image}}{% endraw %}' 2>/dev/null || echo none)
+          [ "$tagged" = "$running" ] && echo current || echo stale
+        executable: /bin/bash
+        chdir: "{{ project_root }}"
+      register: caddy_image_state
+      changed_when: false
+
+    - name: Caddy auf das neu gebaute Image heben
+      ansible.builtin.command:
+        cmd: >-
+          docker compose {{ compose_files }}
+          up -d --force-recreate --no-deps caddy
+        chdir: "{{ project_root }}"
+      when: caddy_image_state.stdout == "stale"
+
+    - name: Wait for backend container to be running
+      ansible.builtin.command: docker inspect -f '{% raw %}{{.State.Running}}{% endraw %}' backend-prod
+      register: backend_running
+      until: backend_running.stdout == "true"
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    - name: Apply database migrations
+      ansible.builtin.command: docker exec backend-prod python -m alembic upgrade head
+      register: migration_result
+      changed_when: "'Running upgrade' in migration_result.stdout"
+
+    # Nur beim allerersten Deploy auf true gesetzt (workflow_dispatch-Input,
+    # niemals per Default über einen Push auf main) - legt Keycloak-Realm-
+    # Nutzer mit Passwort "1234" an, was auf einer echten Produktivinstanz
+    # sonst niemand ungefragt tun sollte.
+    - name: Auf Keycloak warten
+      when: seed_data | bool
+      ansible.builtin.shell: |
+        set -eu
+        cd {{ project_root }}
+        for _ in $(seq 1 60); do
+          if docker compose {{ compose_files }} exec -T backend \
+               python -c "import socket; socket.create_connection(('keycloak', 8080), 2)" \
+               >/dev/null 2>&1; then
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "Keycloak nimmt nach fuenf Minuten keine Verbindungen an" >&2
+        exit 1
+      changed_when: false
+
+    - name: Seed-Skript und Beschreibungen in den Backend-Container kopieren
+      ansible.builtin.command:
+        cmd: >-
+          docker compose {{ compose_files }}
+          cp {{ item.src }} backend:{{ item.dest }}
+        chdir: "{{ project_root }}"
+      loop:
+        - { src: "./seed/seed_data.py", dest: "/tmp/seed_data.py" }
+        - { src: "./seed/app_descriptions", dest: "/tmp/app_descriptions" }
+        - { src: "./keycloak/realm-export.json", dest: "/tmp/realm-export.json" }
+      when: seed_data | bool
+
+    - name: Seed ausführen
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          set -a; . ./.env; set +a
+          if [ -z "${KEYCLOAK_ADMIN_USER:-}" ] || [ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ]; then
+            echo "KEYCLOAK_ADMIN_USER / KEYCLOAK_ADMIN_PASSWORD fehlen in der .env" >&2
+            exit 1
+          fi
+          docker compose {{ compose_files }} exec -T \
+            -e KEYCLOAK_ADMIN_USER="$KEYCLOAK_ADMIN_USER" \
+            -e KEYCLOAK_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
+            -e REALM_EXPORT_PATH=/tmp/realm-export.json \
+            backend python /tmp/seed_data.py
+        executable: /bin/bash
+        chdir: "{{ project_root }}"
+      when: seed_data | bool
+      changed_when: true
+
+    - name: Caddy-Konfiguration neu laden
+      ansible.builtin.command:
+        cmd: docker exec caddy-prod caddy reload --config /etc/caddy/Caddyfile
+      register: caddy_reload
+      changed_when: caddy_reload.rc == 0
+
+    - name: Status der Deployment anzeigen
+      ansible.builtin.command:
+        cmd: docker compose {{ compose_files }} ps
+        chdir: "{{ project_root }}"
+      register: compose_status
+      changed_when: false
+
+    - name: Deployment-Status ausgeben
+      ansible.builtin.debug:
+        msg: "{{ compose_status.stdout_lines }}"

@@ -390,7 +390,7 @@ services:
     build:
       context: ./caddy
     image: appstore-caddy:rfc2136
-    container_name: caddy-prod
+    container_name: caddy-staging
     environment:
       APP_HOSTNAME: ${APP_HOSTNAME:?APP_HOSTNAME is required}
       ACME_CA_URL: ${ACME_CA_URL:-https://certificates.dhbw.cloud/directory}

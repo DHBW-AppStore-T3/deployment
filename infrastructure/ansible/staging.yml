@@ -527,7 +527,7 @@
     # Zweitens baut es in einem eigenen Schritt vor dem Start. Buildx vergibt
     # dabei jedes Mal eine neue Image-ID (die Provenance-Manifeste tragen
     # Zeitstempel), das Tag wandert mit, und die alte ID wird entsorgt — obwohl
-    # der laufende caddy-prod noch auf sie zeigt. Der anschließende
+    # der laufende caddy-staging noch auf sie zeigt. Der anschließende
     # Zustandsabruf findet dieses Image nicht mehr und bricht ab, bevor `up`
     # den Container ersetzen kann. Der Container bleibt damit dauerhaft auf
     # einer toten ID stehen und jeder weitere Lauf scheitert genauso.
@@ -553,7 +553,7 @@
 
     - name: DEBUG - Caddy-Logs (temporär)
       when: moodle_enabled | bool
-      ansible.builtin.command: docker logs caddy-prod
+      ansible.builtin.command: docker logs caddy-staging
       register: debug_caddy_logs
       changed_when: false
 
@@ -577,7 +577,7 @@
           set -euo pipefail
           tagged=$(docker image inspect appstore-caddy:rfc2136 \
                    --format '{% raw %}{{.Id}}{% endraw %}')
-          running=$(docker inspect caddy-prod \
+          running=$(docker inspect caddy-staging \
                     --format '{% raw %}{{.Image}}{% endraw %}' 2>/dev/null || echo none)
           [ "$tagged" = "$running" ] && echo current || echo stale
         executable: /bin/bash
@@ -686,7 +686,7 @@
     # und das soll auffallen.
     - name: Caddy-Konfiguration neu laden
       ansible.builtin.command:
-        cmd: docker exec caddy-prod caddy reload --config /etc/caddy/Caddyfile
+        cmd: docker exec caddy-staging caddy reload --config /etc/caddy/Caddyfile
       register: caddy_reload
       changed_when: caddy_reload.rc == 0
 
