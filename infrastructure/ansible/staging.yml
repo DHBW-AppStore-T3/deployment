@@ -395,7 +395,13 @@
         dest: "{{ project_root }}/.env"
         owner: ubuntu
         group: ubuntu
-        mode: '0600'
+        # 0644, nicht 0600: docker-compose.staging.yml mountet diese Datei
+        # jetzt genau wie prod direkt in den Backend-Container
+        # (./.env:/app/.env, für CORS_ORIGINS - siehe dort), dessen appuser
+        # mit UID 999 läuft. Gleicher Fix wie production.yml, aus demselben
+        # Grund: eine 0600-Datei, die UID 1000 (ubuntu) gehört, ist für
+        # UID 999 unlesbar.
+        mode: '0644'
 
     # moodle_appstore ist ein eigenes Repo (Moodle-Core-Fork), kein Teil
     # dieses rsync-Schritts — docker-compose.staging.moodle.yml mountet
