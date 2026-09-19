@@ -256,7 +256,10 @@ services:
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:?GIT_ACCESS_TOKEN is required}
 
       # CORS
-      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
+      # Not set here: pydantic-settings 2.14.2 with the V1-style Config class
+      # cannot parse list[str] from a plain environment variable string - see
+      # docker-compose.prod.yml's ./.env:/app/.env mount, backported here for
+      # the same reason (fix originally landed only in prod, 6647a79).
 
       # Email (Gmail SMTP) — used by the post-deploy notify hook in
       # celery_event_listener.py. SMTP_ENABLED is the explicit
@@ -296,6 +299,7 @@ services:
         condition: service_started
     volumes:
       - backend_git_repos:/tmp/repos
+      - ./.env:/app/.env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
