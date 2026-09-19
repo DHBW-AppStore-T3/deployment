@@ -294,6 +294,13 @@
         daemon_reload: true
       loop: [containerd, docker]
       when: docker_data_device | length > 0
+      # Gleiche Begründung wie beim Stop-Task oben: auf einer frischen VM
+      # existieren die Units noch nicht (geerlingguy.docker läuft erst danach
+      # in `roles:`) - "Could not find the requested service" ist dort kein
+      # Fehler, sondern der Normalfall beim allerersten Deploy einer neuen
+      # Instanz. Der Rollen-Schritt gleich danach installiert und startet
+      # beide Services ohnehin.
+      failed_when: false
 
     # BuildKits eigener Cache liegt separat von den Image-Layern und
     # überlebt den obigen containerd-Reset als Referenzen auf Content-Blobs,

@@ -1,0 +1,74 @@
+# Self-hosted GitHub Actions runner + its Terraform state Postgres, for the
+# dedicated ci-dhbw-appstore VM.
+#
+# This is a standalone variant of docker-compose.runner.yml (which colocates
+# the runner on appstore-prod-01 and reuses that stack's postgres-tfstate).
+# With a dedicated runner VM, both pieces move here instead, so the runner no
+# longer shares a host with the production application stack.
+#
+# network_mode: host is required for the same reason as docker-compose.runner.yml:
+# the workflow's Ansible step SSHes to the staging/production VM over public
+# IPv6, and Docker's bridge network has no IPv6 route at all on this host.
+services:
+  runner:
+    image: myoung34/github-runner:ubuntu-noble
+    container_name: deployment-runner
+    environment:
+      RUNNER_SCOPE: repo
+      REPO_URL: https://github.com/DHBW-AppStore-T3/deployment
+      RUNNER_NAME: ci-dhbw-appstore-runner
+      RUNNER_WORKDIR: /tmp/runner/work
+      LABELS: self-hosted
+      # Short-lived registration token (expires ~1h after issue), not a
+      # long-lived PAT — generated once at bring-up time via
+      # `gh api -X POST repos/.../actions/runners/registration-token` and
+      # passed through the environment, never written to this file.
+      RUNNER_TOKEN: "${RUNNER_TOKEN:?RUNNER_TOKEN is required - generate with 'gh api -X POST repos/DHBW-AppStore-T3/deployment/actions/runners/registration-token --jq .token'}"
+      EPHEMERAL: "false"
+      PG_CONN_STR: postgres://${TFSTATE_RUNNER_DB_USER:?TFSTATE_RUNNER_DB_USER is required}:${TFSTATE_RUNNER_DB_PASSWORD:?TFSTATE_RUNNER_DB_PASSWORD is required}@127.0.0.1:5432/${TFSTATE_RUNNER_DB_NAME:?TFSTATE_RUNNER_DB_NAME is required}?sslmode=disable
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - runner_work:/tmp/runner/work
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tfstate-postgres:
+    image: postgres:16-alpine
+    container_name: tfstate-postgres-ci
+    environment:
+      POSTGRES_USER: ${TFSTATE_RUNNER_DB_USER:?TFSTATE_RUNNER_DB_USER is required}
+      POSTGRES_PASSWORD: ${TFSTATE_RUNNER_DB_PASSWORD:?TFSTATE_RUNNER_DB_PASSWORD is required}
+      POSTGRES_DB: ${TFSTATE_RUNNER_DB_NAME:?TFSTATE_RUNNER_DB_NAME is required}
+    volumes:
+      - tfstate_postgres_ci_data:/var/lib/postgresql/data
+    # 127.0.0.1 only: the runner container reaches it over loopback because
+    # network_mode: host means it has no Docker DNS to resolve a service name.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TFSTATE_RUNNER_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+volumes:
+  runner_work:
+  tfstate_postgres_ci_data:
