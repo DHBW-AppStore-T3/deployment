@@ -302,6 +302,19 @@
       # beide Services ohnehin.
       failed_when: false
 
+    # Auf einer frischen VM ist an dieser Stelle (noch vor `roles:`) weder
+    # ein containerd-Reset noch ein Docker-Daemon je passiert - die beiden
+    # folgenden Aufräum-Tasks setzen aber voraus, dass die `docker`-CLI
+    # bereits existiert (sie greifen genau den Zwischenzustand eines
+    # REDEPLOYS auf einer schon einmal provisionierten VM ab). Ohne diesen
+    # Check bricht der allererste Deploy einer neuen Instanz mit "No such
+    # file or directory: 'docker'" ab, obwohl es hier schlicht nichts zum
+    # Aufräumen gibt.
+    - name: Prüfen, ob die docker-CLI schon existiert
+      ansible.builtin.stat:
+        path: /usr/bin/docker
+      register: docker_cli
+
     # BuildKits eigener Cache liegt separat von den Image-Layern und
     # überlebt den obigen containerd-Reset als Referenzen auf Content-Blobs,
     # die dort nicht mehr existieren — der nächste appstore-caddy-Build
@@ -314,7 +327,7 @@
     # diesem Zeitpunkt schon vollständig heruntergeladen und intakt).
     - name: BuildKit-Cache leeren (überlebt den containerd-Reset als stale Referenzen)
       ansible.builtin.command: docker builder prune -af
-      when: docker_data_device | length > 0
+      when: docker_data_device | length > 0 and docker_cli.stat.exists
       changed_when: true
 
     # Dockers eigene Container-Metadaten unter /var/lib/docker/containers/
@@ -338,7 +351,7 @@
         if [ -n "$ids" ]; then
           docker rm -f $ids
         fi
-      when: docker_data_device | length > 0
+      when: docker_data_device | length > 0 and docker_cli.stat.exists
       changed_when: true
 
     - name: Verzeichnis für App erstellen
