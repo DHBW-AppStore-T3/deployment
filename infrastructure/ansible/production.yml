@@ -281,7 +281,14 @@
         dest: "{{ project_root }}/.env"
         owner: ubuntu
         group: ubuntu
-        mode: '0600'
+        # 0644, nicht 0600 wie in staging.yml: docker-compose.prod.yml
+        # bind-mountet diese Datei direkt in den Backend-Container
+        # (./.env:/app/.env), dessen appuser dort mit UID 999 läuft - ein
+        # 0600-File, das UID 1000 (ubuntu) gehört, ist für UID 999 unlesbar.
+        # staging.yml braucht diese Änderung nicht: docker-compose.staging.yml
+        # hat keinen solchen Bind-Mount, Backend bekommt seine Config dort
+        # ausschließlich über environment:-Variablen.
+        mode: '0644'
 
     - name: APP_BASE_URL aus .env lesen
       ansible.builtin.shell:
