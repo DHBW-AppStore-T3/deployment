@@ -449,6 +449,25 @@
       when: seed_data | bool
       changed_when: true
 
+    # Auf einer wirklich frischen Instanz (kein Zertifikat existiert noch)
+    # läuft der ACME-Erwerb für APP_HOSTNAME asynchron im Hintergrund weiter,
+    # nachdem "docker compose up" schon zurückgekehrt ist. Ein "caddy reload"
+    # direkt danach hat genau diesen Erwerb beim allerersten echten Prod-Deploy
+    # unterbrochen: die Order wurde bei der CA finalisiert ("finalizing
+    # order"), aber /data/caddy/certificates blieb leer, und Caddy antwortete
+    # auf jeden Request mit "tlsv1 alert internal error" statt einem echten
+    # Zertifikat - bis ein manueller `docker restart caddy-prod` den Erwerb
+    # ungestört neu laufen ließ. Auf einem Redeploy mit bereits vorhandenem
+    # Zertifikat ist die Schleife sofort durch (erster Check > 0).
+    - name: Warten, bis Caddy mindestens ein Zertifikat besitzt
+      ansible.builtin.shell:
+        cmd: docker exec caddy-prod sh -c 'ls /data/caddy/certificates/*/*/*.crt 2>/dev/null | wc -l'
+      register: caddy_cert_count
+      until: caddy_cert_count.stdout | trim | int > 0
+      retries: 24
+      delay: 5
+      changed_when: false
+
     - name: Caddy-Konfiguration neu laden
       ansible.builtin.command:
         cmd: docker exec caddy-prod caddy reload --config /etc/caddy/Caddyfile

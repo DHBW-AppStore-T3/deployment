@@ -684,6 +684,25 @@
     # wird. failed_when bleibt deshalb bewusst nicht auf false: schlägt der
     # Reload fehl, läuft der Proxy mit einer veralteten Konfiguration weiter,
     # und das soll auffallen.
+    # Auf einer wirklich frischen Instanz (kein Zertifikat existiert noch)
+    # läuft der ACME-Erwerb für APP_HOSTNAME asynchron weiter, nachdem
+    # "docker compose up" schon zurückgekehrt ist. Ein "caddy reload" direkt
+    # danach unterbrach genau diesen Erwerb beim allerersten echten Prod-
+    # Deploy (production.yml, dieselbe Codebasis): Order bei der CA
+    # finalisiert, aber /data/caddy/certificates blieb leer, jeder Request
+    # bekam "tlsv1 alert internal error" statt eines echten Zertifikats - bis
+    # ein manueller Container-Restart den Erwerb ungestört neu laufen ließ.
+    # Auf einem Redeploy mit bereits vorhandenem Zertifikat ist die Schleife
+    # sofort durch.
+    - name: Warten, bis Caddy mindestens ein Zertifikat besitzt
+      ansible.builtin.shell:
+        cmd: docker exec caddy-staging sh -c 'ls /data/caddy/certificates/*/*/*.crt 2>/dev/null | wc -l'
+      register: caddy_cert_count
+      until: caddy_cert_count.stdout | trim | int > 0
+      retries: 24
+      delay: 5
+      changed_when: false
+
     - name: Caddy-Konfiguration neu laden
       ansible.builtin.command:
         cmd: docker exec caddy-staging caddy reload --config /etc/caddy/Caddyfile
