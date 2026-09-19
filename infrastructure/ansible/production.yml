@@ -328,23 +328,30 @@
       async: 600
       poll: 30
 
-    - name: GHCR credentials aus root-Store entfernen
-      ansible.builtin.file:
-        path: /root/.docker/config.json
-        state: absent
-
     - name: Compose-Konfiguration validieren
       ansible.builtin.command:
         cmd: docker compose {{ compose_files }} config -q
         chdir: "{{ project_root }}"
       changed_when: false
 
+    # Bewusst NACH "Start the application", nicht davor: backend/worker/
+    # frontend haben in docker-compose.prod.yml pull_policy: always (garantiert
+    # ein wirklich frisches :latest bei jedem Deploy statt sich auf den lokalen
+    # Cache aus dem Pull-Schritt oben zu verlassen) - "up --build" kontaktiert
+    # die Registry deshalb selbst noch einmal. Mit den Credentials schon
+    # entfernt scheiterte das mit "unauthorized" beim ersten echten Prod-Deploy,
+    # obwohl der Pull-Schritt direkt davor erfolgreich war.
     - name: Start the application with Docker Compose
       ansible.builtin.command:
         cmd: docker compose {{ compose_files }} up -d --build
         chdir: "{{ project_root }}"
       register: compose_output
       changed_when: true
+
+    - name: GHCR credentials aus root-Store entfernen
+      ansible.builtin.file:
+        path: /root/.docker/config.json
+        state: absent
 
     # Gleiche Begründung wie staging.yml: up -d --build ersetzt Caddy nicht
     # zuverlässig, wenn sich nur die (untaggte) Image-ID geändert hat.
