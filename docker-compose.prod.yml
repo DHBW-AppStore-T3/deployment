@@ -221,7 +221,7 @@ services:
   # Do not re-introduce a migrate init-container here — that pattern
   # hides migration failures inside the compose output.
   backend:
-    image: ghcr.io/six7-click-n-deploy/backend:latest
+    image: ghcr.io/dhbw-appstore-t3/backend:latest
     pull_policy: always
     container_name: backend-prod
     # The backend image's venv is built at /build/.venv and copied to
@@ -323,7 +323,7 @@ services:
   # Worker has NO access to the application DB — it only talks to
   # RabbitMQ/Redis (Celery) and postgres-tfstate (Terraform state).
   worker:
-    image: ghcr.io/six7-click-n-deploy/worker:latest
+    image: ghcr.io/dhbw-appstore-t3/worker:latest
     pull_policy: always
     container_name: worker-prod
     environment:
@@ -371,31 +371,34 @@ services:
         max-file: "3"
 
   # ----------------------------------------------------------------
-  # nginx (TLS reverse proxy)
-  # Terminates HTTPS on :443, redirects :80→:443, and proxies:
-  #   /       → frontend:8080
-  #   /api/   → backend:8000   (strips /api/ prefix)
-  #   /auth/  → keycloak:8080  (strips /auth/ prefix)
-  # The TLS certificate is provisioned by Ansible and lives at
-  # ./nginx/certs/ on the VM (bind-mounted so it survives redeploys).
+  # Caddy (TLS reverse proxy)
+  # Replaces nginx + the self-signed certificate from prod-setup.md's manual
+  # setup. Same image and Caddyfile as docker-compose.staging.yml — a real,
+  # browser-trusted certificate from DHBW's ACME endpoint via DNS-01 (RFC
+  # 2136), so there is no more self-signed warning and no manual
+  # `make prod-cert-self-signed` step. See caddy/Caddyfile for the routing
+  # rules (frontend / /api / Keycloak paths) and the DNS-01 rationale.
   # ----------------------------------------------------------------
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: nginx-prod
-    # ``config_hash`` is a content fingerprint of nginx.conf, computed
-    # by Ansible before ``docker compose up``. nginx.conf is bind-
-    # mounted, so a content change alone does not make Compose recreate
-    # the container — but a label change does. Whenever nginx.conf is
-    # edited the label changes, Compose sees a spec drift, and the
-    # nginx container is recreated automatically.
-    labels:
-      config_hash: "${NGINX_CONFIG_HASH:-empty}"
+  caddy:
+    build:
+      context: ./caddy
+    image: appstore-caddy:rfc2136
+    container_name: caddy-prod
+    environment:
+      APP_HOSTNAME: ${APP_HOSTNAME:?APP_HOSTNAME is required}
+      ACME_CA_URL: ${ACME_CA_URL:-https://certificates.dhbw.cloud/directory}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+      DNS_TSIG_KEY_NAME: ${DNS_TSIG_KEY_NAME:?DNS_TSIG_KEY_NAME is required}
+      DNS_TSIG_KEY_ALG: ${DNS_TSIG_KEY_ALG:-hmac-sha512}
+      DNS_TSIG_KEY: ${DNS_TSIG_KEY:?DNS_TSIG_KEY is required}
+      DNS_SERVER: ${DNS_SERVER:-ns.cloud-ns.dhbw-mannheim.de.:53}
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - frontend
       - backend
@@ -417,7 +420,7 @@ services:
   # Always-latest from GHCR. Same ``pull_policy: always`` rationale as
   # backend / worker above.
   frontend:
-    image: ghcr.io/six7-click-n-deploy/frontend:latest
+    image: ghcr.io/dhbw-appstore-t3/frontend:latest
     pull_policy: always
     container_name: frontend-prod
     environment:
@@ -470,6 +473,13 @@ volumes:
   backend_git_repos:
     driver: local
   worker_git_repos:
+    driver: local
+  # Caddy's ACME account key + issued certificates. Must persist across
+  # redeploys, same reasoning as docker-compose.staging.yml — losing this
+  # means re-issuing on every deploy and running into the CA's rate limits.
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local
 
 # ----------------------------------------------------------------

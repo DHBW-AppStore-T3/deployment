@@ -1,27 +1,31 @@
-name: CD - Staging Deployment
+name: CD - Production Deployment
 
+# Push to main only happens through a merged, reviewed PR (branch
+# protection on main requires that) - so a push here already carries the
+# human gate the team wants for production. workflow_dispatch exists for a
+# manual re-run (e.g. after fixing a secret) without needing an empty commit.
 on:
   push:
-    branches: [ dev ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
-      moodle_enabled:
-        description: "Also deploy the Moodle LTI prototype (docker-compose.staging.moodle.yml)"
+      seed_data:
+        description: "Seed Keycloak users/courses/apps (only for a genuinely empty DB - creates users with password '1234')"
         type: boolean
         default: false
 
 jobs:
   deploy:
-    name: Staging Deploy
+    name: Production Deploy
     runs-on: self-hosted
     permissions:
       contents: read
       security-events: write
     env:
-      OS_AUTH_URL: ${{ secrets.STAGING_OS_AUTH_URL }}
-      OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.STAGING_OS_APPLICATION_CREDENTIAL_ID }}
-      OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.STAGING_OS_APPLICATION_CREDENTIAL_SECRET }}
-      OS_REGION_NAME: ${{ secrets.STAGING_OS_REGION_NAME }}
+      OS_AUTH_URL: ${{ secrets.PROD_OS_AUTH_URL }}
+      OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_ID }}
+      OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_SECRET }}
+      OS_REGION_NAME: ${{ secrets.PROD_OS_REGION_NAME }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -39,15 +43,13 @@ jobs:
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
-      # Staging is intentionally non-blocking: surfaces HIGH/CRITICAL IaC
-      # findings without halting deploys.
+      # Non-blocking, same as staging: surfaces HIGH/CRITICAL IaC findings
+      # without halting a production deploy on a scanner false positive.
       - name: Terraform Security Scan (Trivy)
         continue-on-error: true
         run: |
           trivy config --severity HIGH,CRITICAL infrastructure/terraform
 
-      # SARIF emit so findings land in the Security tab even though the
-      # gate above is non-blocking — keeps signal visible across runs.
       - name: Terraform Security Scan (Trivy, SARIF)
         if: always()
         run: |
@@ -58,7 +60,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-iac.sarif
-          category: trivy-iac-staging
+          category: trivy-iac-production
 
       - name: Set up SSH Key
         env:
@@ -66,44 +68,24 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          # printf preserves the multi-line PEM newlines; quoting the env var
-          # keeps the key out of the rendered script text.
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
           chmod 600 ~/.ssh/openstack-key
-          # Derive the matching public key and hand it to Terraform so the
-          # OpenStack keypair always matches this private key.
-          # -P '' forces an empty passphrase: passphrase-protected keys fail
-          # fast with a clear error instead of hanging on /dev/tty in CI.
           ssh-keygen -y -P '' -f ~/.ssh/openstack-key > ~/.ssh/openstack-key.pub
           echo "TF_VAR_ssh_public_key=$(cat ~/.ssh/openstack-key.pub)" >> "$GITHUB_ENV"
 
       - name: Terraform Init, Validate, Plan & Apply
-        working-directory: infrastructure/terraform/envs/staging
+        working-directory: infrastructure/terraform/envs/production
         run: |
           terraform init
           terraform validate
           terraform plan -out=tfplan
           terraform apply tfplan
           echo "VM_IP=$(terraform output -raw vm_ip)" >> "$GITHUB_ENV"
-          echo "VM_IPV4=$(terraform output -raw vm_ipv4)" >> "$GITHUB_ENV"
-          echo "VM_IPV4_GATEWAY=$(terraform output -raw vm_ipv4_gateway)" >> "$GITHUB_ENV"
-          echo "VM_IPV4_MAC=$(terraform output -raw vm_ipv4_mac)" >> "$GITHUB_ENV"
 
       - name: Install Ansible and Dependencies
         run: |
           sudo apt-get install -y rsync python3-pip
-          # --break-system-packages: Ubuntu 24.04's pip refuses to touch the
-          # system Python at all otherwise (PEP 668, "externally-managed-
-          # environment") — hit switching the runner from Ubuntu 20.04 to
-          # 24.04 for a newer Python (ansible>=8.0 needs >=3.10, focal's 3.8
-          # can't satisfy it at all). --user already isolates this from the
-          # OS's own apt-managed packages, so overriding the guard here is
-          # the same risk profile 20.04/22.04 had by not needing it.
           pip3 install --user --break-system-packages "ansible>=8.0"
-          # $GITHUB_PATH only takes effect in steps AFTER this one — the
-          # ansible-galaxy calls below run in this same step, so without
-          # also exporting PATH here directly they fail with "command not
-          # found" (exit 127) despite the binary now existing.
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
           ansible-galaxy role install -r infrastructure/ansible/requirements.yml -p infrastructure/ansible/roles_external
@@ -123,18 +105,12 @@ jobs:
         run: |
           ansible-playbook -i inventory.ini \
             --private-key ~/.ssh/openstack-key \
-            -e "secondary_ipv4=${VM_IPV4}" \
-            -e "secondary_gateway=${VM_IPV4_GATEWAY}" \
-            -e "secondary_mac=${VM_IPV4_MAC}" \
-            -e "moodle_enabled=${MOODLE_ENABLED:-false}" \
-            staging.yml
+            -e "seed_data=${{ inputs.seed_data || 'false' }}" \
+            production.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
           ANSIBLE_FORCE_COLOR: 'True'
-          STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
-          # inputs.moodle_enabled is only set on a workflow_dispatch run; a
-          # plain push has no inputs context at all, hence the fallback.
-          MOODLE_ENABLED: ${{ inputs.moodle_enabled || 'false' }}
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
 
       - name: Cleanup Sensitive Files
         if: always()
@@ -142,14 +118,3 @@ jobs:
           rm -f ~/.ssh/openstack-key ~/.ssh/openstack-key.pub
           rm -f infrastructure/ansible/inventory.ini
           echo "Sensitive deployment artifacts removed."
-
-      - name: Verify Staging System Health & Hermes Discord Notification
-        if: always()
-        run: |
-          python3 infrastructure/scripts/notify_staging_health.py
-        env:
-          VM_IP: ${{ env.VM_IP }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_REF: ${{ github.ref_name }}
-          JOB_STATUS: ${{ job.status }}

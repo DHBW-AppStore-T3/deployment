@@ -6,8 +6,12 @@
 module "vm" {
   source = "../../modules/openstack_vm"
 
-  name       = "ci-dhbw-appstore"
-  image      = "Ubuntu 22.04"
+  name = "ci-dhbw-appstore"
+  # "Ubuntu 22.04" no longer exists in this project's image catalog (same
+  # finding as envs/staging/main.tf: `openstack image list` against
+  # ma_wwi_24sea_appstore_g3 has Ubuntu 24.04 and Ubuntu Server 26.04 LTS, not
+  # 22.04 anymore). 24.04 matches staging and appstore-prod-01.
+  image      = "Ubuntu 24.04"
   public_key = var.ssh_public_key
 
   # Smaller than staging's gp1.large. This host runs Forgejo, one Postgres and
@@ -22,8 +26,17 @@ module "vm" {
   floating_ip_pool = var.floating_ip_pool
 
   # Second interface so the forge is reachable without IPv6.
-  secondary_network_name = var.secondary_network_name
-  secondary_subnet_name  = var.secondary_subnet_name
+  #
+  # Temporarily disabled (both null), same reasoning as envs/staging/main.tf:
+  # this OpenStack project (ma_wwi_24sea_appstore_g3) currently has no
+  # "DHBWv4" network at all — `openstack network list` shows only DHBWV6 and
+  # NAT, so the `data "openstack_networking_network_v2" "secondary"` lookup
+  # fails with "Your query returned no results" before Terraform gets to
+  # creating anything. Re-set these two to var.secondary_network_name /
+  # var.secondary_subnet_name once this project's IPv4 allocation comes back
+  # — don't rebuild the feature, the variables and module support are intact.
+  secondary_network_name = null
+  secondary_subnet_name  = null
 
   # Referencing the resource rather than a bare name gives Terraform the
   # dependency, so the group and its rules exist before the instance is built.

@@ -294,6 +294,26 @@
         daemon_reload: true
       loop: [containerd, docker]
       when: docker_data_device | length > 0
+      # Gleiche Begründung wie beim Stop-Task oben: auf einer frischen VM
+      # existieren die Units noch nicht (geerlingguy.docker läuft erst danach
+      # in `roles:`) - "Could not find the requested service" ist dort kein
+      # Fehler, sondern der Normalfall beim allerersten Deploy einer neuen
+      # Instanz. Der Rollen-Schritt gleich danach installiert und startet
+      # beide Services ohnehin.
+      failed_when: false
+
+    # Auf einer frischen VM ist an dieser Stelle (noch vor `roles:`) weder
+    # ein containerd-Reset noch ein Docker-Daemon je passiert - die beiden
+    # folgenden Aufräum-Tasks setzen aber voraus, dass die `docker`-CLI
+    # bereits existiert (sie greifen genau den Zwischenzustand eines
+    # REDEPLOYS auf einer schon einmal provisionierten VM ab). Ohne diesen
+    # Check bricht der allererste Deploy einer neuen Instanz mit "No such
+    # file or directory: 'docker'" ab, obwohl es hier schlicht nichts zum
+    # Aufräumen gibt.
+    - name: Prüfen, ob die docker-CLI schon existiert
+      ansible.builtin.stat:
+        path: /usr/bin/docker
+      register: docker_cli
 
     # BuildKits eigener Cache liegt separat von den Image-Layern und
     # überlebt den obigen containerd-Reset als Referenzen auf Content-Blobs,
@@ -307,7 +327,7 @@
     # diesem Zeitpunkt schon vollständig heruntergeladen und intakt).
     - name: BuildKit-Cache leeren (überlebt den containerd-Reset als stale Referenzen)
       ansible.builtin.command: docker builder prune -af
-      when: docker_data_device | length > 0
+      when: docker_data_device | length > 0 and docker_cli.stat.exists
       changed_when: true
 
     # Dockers eigene Container-Metadaten unter /var/lib/docker/containers/
@@ -331,7 +351,7 @@
         if [ -n "$ids" ]; then
           docker rm -f $ids
         fi
-      when: docker_data_device | length > 0
+      when: docker_data_device | length > 0 and docker_cli.stat.exists
       changed_when: true
 
     - name: Verzeichnis für App erstellen
@@ -507,7 +527,7 @@
     # Zweitens baut es in einem eigenen Schritt vor dem Start. Buildx vergibt
     # dabei jedes Mal eine neue Image-ID (die Provenance-Manifeste tragen
     # Zeitstempel), das Tag wandert mit, und die alte ID wird entsorgt — obwohl
-    # der laufende caddy-prod noch auf sie zeigt. Der anschließende
+    # der laufende caddy-staging noch auf sie zeigt. Der anschließende
     # Zustandsabruf findet dieses Image nicht mehr und bricht ab, bevor `up`
     # den Container ersetzen kann. Der Container bleibt damit dauerhaft auf
     # einer toten ID stehen und jeder weitere Lauf scheitert genauso.
@@ -533,7 +553,7 @@
 
     - name: DEBUG - Caddy-Logs (temporär)
       when: moodle_enabled | bool
-      ansible.builtin.command: docker logs caddy-prod
+      ansible.builtin.command: docker logs caddy-staging
       register: debug_caddy_logs
       changed_when: false
 
@@ -557,7 +577,7 @@
           set -euo pipefail
           tagged=$(docker image inspect appstore-caddy:rfc2136 \
                    --format '{% raw %}{{.Id}}{% endraw %}')
-          running=$(docker inspect caddy-prod \
+          running=$(docker inspect caddy-staging \
                     --format '{% raw %}{{.Image}}{% endraw %}' 2>/dev/null || echo none)
           [ "$tagged" = "$running" ] && echo current || echo stale
         executable: /bin/bash
@@ -666,7 +686,7 @@
     # und das soll auffallen.
     - name: Caddy-Konfiguration neu laden
       ansible.builtin.command:
-        cmd: docker exec caddy-prod caddy reload --config /etc/caddy/Caddyfile
+        cmd: docker exec caddy-staging caddy reload --config /etc/caddy/Caddyfile
       register: caddy_reload
       changed_when: caddy_reload.rc == 0
 
