@@ -16,6 +16,16 @@
     seed_data: false
     docker_data_device: "/dev/vdb"
     compose_files: "-f docker-compose.prod.yml"
+    # staging.yml gets these as (possibly empty-string) extra-vars from
+    # Terraform's vm_ipv4/vm_ipv4_gateway/vm_ipv4_mac outputs, which
+    # envs/production doesn't define (no secondary network right now - same
+    # DHBWv4 unavailability as envs/staging). Defaulting them here keeps the
+    # Connmark-Skript task's unconditional "{{ secondary_ipv4 }}" reference
+    # from erroring on "undefined" instead of just being skipped by its
+    # sibling tasks' when: guards.
+    secondary_ipv4: ""
+    secondary_gateway: ""
+    secondary_mac: ""
 
   pre_tasks:
     # Das zweite Interface hängt Terraform an die laufende VM, konfiguriert ist

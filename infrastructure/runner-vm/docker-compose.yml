@@ -19,11 +19,18 @@ services:
       RUNNER_NAME: ci-dhbw-appstore-runner
       RUNNER_WORKDIR: /tmp/runner/work
       LABELS: self-hosted
-      # Short-lived registration token (expires ~1h after issue), not a
-      # long-lived PAT — generated once at bring-up time via
-      # `gh api -X POST repos/.../actions/runners/registration-token` and
-      # passed through the environment, never written to this file.
-      RUNNER_TOKEN: "${RUNNER_TOKEN:?RUNNER_TOKEN is required - generate with 'gh api -X POST repos/DHBW-AppStore-T3/deployment/actions/runners/registration-token --jq .token'}"
+      # ACCESS_TOKEN, not RUNNER_TOKEN: a registration token is single-use and
+      # expires in ~1h, and myoung34/github-runner forces ephemeral behaviour
+      # whenever it's the only credential given (there's no way to fetch a
+      # fresh one on its own) - the runner deregistered itself after its first
+      # job and then crash-looped trying to "re-register" with an
+      # already-consumed token. ACCESS_TOKEN lets the entrypoint mint its own
+      # registration token via the API on every start, so EPHEMERAL: "false"
+      # actually takes effect. Needs a fine-grained PAT scoped to just this
+      # repo with Administration: Read and write (self-registration) - same
+      # token as DEPLOYMENT_PAT, which also needs Actions: Read and write for
+      # the trigger-staging/trigger-production workflow_dispatch calls.
+      ACCESS_TOKEN: "${ACCESS_TOKEN:?ACCESS_TOKEN is required - a fine-grained PAT with Administration:write on DHBW-AppStore-T3/deployment}"
       EPHEMERAL: "false"
       PG_CONN_STR: postgres://${TFSTATE_RUNNER_DB_USER:?TFSTATE_RUNNER_DB_USER is required}:${TFSTATE_RUNNER_DB_PASSWORD:?TFSTATE_RUNNER_DB_PASSWORD is required}@127.0.0.1:5432/${TFSTATE_RUNNER_DB_NAME:?TFSTATE_RUNNER_DB_NAME is required}?sslmode=disable
     network_mode: host
