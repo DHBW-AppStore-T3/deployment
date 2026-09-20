@@ -9,6 +9,10 @@ on:
         description: "Also deploy the Moodle LTI prototype (docker-compose.staging.moodle.yml)"
         type: boolean
         default: false
+      seed_data:
+        description: "Seed Keycloak users/courses/apps (only for a genuinely empty DB - creates users with password '1234')"
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -127,6 +131,7 @@ jobs:
             -e "secondary_gateway=${VM_IPV4_GATEWAY}" \
             -e "secondary_mac=${VM_IPV4_MAC}" \
             -e "moodle_enabled=${MOODLE_ENABLED:-false}" \
+            -e "seed_data=${SEED_DATA:-false}" \
             staging.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
@@ -135,6 +140,10 @@ jobs:
           # inputs.moodle_enabled is only set on a workflow_dispatch run; a
           # plain push has no inputs context at all, hence the fallback.
           MOODLE_ENABLED: ${{ inputs.moodle_enabled || 'false' }}
+          # Same reasoning as above: a push to dev carries no inputs
+          # context, so seeding can only ever be switched on deliberately
+          # through workflow_dispatch, never by an ordinary deploy.
+          SEED_DATA: ${{ inputs.seed_data || 'false' }}
 
       - name: Cleanup Sensitive Files
         if: always()
