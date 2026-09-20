@@ -40,7 +40,17 @@ module "vm" {
 
   # Referencing the resource rather than a bare name gives Terraform the
   # dependency, so the group and its rules exist before the instance is built.
-  security_groups = ["default", openstack_networking_secgroup_v2.forgejo_vm.name]
+  # This host's own group only. It previously also carried the tenant-wide
+  # "default" group, whose single ingress rule admits any other member of
+  # "default" on every port - so membership alone granted full access
+  # between any two instances that happened to share it, regardless of the
+  # scoped rules below.
+  #
+  # Nothing here needed it: egress is covered because this group keeps
+  # OpenStack's default allow-all egress (delete_default_rules is false),
+  # SSH and HTTP/HTTPS are explicit, and no host-to-host traffic exists
+  # between the control-plane hosts other than the deploy's own SSH.
+  security_groups = [openstack_networking_secgroup_v2.forgejo_vm.name]
 
   docker_data_volume_size_gb = var.docker_data_volume_size_gb
 
