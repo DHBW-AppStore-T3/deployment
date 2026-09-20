@@ -39,23 +39,41 @@ jobs:
         working-directory: infrastructure/terraform
         run: terraform fmt -check -recursive
 
+      # Pinned release asset with a checksum, rather than piping install.sh
+      # from the main branch into sudo sh: that installs whatever the
+      # branch happens to hold at the moment the job runs, which is both
+      # irreproducible and a standing supply-chain risk on a self-hosted
+      # runner. Bump VERSION and SHA256 together - the hash is the one in
+      # that release's trivy_<version>_checksums.txt.
       - name: Install Trivy
+        env:
+          TRIVY_VERSION: '0.74.0'
+          TRIVY_SHA256: '2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a'
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+          set -euo pipefail
+          curl -sSLf -o /tmp/trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v$TRIVY_VERSION/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "$TRIVY_SHA256  /tmp/trivy.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
 
       # Staging is intentionally non-blocking: surfaces HIGH/CRITICAL IaC
       # findings without halting deploys.
+      # MEDIUM and up, not HIGH,CRITICAL. OPNSTK-0003 - ingress from a
+      # public CIDR - is MEDIUM, so the previous floor meant the security
+      # groups were never scanned: port 22 open to ::/0 would have passed.
+      # Rules that are public by design carry a #trivy:ignore: with their
+      # reason, so anything reported here is exposure nobody justified.
       - name: Terraform Security Scan (Trivy)
         continue-on-error: true
         run: |
-          trivy config --severity HIGH,CRITICAL infrastructure/terraform
+          trivy config --severity MEDIUM,HIGH,CRITICAL infrastructure/terraform
 
       # SARIF emit so findings land in the Security tab even though the
       # gate above is non-blocking — keeps signal visible across runs.
       - name: Terraform Security Scan (Trivy, SARIF)
         if: always()
         run: |
-          trivy config --severity HIGH,CRITICAL --format sarif --output trivy-iac.sarif infrastructure/terraform
+          trivy config --severity MEDIUM,HIGH,CRITICAL --format sarif --output trivy-iac.sarif infrastructure/terraform
 
       - name: Upload Trivy IaC results to GitHub Security
         if: always()

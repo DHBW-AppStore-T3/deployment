@@ -29,8 +29,12 @@ resource "openstack_networking_secgroup_rule_v2" "ssh" {
   protocol          = "tcp"
   port_range_min    = 22
   port_range_max    = 22
-  remote_ip_prefix  = each.value
-  description       = "SSH for the Ansible deploy step (campus IPv4)"
+  # Scoped to an allow-list; the scanner cannot see that the list is
+  # bounded, only that a prefix is wider than one host. 0.0.0.0/0 is
+  # rejected at plan time by the variable validation.
+  #trivy:ignore:openstack-networking-no-public-ingress
+  remote_ip_prefix = each.value
+  description      = "SSH for the Ansible deploy step (campus IPv4)"
 }
 
 # OpenStack security-group rules are per-ethertype: the IPv4 rules in this file
@@ -44,8 +48,12 @@ resource "openstack_networking_secgroup_rule_v2" "ssh_v6" {
   protocol          = "tcp"
   port_range_min    = 22
   port_range_max    = 22
-  remote_ip_prefix  = each.value
-  description       = "SSH: CI runner + operator VPN only (IPv6)"
+  # Scoped to an allow-list; the scanner cannot see that the list is
+  # bounded, only that a prefix is wider than one host. ::/0 is rejected
+  # at plan time by the variable validation.
+  #trivy:ignore:openstack-networking-no-public-ingress
+  remote_ip_prefix = each.value
+  description      = "SSH: CI runner + operator VPN only (IPv6)"
 }
 
 resource "openstack_networking_secgroup_rule_v2" "http" {
@@ -55,8 +63,11 @@ resource "openstack_networking_secgroup_rule_v2" "http" {
   protocol          = "tcp"
   port_range_min    = 80
   port_range_max    = 80
-  remote_ip_prefix  = "0.0.0.0/0"
-  description       = "HTTP - redirected to HTTPS, and the ACME challenge"
+  # Public on purpose: this is the web entrypoint, and 80 also carries the
+  # ACME challenge.
+  #trivy:ignore:openstack-networking-no-public-ingress
+  remote_ip_prefix = "0.0.0.0/0"
+  description      = "HTTP - redirected to HTTPS, and the ACME challenge"
 }
 
 resource "openstack_networking_secgroup_rule_v2" "https" {
@@ -66,8 +77,10 @@ resource "openstack_networking_secgroup_rule_v2" "https" {
   protocol          = "tcp"
   port_range_min    = 443
   port_range_max    = 443
-  remote_ip_prefix  = "0.0.0.0/0"
-  description       = "HTTPS - the application"
+  # Public on purpose: this is the web entrypoint. TLS terminates at Caddy.
+  #trivy:ignore:openstack-networking-no-public-ingress
+  remote_ip_prefix = "0.0.0.0/0"
+  description      = "HTTPS - the application"
 }
 
 # The application is meant to be publicly reachable, so 80/443 stay open to
@@ -79,8 +92,11 @@ resource "openstack_networking_secgroup_rule_v2" "http_v6" {
   protocol          = "tcp"
   port_range_min    = 80
   port_range_max    = 80
-  remote_ip_prefix  = "::/0"
-  description       = "HTTP - redirected to HTTPS, and the ACME challenge (IPv6)"
+  # Public on purpose: this is the web entrypoint, and 80 also carries the
+  # ACME challenge.
+  #trivy:ignore:openstack-networking-no-public-ingress
+  remote_ip_prefix = "::/0"
+  description      = "HTTP - redirected to HTTPS, and the ACME challenge (IPv6)"
 }
 
 # ICMPv6 is not optional the way ICMP is on IPv4: Path MTU Discovery relies on
@@ -94,8 +110,11 @@ resource "openstack_networking_secgroup_rule_v2" "icmpv6" {
   direction         = "ingress"
   ethertype         = "IPv6"
   protocol          = "ipv6-icmp"
-  remote_ip_prefix  = "::/0"
-  description       = "ICMPv6 - required for Path MTU Discovery (RFC 4890)"
+  # ICMPv6 carries Neighbour Discovery and Router Advertisements, so
+  # filtering it stops IPv6 working at all (RFC 4890). Not a port.
+  #trivy:ignore:openstack-networking-no-public-ingress
+  remote_ip_prefix = "::/0"
+  description      = "ICMPv6 - required for Path MTU Discovery (RFC 4890)"
 }
 
 resource "openstack_networking_secgroup_rule_v2" "https_v6" {
@@ -105,6 +124,8 @@ resource "openstack_networking_secgroup_rule_v2" "https_v6" {
   protocol          = "tcp"
   port_range_min    = 443
   port_range_max    = 443
-  remote_ip_prefix  = "::/0"
-  description       = "HTTPS - the application (IPv6)"
+  # Public on purpose: this is the web entrypoint. TLS terminates at Caddy.
+  #trivy:ignore:openstack-networking-no-public-ingress
+  remote_ip_prefix = "::/0"
+  description      = "HTTPS - the application (IPv6)"
 }
