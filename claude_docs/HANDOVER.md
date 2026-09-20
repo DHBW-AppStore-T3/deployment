@@ -11,7 +11,7 @@ Jede Session liest dieses Dokument zu Beginn und aktualisiert es vor dem Abschlu
   - **Flow 1 (`/user-story`):** Spezifikations- und Klärungsdialog zur Issue-Erstellung.
   - **Flow 2 (`/harness-workflow`):** Autonome Umsetzung via `dev`-Trunk -> TDD -> PR auf `dev` -> CI grün -> Auto-Merge auf `dev` -> Staging Deploy -> Hermes Discord Statusmeldung. Push auf `main` bleibt strikt menschlich + Test Coverage Gate.
 - **Staging CI/CD:** `staging.yml` triggert nun automatisch bei Push/Merge auf `dev` (Self-Hosted Runner). Nach Abschluss führt `notify_staging_health.py` den Health-Check durch und meldet Status & System Health (GUT / SCHLECHT) nach Discord.
-- **Produktions-VM:** `appstore-prod-01` läuft auf OpenStack (`ma_wwi_24sea_appstore_g3`), 10 Container (nginx, frontend, backend, worker, keycloak, 2× postgres, rabbitmq, redis, tfstate-postgres).
+- **Produktions-VM:** `appstore-prod-01` läuft auf OpenStack (`ma_wwi_24sea_appstore_g3`), 10 Container (caddy, frontend, backend, worker, keycloak, 2× postgres, rabbitmq, redis, tfstate-postgres).
 - **Hermes Agent & MCP:** `hermes-agent-prod` und `podman-mcp-prod` laufen im Docker-Netzwerk auf der VM. Discord-Integration ist aktiv (Allowlist-gesichert).
 - **Guardrails:** PreToolUse-Guardrail (`deployment/.claude/hooks/appstore-prod-guardrail.py`) schützt direkten SSH-Zugriff gegen unbefugte Docker-Befehle (nur `docker restart <name>` aus `RESTART_ALLOWLIST` erlaubt).
 

@@ -11,7 +11,7 @@ rabbitmq, redis                                   (parallel zu den DBs)
                                                       keycloak: nur started, nicht healthy)
   → worker                                         (wartet auf rabbitmq, redis, postgres-tfstate: healthy)
   → frontend                                       (wartet auf backend: healthy)
-  → nginx                                          (wartet auf frontend, backend, keycloak: started)
+  → caddy                                          (wartet auf frontend, backend, keycloak: started)
 ```
 
 ## Agent-/Moodle-Overlays — eigene, spätere Reihenfolge
@@ -25,8 +25,8 @@ podman-mcp (muss healthy sein, echter Healthcheck gegen /mcp)
 ```
 moodle-db (healthy)
   → moodle
-  → nginx (Override: zusätzlicher Port 8443, neu gestartet für den
-           neuen Listener)
+  → caddy (Override: MOODLE_HOSTNAME + moodle-network, neu
+           gestartet für das zweite Site-Block-Zertifikat)
 ```
 
 Beide Overlays sind additiv — sie starten **nach** dem laufenden

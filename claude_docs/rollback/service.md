@@ -3,7 +3,7 @@
 ## Einen Service neu starten (gleiches Image, neu gezogen)
 
 ```bash
-make prod-restart SVC=backend    # oder frontend, worker, nginx, ...
+make prod-restart SVC=backend    # oder frontend, worker, caddy, ...
 ```
 
 Führt `docker compose ... up -d --force-recreate <SVC>` aus — zieht

@@ -33,10 +33,10 @@
 #     backend (/api/), and keycloak (/realms/, /resources/, /admin/,
 #     /js/). Frontend, backend and keycloak no longer expose ports
 #     directly to the host.
-#   - Unlike prod, which still runs nginx with a self-signed
-#     certificate, staging gets a browser-trusted certificate from
-#     DHBW's ACME endpoint and renews it without a cron job. This
-#     needs APP_HOSTNAME to be a DNS name resolving to the VM.
+#   - The certificate is browser-trusted, issued by DHBW's ACME
+#     endpoint and renewed without a cron job. This needs
+#     APP_HOSTNAME to be a DNS name resolving to the VM. Prod runs
+#     the same Caddy image and Caddyfile.
 # ================================================================
 services:
   # ----------------------------------------------------------------

@@ -1,4 +1,4 @@
-# Reverse proxy and TLS termination for the staging stack.
+# Reverse proxy and TLS termination for the staging and production stacks.
 #
 # Replaces nginx. Caddy obtains a real, browser-trusted certificate from DHBW's
 # ACME endpoint (HARICA) instead of the self-signed one the Ansible playbook
@@ -60,13 +60,11 @@
 	}
 }
 
-# Moodle LTI prototype — optional second site block (see
-# docker-compose.staging.moodle.yml). A separate domain, not a second port on
-# {$APP_HOSTNAME}: Caddy issues one certificate per site block's domain, so a
-# distinct host is the natural way to add a second TLS-terminated service,
-# unlike nginx's second-port pattern on prod (docker-compose.moodle.yml there
-# uses :8443 because that stack's self-signed cert isn't tied to any one
-# hostname).
+# Moodle LTI prototype — optional second site block, used by both
+# docker-compose.staging.moodle.yml and docker-compose.moodle.yml. A separate
+# domain, not a second port on {$APP_HOSTNAME}: Caddy issues one certificate
+# per site block's domain, so a distinct host is the natural way to add a
+# second TLS-terminated service.
 #
 # MOODLE_HOSTNAME defaults to a name inside .invalid (reserved by RFC 2606,
 # guaranteed to never resolve) rather than being left unset — an empty or

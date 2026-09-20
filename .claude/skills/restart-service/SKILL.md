@@ -28,7 +28,7 @@ Only these service names, matching `docker-compose.prod.yml` /
 names:
 
 ```
-backend-prod, worker-prod, frontend-prod, nginx-prod, keycloak-prod,
+backend-prod, worker-prod, frontend-prod, caddy-prod, keycloak-prod,
 podman-mcp-prod, hermes-agent-prod, moodle-prod
 ```
 

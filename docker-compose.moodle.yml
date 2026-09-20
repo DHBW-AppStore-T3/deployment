@@ -20,15 +20,15 @@
 # Isolation: moodle-network is NOT bridged to backend-network,
 # worker-network, or keycloak-network — this is a standalone LTI
 # prototype with no runtime dependency on the AppStore backend/worker/
-# DB or its identity provider. It IS bridged to frontend-network, but
-# only so nginx (which lives there) can reach it as a reverse-proxy
-# upstream — see nginx/nginx-moodle.conf.
+# DB or its identity provider. It IS bridged to frontend-network, and
+# Caddy joins moodle-network via the override below so it can reach
+# Moodle as a reverse-proxy upstream.
 #
-# Public exposure: appstore-prod-01 has no DNS domain, only a
-# self-signed cert on its bare IPv6 address (see nginx/certs/), so a
-# moodle.<domain> subdomain isn't possible. Moodle is exposed on a
-# second nginx listener, port 8443 on the same host/certificate,
-# instead — see nginx/conf.d/moodle.conf.
+# Public exposure: a dedicated MOODLE_HOSTNAME, served by the second
+# site block in caddy/Caddyfile with its own ACME certificate — the
+# same arrangement staging uses. This replaces the old nginx :8443
+# listener, which existed only because prod once had a self-signed
+# certificate tied to a bare IP rather than a DNS name.
 #
 # moodle_appstore's own docker-compose.yml hardcodes dev credentials
 # (moodle/moodlepass) — replaced here with required .env variables so
@@ -114,39 +114,25 @@ services:
         max-file: "3"
 
   # ----------------------------------------------------------------
-  # nginx override — adds the 8443 Moodle listener on top of
-  # docker-compose.prod.yml's nginx service. Compose merges list
-  # fields (ports, volumes) by replacing the whole list, not
-  # appending — this re-states 80/443 so they aren't lost.
+  # Caddy override — same shape as the staging overlay. Caddy already
+  # carries the second site block for {$MOODLE_HOSTNAME} (see
+  # caddy/Caddyfile), so this only has to supply the hostname and
+  # attach Caddy to moodle-network so it can resolve the `moodle`
+  # service by name. No port or volume changes are needed.
   #
-  # ./nginx/conf.d is mounted as a DIRECTORY, not a single file: a
-  # directory bind mount fully replaces the image's own
-  # /etc/nginx/conf.d, which otherwise still ships nginx:1.27-alpine's
-  # default.conf (a `listen 80 server_name localhost` block) — that
-  # would silently start alongside nginx.conf's own `listen 80`
-  # redirect server once nginx.conf's `include conf.d/*.conf` picks it
-  # up. Mounting the directory keeps only what we put in
-  # ./nginx/conf.d/ (currently just moodle.conf).
+  # Compose merges list fields by replacing the whole list, so the
+  # networks list restates prod's three before adding moodle-network.
   # ----------------------------------------------------------------
-  nginx:
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8443:8443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-    depends_on:
-      - frontend
-      - backend
-      - keycloak
-      - moodle
+  caddy:
+    environment:
+      MOODLE_HOSTNAME: ${MOODLE_HOSTNAME:?MOODLE_HOSTNAME is required when the Moodle overlay is used}
     networks:
       - frontend-network
       - backend-network
       - keycloak-network
       - moodle-network
+    depends_on:
+      - moodle
 
 volumes:
   moodle_db_prod_data:
