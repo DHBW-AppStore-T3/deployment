@@ -207,14 +207,17 @@ services:
       
       # Git
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
-      
+
       # Keycloak
       KEYCLOAK_SERVER_URL: ${KEYCLOAK_SERVER_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-dhbw}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-appstore-backend}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
       KEYCLOAK_ENABLED: ${KEYCLOAK_ENABLED:-true}
-      
+
+      # Dev-mode SSO bridge: accept X-Dev-User header instead of a Keycloak token.
+      DEV_MODE: "true"
+
       # CORS
       CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"]}'
 
@@ -239,6 +242,20 @@ services:
       # LTI 1.1 — must match what you enter in Moodle's tool settings
       LTI_CONSUMER_KEY: ${LTI_CONSUMER_KEY:-appstore-lti-key}
       LTI_CONSUMER_SECRET: ${LTI_CONSUMER_SECRET:-appstore-lti-secret}
+
+      # LTI 1.3 — values assigned by Moodle after External Tool registration.
+      # 1. Go to Moodle admin → Site Administration → Plugins → External tool
+      # 2. Add a new tool type with LTI 1.3 and these endpoints:
+      #      Login URL:    http://localhost:8000/lti13/login
+      #      Launch URL:   http://localhost:8000/lti13/launch
+      #      Keyset URL:   http://localhost:8000/lti13/jwks
+      # 3. Copy client_id + deployment_id from Moodle into your .env
+      LTI13_PLATFORM_ISSUER: ${LTI13_PLATFORM_ISSUER:-http://localhost:8081}
+      LTI13_CLIENT_ID: ${LTI13_CLIENT_ID:-}
+      LTI13_DEPLOYMENT_ID: ${LTI13_DEPLOYMENT_ID:-}
+      LTI13_PLATFORM_JWKS_URL: ${LTI13_PLATFORM_JWKS_URL:-http://host.docker.internal:8081/mod/lti/certs.php}
+      LTI13_REDIRECT_URI: ${LTI13_REDIRECT_URI:-http://localhost:8000/lti13/launch}
+      LTI13_SESSION_SECRET: ${LTI13_SESSION_SECRET:-change-me-in-production}
 
       # Application
       DEBUG: "True"
