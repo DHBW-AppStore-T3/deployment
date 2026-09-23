@@ -15,28 +15,30 @@ import ssl
 def check_vm_health(vm_ip: str) -> tuple[str, str]:
     """Prüft die Erreichbarkeit der Staging-VM über HTTP/HTTPS Endpoints."""
     if not vm_ip:
-        return "SCHLECHT", "Keine VM-IP übergeben"
-    
+        return "UNBEKANNT", "Keine VM-IP übergeben"
+
+    # IPv6-Adressen brauchen eckige Klammern in URLs
+    host = f"[{vm_ip}]" if ":" in vm_ip else vm_ip
+
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    
+
     endpoints = [
-        f"http://{vm_ip}/health",
-        f"http://{vm_ip}:8000/api/v1/health",
-        f"http://{vm_ip}",
-        f"https://{vm_ip}",
+        f"http://{host}/",
+        f"https://{host}/",
+        f"http://{host}:8000/api/v1/health",
     ]
-    
+
     for url in endpoints:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Hermes-HealthCheck/1.0"})
             with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
                 if response.status in (200, 204, 301, 302):
-                    return "GUT", f"Endpoint {url} antwortet mit Status {response.status}"
-        except Exception as e:
+                    return "GUT", f"{url} → {response.status}"
+        except Exception:
             continue
-            
+
     return "SCHLECHT", "Kein HTTP/HTTPS-Endpoint auf der VM erreichbar"
 
 def send_discord_notification(webhook_url: str, message: dict) -> bool:
