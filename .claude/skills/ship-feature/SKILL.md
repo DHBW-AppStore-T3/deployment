@@ -1,6 +1,6 @@
 ---
 name: ship-feature
-description: "Use when the user asks to implement and ship a feature or fix end-to-end — walks the HARNESS.md System 5 chain (branch, TDD loop, PR, CI gate). Merges autonomously into dev once CI is green; stops for human approval before main. Triggers on: implement and ship this, build and merge this feature, ship this fix."
+description: "Use when the user asks to implement and ship a feature or fix end-to-end, from a spec through to a merged PR — walks the HARNESS.md System 5 chain (branch, TDD loop, PR, CI gate, human-approved merge) and stops at the two points a human must approve. Triggers on: implement and ship this, build and merge this feature, ship this fix."
 ---
 
 # /ship-feature
@@ -32,25 +32,19 @@ and System 3.1 (branch protection, already enforced server-side).
                                            pre-existing, unrelated failure (see the
                                            Security-check precedent below) — never merge
                                            past a required check.
-6. Merge into `dev` autonomously         — run `gh pr merge --squash --delete-branch`
-                                           once CI is green. No human approval needed
-                                           for dev merges.
-7. STOP before `main`                    — this is System 5.2's first gate. PRs targeting
-                                           `main` (or a dev→main promotion) always require
-                                           explicit human approval. Never run
-                                           `gh pr merge` against `main`.
+6. STOP — human approval required        — merging dev triggers the staging auto-deploy
+                                           (deployment/staging.yml), so this is
+                                           System 5.2's first gate. Report the PR URL,
+                                           CI status, and a one-line summary. Do not
+                                           run `gh pr merge` yourself.
 ```
 
-## Merge behaviour by target branch
+## What "STOP" means here, concretely
 
-| Target | Who merges | When |
-|---|---|---|
-| `dev` | Agent (`gh pr merge --squash --delete-branch`) | CI green |
-| `main` | Human only | Explicit approval required — STOP and report PR URL |
-
-The reason `main` requires a human: a merge to `main` triggers the staging
-auto-deploy (`deployment/staging.yml`), so a mistake propagates without
-further action. `dev` is the integration branch — reversible, not auto-deployed.
+Do not run `gh pr merge`. Report the PR URL, the CI status, and a
+one-line summary of what changed, then end your turn. The human
+decides when to merge — merging `dev` auto-deploys to staging, so a
+mistake here propagates without further action.
 
 ## After a human merges — you may resume
 
