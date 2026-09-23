@@ -136,13 +136,8 @@ jobs:
           # plain push has no inputs context at all, hence the fallback.
           MOODLE_ENABLED: ${{ inputs.moodle_enabled || 'false' }}
 
-      - name: Cleanup Sensitive Files
-        if: always()
-        run: |
-          rm -f ~/.ssh/openstack-key ~/.ssh/openstack-key.pub
-          rm -f infrastructure/ansible/inventory.ini
-          echo "Sensitive deployment artifacts removed."
-
+      # SSH-Key must still exist for the health check (via SSH into the VM).
+      # Cleanup runs AFTER this step.
       - name: Verify Staging System Health & Hermes Discord Notification
         if: always()
         run: |
@@ -153,3 +148,10 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF: ${{ github.ref_name }}
           JOB_STATUS: ${{ job.status }}
+
+      - name: Cleanup Sensitive Files
+        if: always()
+        run: |
+          rm -f ~/.ssh/openstack-key ~/.ssh/openstack-key.pub
+          rm -f infrastructure/ansible/inventory.ini
+          echo "Sensitive deployment artifacts removed."
