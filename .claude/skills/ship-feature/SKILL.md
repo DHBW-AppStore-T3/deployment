@@ -1,6 +1,6 @@
 ---
 name: ship-feature
-description: "Use when the user asks to implement and ship a feature or fix end-to-end, from a spec through to a merged PR — walks the HARNESS.md System 5 chain (branch, TDD loop, PR, CI gate, human-approved merge) and stops at the two points a human must approve. Triggers on: implement and ship this, build and merge this feature, ship this fix."
+description: "Use when the user asks to implement and ship a feature or fix end-to-end — walks the HARNESS.md System 5 chain (branch, TDD loop, PR into dev, CI gate). Merges autonomously into dev (→ staging) once CI is green; stops for human approval before main (→ prod). Triggers on: implement and ship this, build and merge this feature, ship this fix."
 ---
 
 # /ship-feature
@@ -32,19 +32,27 @@ and System 3.1 (branch protection, already enforced server-side).
                                            pre-existing, unrelated failure (see the
                                            Security-check precedent below) — never merge
                                            past a required check.
-6. STOP — human approval required        — merging dev triggers the staging auto-deploy
-                                           (deployment/staging.yml), so this is
-                                           System 5.2's first gate. Report the PR URL,
-                                           CI status, and a one-line summary. Do not
-                                           run `gh pr merge` yourself.
+6. Merge into dev autonomously           — `gh pr merge --squash --delete-branch` once
+                                           CI is green. dev → staging deploys automatically.
+7. Call /verify-staging                  — Hermes prüft Staging, postet auf Discord.
+8. STOP before main                      — main → prod. This is System 5.2's second gate.
+                                           Never merge to main yourself. Report staging
+                                           status and wait for explicit human approval.
 ```
 
-## What "STOP" means here, concretely
+## Merge behaviour by target branch
 
-Do not run `gh pr merge`. Report the PR URL, the CI status, and a
-one-line summary of what changed, then end your turn. The human
-decides when to merge — merging `dev` auto-deploys to staging, so a
-mistake here propagates without further action.
+| Target | Deploys to | Who merges | Gate |
+|---|---|---|---|
+| `dev` | Staging | Agent (`gh pr merge --squash --delete-branch`) | CI green |
+| `main` | Prod | Human only — STOP | Explicit approval required |
+
+**Why dev is autonomous:** staging can be rebuilt from scratch if
+something goes wrong — no persistent user state, no live traffic impact.
+
+**Why main requires a human:** `appstore-prod-01` has live user state
+(Keycloak realm, running deployments). A mistake here costs real
+downtime, not just a container restart.
 
 ## After a human merges — you may resume
 
