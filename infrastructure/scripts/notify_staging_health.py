@@ -12,23 +12,42 @@ import urllib.request
 import urllib.error
 import ssl
 
-def check_vm_health(vm_ip: str) -> tuple[str, str]:
-    """Prüft die Erreichbarkeit der Staging-VM über HTTP/HTTPS Endpoints."""
+def check_vm_health(vm_ip: str, app_hostname: str = "") -> tuple[str, str]:
+    """Prüft die Erreichbarkeit der Staging-VM über HTTP/HTTPS Endpoints.
+
+    Real bug found live: this always checked the bare IP, never
+    APP_HOSTNAME. Caddy's site block is keyed on {$APP_HOSTNAME}
+    specifically (see caddy/Caddyfile's own header comment — ACME issues
+    certs for domains, never bare IPs), so an IP-only HTTPS request has
+    no matching site/cert to answer it. Every staging deploy reported
+    SCHLECHT for this reason alone, regardless of whether staging was
+    actually healthy — confirmed by cross-checking against
+    docker-compose.staging.yml (backend's healthcheck path is
+    /health, not /api/v1/health, and backend:8000 is never published to
+    the host at all — only reachable inside the Docker network via
+    Caddy's reverse_proxy, so the old :8000 endpoint here could never
+    have succeeded either).
+    """
     if not vm_ip:
         return "UNBEKANNT", "Keine VM-IP übergeben"
 
     # IPv6-Adressen brauchen eckige Klammern in URLs
-    host = f"[{vm_ip}]" if ":" in vm_ip else vm_ip
+    ip_host = f"[{vm_ip}]" if ":" in vm_ip else vm_ip
 
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    endpoints = [
-        f"http://{host}/",
-        f"https://{host}/",
-        f"http://{host}:8000/api/v1/health",
-    ]
+    endpoints = []
+    if app_hostname:
+        # The real, ACME-certified, Caddy-routed path — checked first.
+        endpoints.append(f"https://{app_hostname}/api/v1/health")
+        endpoints.append(f"https://{app_hostname}/")
+    # IP fallbacks kept for when APP_HOSTNAME couldn't be read (e.g. the
+    # .env fetch step failed) — won't succeed against Caddy's real TLS
+    # config, but at least confirms whether the host answers HTTP at all.
+    endpoints.append(f"http://{ip_host}/")
+    endpoints.append(f"https://{ip_host}/")
 
     for url in endpoints:
         try:
@@ -62,16 +81,17 @@ def send_discord_notification(webhook_url: str, message: dict) -> bool:
 
 def main():
     vm_ip = os.getenv("VM_IP", "").strip()
+    app_hostname = os.getenv("APP_HOSTNAME", "").strip()
     job_status = os.getenv("JOB_STATUS", "unknown").lower()
     github_sha = os.getenv("GITHUB_SHA", "unknown")[:7]
     github_ref = os.getenv("GITHUB_REF", "dev")
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-    
+
     print(f"=== Hermes Staging Health Check ===")
-    print(f"Job-Status: {job_status} | VM-IP: {vm_ip} | Commit: {github_sha} | Ref: {github_ref}")
-    
+    print(f"Job-Status: {job_status} | VM-IP: {vm_ip} | APP_HOSTNAME: {app_hostname or '(not read)'} | Commit: {github_sha} | Ref: {github_ref}")
+
     if job_status == "success":
-        health_status, health_detail = check_vm_health(vm_ip)
+        health_status, health_detail = check_vm_health(vm_ip, app_hostname)
     else:
         health_status = "SCHLECHT"
         health_detail = f"Staging Deployment Job fehlgeschlagen mit Status: {job_status}"

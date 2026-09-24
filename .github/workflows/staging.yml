@@ -167,6 +167,25 @@ jobs:
           # through workflow_dispatch, never by an ordinary deploy.
           SEED_DATA: ${{ inputs.seed_data || 'false' }}
 
+      - name: Read APP_HOSTNAME from the deployed .env
+        # Real bug: notify_staging_health.py was checking http(s)://<bare
+        # IP>/ — Caddy's Caddyfile is explicit that ACME issues certs for
+        # domains, never bare IPs ("APP_HOSTNAME must be a DNS name...
+        # never for bare IP addresses"), and the site block itself is
+        # keyed on {$APP_HOSTNAME}, not on the VM's IP — so an IP-only
+        # HTTPS request has no matching site/cert to answer it. The
+        # health check reported every staging deploy as SCHLECHT for this
+        # reason, unrelated to whether staging was actually healthy.
+        # Grabbed here, before Cleanup Sensitive Files removes SSH access,
+        # since STAGING_ENV_FILE itself is write-only from the workflow's
+        # own secrets context.
+        if: always()
+        id: read_hostname
+        run: |
+          HOSTNAME=$(ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${VM_IP}" \
+            "grep -E '^APP_HOSTNAME=' /home/ubuntu/app/.env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\"'\\''\r'" || true)
+          echo "APP_HOSTNAME=${HOSTNAME}" >> "$GITHUB_ENV"
+
       - name: Cleanup Sensitive Files
         if: always()
         run: |
@@ -180,6 +199,7 @@ jobs:
           python3 infrastructure/scripts/notify_staging_health.py
         env:
           VM_IP: ${{ env.VM_IP }}
+          APP_HOSTNAME: ${{ env.APP_HOSTNAME }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF: ${{ github.ref_name }}
