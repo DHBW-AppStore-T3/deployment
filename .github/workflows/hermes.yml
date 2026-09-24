@@ -420,9 +420,20 @@ jobs:
           retention-days: 1
 
       - name: Start hermes-agent
+        # --force-recreate: a real, live-hit bug — Compose only recreates
+        # a container when ITS OWN declared config changes (image tag,
+        # env vars, etc.), not when a bind-mounted host file's *content*
+        # changes. agent/config.yaml is bind-mounted, so a config-only
+        # fix (e.g. the model/fallback_providers schema correction)
+        # rsync's the new file to the VM but `up -d` alone leaves the old
+        # container (and its already-loaded, stale in-memory config)
+        # running untouched — confirmed live: the container showed
+        # "Running" not "Recreated" after a config-only redeploy, and
+        # Hermes kept using its previous provider despite the corrected
+        # file already being on disk.
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
-            "cd /home/ubuntu/app && docker compose -f docker-compose.hermes.yml up -d --pull always"
+            "cd /home/ubuntu/app && docker compose -f docker-compose.hermes.yml up -d --pull always --force-recreate"
 
       - name: Verify
         run: |

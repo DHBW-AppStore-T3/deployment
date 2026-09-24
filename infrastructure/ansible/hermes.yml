@@ -71,8 +71,15 @@
       changed_when: false
 
     - name: hermes-agent starten
+      # --force-recreate: config.yaml is bind-mounted, so Compose's own
+      # change-detection (image tag, env vars) never notices a
+      # content-only edit to that file — a config-only fix would
+      # otherwise rsync the new file but leave the old container (and
+      # its already-loaded config) running untouched. See
+      # .github/workflows/hermes.yml's Start hermes-agent step for the
+      # real failure this was confirmed against.
       ansible.builtin.command:
-        cmd: docker compose {{ compose_files }} up -d --pull always
+        cmd: docker compose {{ compose_files }} up -d --pull always --force-recreate
         chdir: "{{ project_root }}"
       register: compose_output
       changed_when: true
