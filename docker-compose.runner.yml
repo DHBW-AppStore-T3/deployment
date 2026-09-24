@@ -37,7 +37,7 @@
 #     Ansible, and SSH — none of them build or run containers, so
 #     this runner never needs docker-in-docker or host Docker access,
 #     unlike podman-mcp (which explicitly does need the host socket
-#     for its one job — see docker-compose.agent.yml).
+#     for its one job — see docker-compose.podman-mcp.yml).
 #   - RUNNER_SCOPE=repo, single-repo token — this runner only ever
 #     appears as a runner for DHBW-AppStore-T3/deployment, never
 #     registered org-wide, so a compromise here can't be used to plant

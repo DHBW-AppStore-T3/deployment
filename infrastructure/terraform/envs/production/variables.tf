@@ -64,3 +64,17 @@ variable "ssh_allowed_cidrs_ipv6" {
     error_message = "ssh_allowed_cidrs_ipv6 must not contain ::/0 - SSH open to the internet."
   }
 }
+
+# deployment#49 — Hermes now reaches this host's podman-mcp over MCP/TCP
+# instead of running as an overlay on it. Must be re-verified against
+# `openstack server list` after every rebuild of hermes-dhbw-appstore; the
+# address is not guaranteed stable across a VM replacement.
+variable "hermes_vm_ipv6" {
+  description = "IPv6 address of hermes-dhbw-appstore, allowed to reach podman-mcp on port 8080."
+  type        = string
+
+  validation {
+    condition     = can(cidrhost("${var.hermes_vm_ipv6}/128", 0))
+    error_message = "hermes_vm_ipv6 must be a valid IPv6 address."
+  }
+}

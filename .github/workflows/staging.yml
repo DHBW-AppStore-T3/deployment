@@ -26,6 +26,13 @@ jobs:
       OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.STAGING_OS_APPLICATION_CREDENTIAL_ID }}
       OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.STAGING_OS_APPLICATION_CREDENTIAL_SECRET }}
       OS_REGION_NAME: ${{ secrets.STAGING_OS_REGION_NAME }}
+      # deployment#49 — envs/staging/variables.tf's hermes_vm_ipv6 has no
+      # default (an auditable diff, same reasoning as
+      # ssh_allowed_cidrs_ipv6). Set once, by hand, after Task 2
+      # provisions hermes-dhbw-appstore; re-set if that VM is ever
+      # rebuilt, since its IP is not guaranteed stable across a
+      # replacement.
+      TF_VAR_hermes_vm_ipv6: ${{ secrets.HERMES_VM_IPV6 }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

@@ -204,19 +204,16 @@ SMTP_FROM_EMAIL=
 SMTP_FROM_NAME=Click-n-Deploy
 ```
 
-### 2k. Agent-, Moodle- und Runner-Overlays (optional)
+### 2k. Moodle- und Runner-Overlays (optional)
 
-Nur nötig, wenn `make agent-up`, `make moodle-up` bzw. `make
-runner-up` verwendet werden (siehe [Optional: Agent-Stack](#optional-agent-stack-hermes--podman-mcp),
-[Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp) und
-[Optional: Self-Hosted Runner](#optional-self-hosted-runner-für-stagingyml) unten):
+Nur nötig, wenn `make moodle-up` bzw. `make runner-up` verwendet werden
+(siehe [Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp)
+und [Optional: Self-Hosted Runner](#optional-self-hosted-runner-für-stagingyml)
+unten). `GEMINI_API_KEY`/`DISCORD_BOT_TOKEN`/`DISCORD_ALLOWED_USERS`
+gehören seit deployment#49 in die `.env` von `hermes-dhbw-appstore`,
+nicht mehr hierher — siehe [Optional: podman-mcp](#optional-podman-mcp-hermes-läuft-auf-einer-eigenen-vm).
 
 ```
-GEMINI_API_KEY=<eigener-key-von-aistudio.google.com>
-
-DISCORD_BOT_TOKEN=<bot-token-von-discord.com/developers/applications>
-DISCORD_ALLOWED_USERS=<eigene-discord-user-id>[,<weitere-id>,...]
-
 MOODLE_REPO_PATH=/opt/app-store/moodle_appstore
 MOODLE_DB_PASSWORD=<random>
 MOODLE_ADMIN_PASSWORD=<random>
@@ -242,7 +239,7 @@ Governance-Begründung):
    ```
 6. Eigene Discord User-ID: Discord-Einstellungen → Erweitert → Entwicklermodus AN, dann Rechtsklick auf den eigenen Namen → "ID kopieren" → `DISCORD_ALLOWED_USERS`
 7. **`DISCORD_ALLOWED_USERS` niemals leer lassen** — ohne diese Variable kann jeder, der den Bot in seinem Server @mentioned, mit dem Agenten sprechen.
-8. Nach `make agent-up`: den Bot per DM oder `@<Bot-Name>` in einem Kanal ansprechen. Läuft alles, antwortet er direkt und bietet `/sethome` (Home-Channel für Cron-Job-Ergebnisse) sowie ein optionales Nutzerprofil an — beides freiwillig, nicht Teil dieses Setups.
+8. Nach dem Start von `hermes-agent` auf `hermes-dhbw-appstore` (`docker compose -f docker-compose.hermes.yml up -d`, seit deployment#49 nicht mehr hier auf der Prod-VM): den Bot per DM oder `@<Bot-Name>` in einem Kanal ansprechen. Läuft alles, antwortet er direkt und bietet `/sethome` (Home-Channel für Cron-Job-Ergebnisse) sowie ein optionales Nutzerprofil an — beides freiwillig, nicht Teil dieses Setups.
 
 ## Schritt 3: TLS-Zertifikat
 
@@ -354,14 +351,23 @@ Anders als in Dev entfällt der Vorlauf mit `make keycloak-disable-ssl` — Cadd
 
 Ab jetzt kann das Backend Tokens validieren.
 
-## Optional: Agent-Stack (Hermes + podman-mcp)
+## Optional: podman-mcp (Hermes läuft auf einer eigenen VM)
 
-Additiv zum laufenden Prod-Stack, siehe `HARNESS.md` in `.github` für die volle Begründung (Systeme 2, 3.2, 3.5). Kurzform:
+Seit deployment#49 läuft `hermes-agent` nicht mehr auf `appstore-prod-01`
+selbst, sondern auf einer eigenen, dedizierten VM
+(`hermes-dhbw-appstore`, siehe `infrastructure/terraform/envs/hermes/`
+und `claude_docs/decisions/2026-hermes-dedicated-vm.md`). Diese VM hier
+läuft weiterhin nur `podman-mcp`, das Hermes über MCP/TCP von außen
+erreicht — additiv zum laufenden Prod-Stack, siehe `HARNESS.md` in
+`.github` für die volle Begründung (Systeme 2, 3.2, 3.5). Kurzform:
 
-1. Eigenen `GEMINI_API_KEY` unter [aistudio.google.com](https://aistudio.google.com) erzeugen und in `.env` eintragen — nie einen geteilten Key verwenden, das ist bewusst der Key jedes Betreibers einzeln.
-2. `make agent-up` startet `podman-mcp` (kein Host-Port, nur intern erreichbar) und `hermes-agent` (Gateway-Modus, Dashboard nur auf `127.0.0.1:9119`, also nur per SSH-Portforward erreichbar — nie öffentlich exponieren).
-3. `agent/config.yaml` filtert, welche podman-mcp-Tools Hermes überhaupt sieht — aktuell nur `container_list`/`container_inspect`/`container_logs`. Das ist die eigentliche Guardrail, nicht der Container selbst; podman-mcp hat kein eingebautes Allowlist/Read-Only-Feature.
-4. `make agent-logs` zum Verifizieren, `make agent-down` zum Entfernen — der Prod-Stack selbst bleibt davon unberührt.
+1. `make podman-mcp-up` startet `podman-mcp` (Port 8080 auf dem Host-Interface, aber per OpenStack-Security-Group ausschließlich für die IPv6-Adresse von `hermes-dhbw-appstore` erreichbar — kein offener Port).
+2. `agent/config.yaml` (auf der Hermes-VM, nicht hier) filtert, welche podman-mcp-Tools Hermes überhaupt sieht — aktuell nur `container_list`/`container_inspect`/`container_logs`. Das ist die eigentliche Guardrail, nicht der Container selbst; podman-mcp hat kein eingebautes Allowlist/Read-Only-Feature.
+3. `make podman-mcp-logs` zum Verifizieren, `make podman-mcp-down` zum Entfernen — der Prod-Stack selbst bleibt davon unberührt.
+
+Für den Hermes-Agent selbst (Gemini-Key, Discord-Bot-Setup,
+`docker-compose.hermes.yml`) siehe die Einrichtung auf
+`hermes-dhbw-appstore`, nicht diese Anleitung.
 
 ## Optional: Moodle-Stack (LTI-Prototyp)
 
