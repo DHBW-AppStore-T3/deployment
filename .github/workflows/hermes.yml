@@ -491,6 +491,37 @@ jobs:
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
             "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
 
+      - name: TEMP FIX - append missing Moodle vars to the live .env on appstore-prod-01 (retry)
+        # An earlier attempt at this exact fix used an SSH command with a
+        # <<-EOF heredoc for the tee input — it produced zero output (no
+        # error, no confirmation) and, confirmed by later re-downloading
+        # the .env artifact, silently appended nothing at all. Root cause
+        # not fully diagnosed (Actions' step runner + <<-EOF + a remote
+        # command string is a fragile combination), so this retry avoids
+        # heredocs entirely: one plain `echo ... | ssh ... tee -a` per
+        # line, each independently verifiable. grep -q guards make this
+        # idempotent — safe to run again even though PRODUCTION_ENV_FILE
+        # was already set from an .env that (per this same investigation)
+        # never actually had these lines.
+        env:
+          MOODLE_DB_PASSWORD: ${{ secrets.TEMP_MOODLE_DB_PASSWORD_2 }}
+          MOODLE_ADMIN_PASSWORD: ${{ secrets.TEMP_MOODLE_ADMIN_PASSWORD_2 }}
+          MOODLE_HOSTNAME: ${{ secrets.TEMP_MOODLE_HOSTNAME }}
+        run: |
+          add_line() {
+            local content="$1"
+            ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+              "grep -qxF '${content}' /home/ubuntu/app/.env || echo '${content}' | sudo tee -a /home/ubuntu/app/.env > /dev/null"
+          }
+          add_line "MOODLE_HOSTNAME=${MOODLE_HOSTNAME}"
+          add_line "MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}"
+          add_line "MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore"
+          add_line "MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}"
+          add_line "MOODLE_ADMIN_EMAIL=admin@dhbw.de"
+          echo "Verifying:"
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort"
+
       - name: Fetch live .env as a downloadable artifact (fixes PRODUCTION_ENV_FILE)
         # Same pattern as start-hermes-agent's HERMES_ENV_FILE fix: can't
         # safely rewrite PRODUCTION_ENV_FILE without its current full
