@@ -17,12 +17,13 @@
     # aktiv (50GB / /dev/vdb, wie beim Forgejo-Host), nachdem die Root-Disk
     # (10GB) mit Moodle dazu tatsächlich ausging ("no space left on device").
     docker_data_device: "/dev/vdb"
-    # Vom Workflow über -e gesetzt (moodle_enabled=true), Default false: ein
-    # Deploy bringt Moodle nicht ungefragt mit. compose_files wird an jeder
-    # `docker compose -f ...`-Stelle unten verwendet statt die Datei jedes Mal
-    # einzeln zu benennen, damit ein zweites Overlay an nur einer Stelle
-    # hinzukommt statt an den derzeit acht.
-    moodle_enabled: false
+    # Vom Workflow über -e gesetzt. Default true: Moodle deployt inzwischen
+    # standardmäßig mit (deployment#43 Follow-up-Entscheidung) — das Flag
+    # bleibt nur als expliziter Abschalt-Weg über workflow_dispatch erhalten.
+    # compose_files wird an jeder `docker compose -f ...`-Stelle unten
+    # verwendet statt die Datei jedes Mal einzeln zu benennen, damit ein
+    # zweites Overlay an nur einer Stelle hinzukommt statt an den derzeit acht.
+    moodle_enabled: true
     # Muss zu MOODLE_REPO_PATH im STAGING_ENV_FILE-Secret passen, wenn
     # moodle_enabled gesetzt ist — docker-compose.staging.moodle.yml liest
     # MOODLE_REPO_PATH aus .env, dieser Task-Satz klont dorthin.

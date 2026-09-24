@@ -15,10 +15,12 @@
     # das Seed-Skript legt Nutzer mit dem Passwort "1234" an.
     seed_data: false
     docker_data_device: "/dev/vdb"
-    # Vom Workflow über -e gesetzt (moodle_enabled=true), Default false: ein
-    # Deploy bringt Moodle nicht ungefragt mit. compose_files wird an jeder
-    # Stelle verwendet, an der sonst nur "-f docker-compose.prod.yml" stand.
-    moodle_enabled: false
+    # Vom Workflow über -e gesetzt. Default true: Moodle deployt inzwischen
+    # standardmäßig mit (deployment#43 Follow-up-Entscheidung) — das Flag
+    # bleibt nur als expliziter Abschalt-Weg über workflow_dispatch erhalten.
+    # compose_files wird an jeder Stelle verwendet, an der sonst nur
+    # "-f docker-compose.prod.yml" stand.
+    moodle_enabled: true
     moodle_repo_path: "/home/ubuntu/moodle_appstore"
     compose_files: >-
       -f docker-compose.prod.yml
