@@ -257,13 +257,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Start podman-mcp locally
-        # This runner IS ci-dhbw-appstore, which runs
-        # infrastructure/runner-vm/docker-compose.yml (the dedicated-VM
-        # runner + its own tfstate-postgres) — not docker-compose.runner.yml,
-        # an older variant for colocating the runner on appstore-prod-01
-        # that this host does not use.
+        # Standalone, not combined with infrastructure/runner-vm/
+        # docker-compose.yml: that file's runner/tfstate-postgres services
+        # require ACCESS_TOKEN/TFSTATE_RUNNER_DB_* values that live only in
+        # a .env on this host's real deployed copy of the repo, not in this
+        # job's fresh checkout — combining them here just fails "docker
+        # compose config" on unrelated required vars. podman-mcp needs
+        # nothing from that file (no shared network, no shared volume), so
+        # standalone is both simpler and correct.
         run: |
-          MCP_ENV=ci docker compose -f infrastructure/runner-vm/docker-compose.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp
+          MCP_ENV=ci docker compose -f docker-compose.podman-mcp.yml up -d --build podman-mcp
 
       - name: Verify healthy
         run: |
