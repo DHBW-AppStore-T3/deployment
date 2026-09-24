@@ -12,7 +12,7 @@ on:
       moodle_enabled:
         description: "Also deploy the Moodle LTI stack (docker-compose.moodle.yml)"
         type: boolean
-        default: false
+        default: true
       seed_data:
         description: "Seed Keycloak users/courses/apps (only for a genuinely empty DB - creates users with password '1234')"
         type: boolean
@@ -118,7 +118,9 @@ jobs:
           PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
           # inputs.moodle_enabled is only set on a workflow_dispatch run; a
           # plain push has no inputs context at all, hence the fallback.
-          MOODLE_ENABLED: ${{ inputs.moodle_enabled || 'false' }}
+          # Moodle now deploys by default on every main push too (previously
+          # opt-in only) — see deployment#43 follow-up decision.
+          MOODLE_ENABLED: ${{ inputs.moodle_enabled != false }}
 
       - name: Cleanup Sensitive Files
         if: always()
