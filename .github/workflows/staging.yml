@@ -130,7 +130,7 @@ jobs:
             -e "secondary_ipv4=${VM_IPV4}" \
             -e "secondary_gateway=${VM_IPV4_GATEWAY}" \
             -e "secondary_mac=${VM_IPV4_MAC}" \
-            -e "moodle_enabled=${MOODLE_ENABLED:-false}" \
+            -e "moodle_enabled=${MOODLE_ENABLED:-true}" \
             -e "seed_data=${SEED_DATA:-false}" \
             staging.yml
         env:
@@ -141,9 +141,17 @@ jobs:
           # a plain push, `inputs.moodle_enabled` resolves falsy (not a
           # usable `null`), so `!= false` alone still evaluated to false —
           # verified on run 35980358702, which skipped every moodle_enabled
-          # task despite this being a push. Gate on event_name explicitly
-          # instead: true on every push, and on workflow_dispatch only when
-          # the input isn't explicitly set to false.
+          # task despite this being a push. The event_name-gated expression
+          # below still isn't fully reliable either: a `gh workflow run`
+          # dispatch with no explicit `-f moodle_enabled=...` also produced
+          # an empty MOODLE_ENABLED (run 35983004855) instead of picking up
+          # the YAML `default: true` — GitHub Actions doesn't reliably
+          # substitute a workflow_dispatch input's default when triggered
+          # via API/CLI rather than the UI form. The real safety net is
+          # therefore the shell fallback below (`:-true`, not `:-false`):
+          # an empty MOODLE_ENABLED now means "on", and only an explicit
+          # "false" string (from a deliberate moodle_enabled: false dispatch)
+          # turns it off.
           # Moodle now deploys by default on every dev push too (previously
           # opt-in only) — see deployment#43 follow-up decision.
           MOODLE_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.moodle_enabled != false }}
