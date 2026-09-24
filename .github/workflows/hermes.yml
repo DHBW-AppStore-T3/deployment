@@ -376,12 +376,17 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
           chmod 600 ~/.ssh/openstack-key
 
-      - name: Remove the stale compose file (Hermes no longer runs here)
-        # /home/ubuntu/app, not /opt/app-store/deployment — see the
-        # rollout-podman-mcp-prod job's comment for why.
+      - name: TEMP DIAGNOSTIC - list existing .env keys (no values) on appstore-prod-01
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
+            "sudo grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort"
+
+      # - name: Remove the stale compose file (Hermes no longer runs here)
+      #   # /home/ubuntu/app, not /opt/app-store/deployment — see the
+      #   # rollout-podman-mcp-prod job's comment for why.
+      #   run: |
+      #     ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+      #       "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
 
       - name: Cleanup Sensitive Files
         if: always()
