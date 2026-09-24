@@ -363,6 +363,24 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
           chmod 600 ~/.ssh/openstack-key
 
+      - name: TEMP FIX - free disk space (root disk full, image pulls failing)
+        # Real failure hit in this deployment: "no space left on device"
+        # extracting nousresearch/hermes-agent's image layers. This VM was
+        # provisioned with docker_data_volume_size_gb = 0 (envs/hermes/
+        # main.tf) on the assumption that a single lightweight agent
+        # container needed no dedicated data volume — wrong: the image
+        # itself is large (200MB+ layers, includes a bundled Playwright/
+        # Chromium install), and pull_policy: always re-pulls it on every
+        # dispatch, accumulating old layers on the small root disk.
+        # docker system prune is the immediate unblock; a real Cinder data
+        # volume (matching staging/production's docker_data_volume_size_gb
+        # = 50 pattern) is the durable fix, not done here — would need a
+        # volume attach + filesystem grow against a VM that already holds
+        # state, riskier than clearing stale layers first.
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
+            "df -h / && sudo docker image prune -af && sudo docker builder prune -af && df -h /"
+
       - name: TEMP FIX - append GROQ_API_KEY to the live .env on hermes-dhbw-appstore
         # HERMES_ENV_FILE (the secret) doesn't have GROQ_API_KEY yet — it
         # can't be safely rewritten from here (write-only, full content
