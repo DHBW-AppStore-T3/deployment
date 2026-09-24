@@ -4,7 +4,7 @@
 |---|---|---|---|
 | dev | `docker-compose.dev.yml` | keiner, direkte Ports | `make dev-up` lokal |
 | staging | `docker-compose.staging.yml` | Caddy, dns-01-Zertifikat | Forgejo-Workflow (`.forgejo/workflows/staging.yml`), pinnable Image-Versionen (`${BACKEND_VERSION:-latest}`) |
-| prod | `docker-compose.prod.yml` | nginx, selbstsigniertes Zertifikat auf bare IPv6 | manuell via `make agent-up`/`make moodle-up`/`prod-up`, Images hart auf `:latest` |
+| prod | `docker-compose.prod.yml` | caddy, ACME-Zertifikat (DHBW/HARICA) via DNS-01 | manuell via `make agent-up`/`make moodle-up`/`prod-up`, Images hart auf `:latest` |
 
 ## Warum prod nicht pinnbar ist
 

@@ -4,7 +4,7 @@
 # This is the production-VM compose file. It runs the full stack:
 # postgres (app DB), postgres-tfstate (Terraform state), keycloak
 # (+ its postgres), rabbitmq, redis, backend, worker, frontend,
-# nginx (TLS reverse proxy).
+# caddy (TLS reverse proxy).
 #
 #   docker compose -f docker-compose.prod.yml up -d --pull always
 #
@@ -21,7 +21,7 @@
 #     reproducible rollout before promoting to prod. Prod intentionally
 #     cannot pin — if you need a pin, use staging.yml on a separate VM.
 #
-# Everything else (resource limits, log rotation, nginx TLS,
+# Everything else (resource limits, log rotation, Caddy TLS,
 # required-env-vars enforcement) is identical to staging.yml so the
 # operational behaviour is consistent.
 #
@@ -128,8 +128,8 @@ services:
   # boot (skipped once the realm exists in the persistent DB volume).
   #
   # ``start-dev`` (HTTP, no hostname enforcement) is fine behind the
-  # nginx TLS terminator below. ``KC_PROXY=edge`` tells Keycloak to
-  # trust X-Forwarded-Proto from nginx so it builds correct https://
+  # Caddy TLS terminator below. ``KC_PROXY=edge`` tells Keycloak to
+  # trust X-Forwarded-Proto from Caddy so it builds correct https://
   # redirect URIs.
   keycloak:
     image: quay.io/keycloak/keycloak:23.0

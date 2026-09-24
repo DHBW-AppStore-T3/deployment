@@ -80,7 +80,7 @@ RESTART_ALLOWLIST = {
     "backend-prod",
     "worker-prod",
     "frontend-prod",
-    "nginx-prod",
+    "caddy-prod",
     "keycloak-prod",
     "podman-mcp-prod",
     "hermes-agent-prod",

@@ -68,7 +68,7 @@ PGADMIN_PORT       ?= 5050
         clean-dev clean-all prune \
         test-backend test-backend-cov lint-backend lint-backend-fix format-backend \
         prod-up prod-down prod-stop prod-restart prod-pull prod-logs prod-ps \
-        prod-migrate prod-seed prod-cert-self-signed prod-reset \
+        prod-migrate prod-seed prod-reset \
         prod-set-keycloak-urls \
         agent-up agent-down agent-logs agent-ps \
         moodle-up moodle-install moodle-down moodle-logs moodle-ps \
@@ -455,14 +455,6 @@ format-backend: ## ruff format
 # ----------------------------------------------------------------
 # Production (manual VM bootstrap — see docs/prod-setup.md)
 # ----------------------------------------------------------------
-# Self-signed certificate parameters. Override on the command line if
-# the VM has a public IP / different hostname:
-#   make prod-cert-self-signed PROD_HOST=203.0.113.42
-# Default ``localhost`` is only useful when probing on the VM itself.
-PROD_HOST       ?= localhost
-PROD_CERT_DAYS  ?= 3650
-PROD_CERT_DIR   := nginx/certs
-
 prod-up: ## Start the prod stack (pulls :latest first)
 	$(DC_PROD) up -d --pull always
 
@@ -509,7 +501,7 @@ agent-ps: ## List agent containers + health
 # ----------------------------------------------------------------
 moodle-up: ## Start Moodle alongside the running prod stack (needs MOODLE_REPO_PATH cloned first)
 	$(DC_MOODLE) up -d --pull always moodle-db moodle
-	$(DC_MOODLE) up -d nginx
+	$(DC_MOODLE) up -d caddy
 
 moodle-install: ## One-time Moodle site install (run once after first moodle-up)
 	@# moodle_appstore currently tracks Moodle's unstable 5.3dev branch
@@ -603,26 +595,6 @@ prod-set-keycloak-urls: ## Patch Keycloak client redirect/web-origin URLs to APP
 	  -e KEYCLOAK_ADMIN_PASSWORD="$$KEYCLOAK_ADMIN_PASSWORD" \
 	  -e APP_BASE_URL="$$APP_BASE_URL" \
 	  backend python /tmp/set_keycloak_urls.py
-
-prod-cert-self-signed: ## Generate a 10-year self-signed cert (override PROD_HOST=<ip-or-host>)
-	@mkdir -p $(PROD_CERT_DIR) && chmod 700 $(PROD_CERT_DIR)
-	@# Add IP: SAN entry too when PROD_HOST looks like an IPv4 — both
-	@# 'IP:1.2.3.4' and 'DNS:1.2.3.4' would otherwise be rejected by
-	@# strict clients depending on what they were asked to verify.
-	@san="DNS:$(PROD_HOST)"; \
-	if echo "$(PROD_HOST)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$$'; then \
-	  san="IP:$(PROD_HOST),DNS:$(PROD_HOST)"; \
-	fi; \
-	openssl req -x509 -nodes -days $(PROD_CERT_DAYS) -newkey rsa:2048 \
-	  -keyout $(PROD_CERT_DIR)/key.pem \
-	  -out    $(PROD_CERT_DIR)/cert.pem \
-	  -subj   "/CN=$(PROD_HOST)" \
-	  -addext "subjectAltName=$$san"
-	@chmod 600 $(PROD_CERT_DIR)/key.pem
-	@chmod 644 $(PROD_CERT_DIR)/cert.pem
-	@echo ""
-	@echo "✓ Self-signed cert für '$(PROD_HOST)' liegt unter $(PROD_CERT_DIR)/"
-	@echo "  Gültig bis: $$(openssl x509 -in $(PROD_CERT_DIR)/cert.pem -noout -enddate | cut -d= -f2)"
 
 prod-reset: ## ⚠️  STOP prod + DELETE all volumes (DBs, Keycloak, RabbitMQ). Irreversible.
 	@echo "⚠️  This wipes ALL prod data: postgres, keycloak DB, rabbitmq, redis, tfstate."
