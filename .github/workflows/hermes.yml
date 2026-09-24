@@ -373,6 +373,11 @@ jobs:
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
             "docker ps --filter name=hermes-agent --format '{{.Names}}\t{{.Status}}'"
 
+      - name: TEMP DIAGNOSTIC - hermes-agent container logs
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
+            "docker logs hermes-agent --tail 100"
+
       - name: Cleanup Sensitive Files
         if: always()
         run: rm -f ~/.ssh/openstack-key
