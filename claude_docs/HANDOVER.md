@@ -22,7 +22,7 @@ Jede Session liest dieses Dokument zu Beginn und aktualisiert es vor dem Abschlu
 - [x] Reengineering auf 2 Flows im Deployment-Repo: `staging.yml` auf `dev`-Trigger umgestellt.
 - [x] Staging Health-Check & Discord-Notification (`notify_staging_health.py`) implementiert.
 - [ ] **GitHub MCP & OpenStack MCP aktivieren:** Liegen vorkonfiguriert in `agent/config.yaml`, warten auf Read-Only-PAT bzw. `clouds.yaml`.
-- [ ] **Moodle-Integration:** Feinabstimmung von `docker-compose.moodle.yml` auf Staging/Prod.
+- [x] **Moodle-Integration Prod-CI/CD:** `production.yml`/`production.yml`-Workflow bekommen denselben opt-in `moodle_enabled`-Mechanismus wie `staging.yml` (deployment#43, Task 1-4). Task 5/6 (Live-Verifikation Staging-Regression + Prod-Deploy + IPv6-Rückgabe) stehen noch aus — menschlich zu triggern.
 
 ---
 
@@ -38,6 +38,7 @@ Jede Session liest dieses Dokument zu Beginn und aktualisiert es vor dem Abschlu
 
 ## 4. Letzte Übergaben (Historie)
 
+- **2026-09-24 (deployment#43 Task 1-4):** `docker-compose.dev.yml` um LTI13/Handoff-Env + `host.docker.internal` erweitert (backend#9-Kontrakt lokal testbar). `production.yml`/`production.yml`-Workflow um denselben `moodle_enabled`-Opt-in wie `staging.yml` ergänzt (compose_files, bedingte Klon/Chown-Tasks, `workflow_dispatch`-Input). Task 5/6 (Live-Regressionscheck Staging, Live-Prod-Deploy + IPv6-Rückgabe) explizit menschlichem Trigger überlassen — letzter Schritt der gesamten backend#9/frontend#9/self-service-ui#5/deployment#43-Serie.
 - **2026-09-18 (Harness 2-Flow Reengineering):** `staging.yml` auf `dev`-Trunk umgestellt; Health-Check und Discord-Benachrichtigung (`notify_staging_health.py`) nach Staging-Deployment integriert; `HANDOVER.md` aktualisiert.
 - **2026-09-17:** Universelle Skills (`code-reviewer`, `/tdd`, `/ship-feature`) ins `.github`-Repo umgezogen. Wochenlogs abgelöst durch dieses lebende Übergabedokument (#33).
 - **2026-09-16:** PreToolUse-Guardrail (`appstore-prod-guardrail.py`) für direkten SSH-Zugriff implementiert; `code-reviewer`-Agent adaptiert; Staging-Runner an Worker-Netzwerk angebunden (#14).
