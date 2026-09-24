@@ -363,6 +363,19 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
           chmod 600 ~/.ssh/openstack-key
 
+      - name: TEMP FIX - append GROQ_API_KEY to the live .env on hermes-dhbw-appstore
+        # HERMES_ENV_FILE (the secret) doesn't have GROQ_API_KEY yet — it
+        # can't be safely rewritten from here (write-only, full content
+        # unknown). Appends directly to the live .env so the compose file's
+        # new required var is satisfied immediately; HERMES_ENV_FILE itself
+        # still needs this line added by whoever holds it, or the next
+        # provision-hermes-vm run overwrites this file from the old secret.
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
+            "grep -q '^GROQ_API_KEY=' /home/ubuntu/app/.env && sudo sed -i \"s|^GROQ_API_KEY=.*|GROQ_API_KEY=${GROQ_API_KEY}|\" /home/ubuntu/app/.env || echo 'GROQ_API_KEY=${GROQ_API_KEY}' | sudo tee -a /home/ubuntu/app/.env > /dev/null"
+
       - name: Start hermes-agent
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
