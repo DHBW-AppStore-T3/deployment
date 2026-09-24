@@ -508,6 +508,7 @@ jobs:
           MOODLE_ADMIN_PASSWORD: ${{ secrets.TEMP_MOODLE_ADMIN_PASSWORD_2 }}
           MOODLE_HOSTNAME: ${{ secrets.TEMP_MOODLE_HOSTNAME }}
         run: |
+          echo "MOODLE_HOSTNAME length (local, masked value): ${#MOODLE_HOSTNAME}"
           add_line() {
             local content="$1"
             ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
@@ -518,9 +519,12 @@ jobs:
           add_line "MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore"
           add_line "MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}"
           add_line "MOODLE_ADMIN_EMAIL=admin@dhbw.de"
-          echo "Verifying:"
+          echo "Verifying (keys only):"
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
             "grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort"
+          echo "Verifying MOODLE_HOSTNAME specifically (length only, value masked):"
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "grep '^MOODLE_HOSTNAME=' /home/ubuntu/app/.env | wc -c"
 
       - name: Fetch live .env as a downloadable artifact (fixes PRODUCTION_ENV_FILE)
         # Same pattern as start-hermes-agent's HERMES_ENV_FILE fix: can't
