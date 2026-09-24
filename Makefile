@@ -33,10 +33,17 @@ DC_PROD := docker compose -f docker-compose.prod.yml
 # compose file, never applied standalone, since both reference
 # backend-network-prod / frontend-network-prod as external networks
 # that only exist once docker-compose.prod.yml has created them.
-DC_AGENT  := docker compose -f docker-compose.prod.yml -f docker-compose.agent.yml
-DC_MOODLE := docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml
+#
+# podman-mcp (deployment#49) is the exception: it no longer shares a
+# Docker network with anything, so it's combined with the base file
+# purely so `docker compose ps` shows the full picture on this VM, same
+# as DC_RUNNER below. MCP_ENV must be set in the environment (prod here;
+# staging/ci invoke the same overlay with their own MCP_ENV from their
+# own Makefile-equivalent / manual step).
+DC_PODMAN_MCP := MCP_ENV=prod docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml
+DC_MOODLE     := docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml
 # Runner overlay joins no prod network at all (see docker-compose.runner.yml's
-# header), so unlike DC_AGENT/DC_MOODLE it's fine standalone — kept combined
+# header), so unlike DC_PODMAN_MCP/DC_MOODLE it's fine standalone — kept combined
 # with the base file anyway, purely so `docker compose ps` from either
 # invocation shows the same full picture.
 DC_RUNNER := docker compose -f docker-compose.prod.yml -f docker-compose.runner.yml
@@ -68,9 +75,9 @@ PGADMIN_PORT       ?= 5050
         clean-dev clean-all prune \
         test-backend test-backend-cov lint-backend lint-backend-fix format-backend \
         prod-up prod-down prod-stop prod-restart prod-pull prod-logs prod-ps \
-        prod-migrate prod-seed prod-cert-self-signed prod-reset \
+        prod-migrate prod-seed prod-reset \
         prod-set-keycloak-urls \
-        agent-up agent-down agent-logs agent-ps \
+        podman-mcp-up podman-mcp-down podman-mcp-logs podman-mcp-ps \
         moodle-up moodle-install moodle-down moodle-logs moodle-ps \
         runner-up runner-down runner-logs runner-ps \
         up down logs build
@@ -455,14 +462,6 @@ format-backend: ## ruff format
 # ----------------------------------------------------------------
 # Production (manual VM bootstrap — see docs/prod-setup.md)
 # ----------------------------------------------------------------
-# Self-signed certificate parameters. Override on the command line if
-# the VM has a public IP / different hostname:
-#   make prod-cert-self-signed PROD_HOST=203.0.113.42
-# Default ``localhost`` is only useful when probing on the VM itself.
-PROD_HOST       ?= localhost
-PROD_CERT_DAYS  ?= 3650
-PROD_CERT_DIR   := nginx/certs
-
 prod-up: ## Start the prod stack (pulls :latest first)
 	$(DC_PROD) up -d --pull always
 
@@ -487,19 +486,21 @@ prod-ps: ## List prod containers + health
 	$(DC_PROD) ps
 
 # ----------------------------------------------------------------
-# Agent stack (Hermes + podman-mcp) — HARNESS.md Systems 2/3
+# podman-mcp (this VM only) — HARNESS.md Systems 2/3, deployment#49.
+# Hermes itself no longer runs here; see docker-compose.hermes.yml on
+# hermes-dhbw-appstore for that half.
 # ----------------------------------------------------------------
-agent-up: ## Start Hermes + podman-mcp alongside the running prod stack
-	$(DC_AGENT) up -d --pull always podman-mcp hermes-agent
+podman-mcp-up: ## Start podman-mcp alongside the running prod stack
+	$(DC_PODMAN_MCP) up -d --build podman-mcp
 
-agent-down: ## Stop and remove the agent containers only (prod untouched)
-	$(DC_AGENT) rm -sf podman-mcp hermes-agent
+podman-mcp-down: ## Stop and remove podman-mcp only (prod untouched)
+	$(DC_PODMAN_MCP) rm -sf podman-mcp
 
-agent-logs: ## Follow Hermes gateway logs
-	$(DC_AGENT) logs -f hermes-agent
+podman-mcp-logs: ## Follow podman-mcp logs
+	$(DC_PODMAN_MCP) logs -f podman-mcp
 
-agent-ps: ## List agent containers + health
-	$(DC_AGENT) ps podman-mcp hermes-agent
+podman-mcp-ps: ## List podman-mcp container + health
+	$(DC_PODMAN_MCP) ps podman-mcp
 
 # ----------------------------------------------------------------
 # Moodle stack (LTI prototype) — deploys the moodle_appstore fork,
@@ -509,7 +510,7 @@ agent-ps: ## List agent containers + health
 # ----------------------------------------------------------------
 moodle-up: ## Start Moodle alongside the running prod stack (needs MOODLE_REPO_PATH cloned first)
 	$(DC_MOODLE) up -d --pull always moodle-db moodle
-	$(DC_MOODLE) up -d nginx
+	$(DC_MOODLE) up -d caddy
 
 moodle-install: ## One-time Moodle site install (run once after first moodle-up)
 	@# moodle_appstore currently tracks Moodle's unstable 5.3dev branch
@@ -603,26 +604,6 @@ prod-set-keycloak-urls: ## Patch Keycloak client redirect/web-origin URLs to APP
 	  -e KEYCLOAK_ADMIN_PASSWORD="$$KEYCLOAK_ADMIN_PASSWORD" \
 	  -e APP_BASE_URL="$$APP_BASE_URL" \
 	  backend python /tmp/set_keycloak_urls.py
-
-prod-cert-self-signed: ## Generate a 10-year self-signed cert (override PROD_HOST=<ip-or-host>)
-	@mkdir -p $(PROD_CERT_DIR) && chmod 700 $(PROD_CERT_DIR)
-	@# Add IP: SAN entry too when PROD_HOST looks like an IPv4 — both
-	@# 'IP:1.2.3.4' and 'DNS:1.2.3.4' would otherwise be rejected by
-	@# strict clients depending on what they were asked to verify.
-	@san="DNS:$(PROD_HOST)"; \
-	if echo "$(PROD_HOST)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$$'; then \
-	  san="IP:$(PROD_HOST),DNS:$(PROD_HOST)"; \
-	fi; \
-	openssl req -x509 -nodes -days $(PROD_CERT_DAYS) -newkey rsa:2048 \
-	  -keyout $(PROD_CERT_DIR)/key.pem \
-	  -out    $(PROD_CERT_DIR)/cert.pem \
-	  -subj   "/CN=$(PROD_HOST)" \
-	  -addext "subjectAltName=$$san"
-	@chmod 600 $(PROD_CERT_DIR)/key.pem
-	@chmod 644 $(PROD_CERT_DIR)/cert.pem
-	@echo ""
-	@echo "✓ Self-signed cert für '$(PROD_HOST)' liegt unter $(PROD_CERT_DIR)/"
-	@echo "  Gültig bis: $$(openssl x509 -in $(PROD_CERT_DIR)/cert.pem -noout -enddate | cut -d= -f2)"
 
 prod-reset: ## ⚠️  STOP prod + DELETE all volumes (DBs, Keycloak, RabbitMQ). Irreversible.
 	@echo "⚠️  This wipes ALL prod data: postgres, keycloak DB, rabbitmq, redis, tfstate."

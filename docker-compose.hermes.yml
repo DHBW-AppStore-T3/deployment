@@ -1,0 +1,83 @@
+# ================================================================
+# Hermes stack — deployment#49. hermes-agent alone, on its own dedicated
+# VM (envs/hermes) rather than as an overlay on appstore-prod-01
+# (docker-compose.agent.yml, now removed). Standalone, not additive:
+#
+#   docker compose -f docker-compose.hermes.yml up -d
+#
+# Governance carried over unchanged from the old docker-compose.agent.yml:
+#
+#   - Hermes never gets a Docker/Podman socket directly, on this VM or any
+#     other — all container access goes through the three podman-mcp
+#     instances on prod/staging/ci, reached over MCP/TCP (see
+#     agent/config.yaml), each scoped to this VM's IP by the target host's
+#     own OpenStack security group.
+#   - No local depends_on/service_healthy gate any more: podman-mcp no
+#     longer runs alongside hermes-agent on the same host, so there is
+#     nothing here for Compose itself to wait on. Hermes' own "only
+#     connects at startup, parks the server after 3 failed attempts"
+#     behavior (see agent/config.yaml) is unchanged — if a podman-mcp
+#     instance isn't answering yet when hermes-agent starts, that one MCP
+#     connection stays dead until hermes-agent is restarted, same as
+#     before.
+#   - GEMINI_API_KEY is the operator's own key (Google AI Studio), never
+#     committed; required-env enforcement below fails the compose
+#     invocation loudly instead of silently starting keyless.
+#   - Discord secrets are carried over 1:1 from the old appstore-prod-01
+#     overlay — same bot identity, same allowlist, no new features.
+# ================================================================
+services:
+  # ----------------------------------------------------------------
+  # Hermes Agent — self-improving agent, Gemini-backed, MCP client for
+  # podman-mcp@prod, podman-mcp@staging, podman-mcp@ci. Gateway mode only
+  # (no TUI on a headless VM).
+  # ----------------------------------------------------------------
+  hermes-agent:
+    image: nousresearch/hermes-agent:latest
+    pull_policy: always
+    container_name: hermes-agent
+    command: ["gateway", "run"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required — create your own key at aistudio.google.com and set it in .env, never commit it}
+      HERMES_DASHBOARD: "1"
+      HERMES_DASHBOARD_HOST: "127.0.0.1"
+      # Loopback-only bind: the dashboard is reached via SSH port-forward
+      # (System 3.2's SSH-only access rule), never exposed on a published
+      # host port. No auth provider is configured because there is no
+      # non-loopback listener for the auth gate to guard.
+      #
+      # Discord (HARNESS.md System 3.2 revision): the one deliberate
+      # exception to "SSH-only, no network endpoint" — Discord is the
+      # team's actual communication channel, so this trades the blanket
+      # rule for an explicit one: DISCORD_ALLOWED_USERS is the real
+      # boundary, not network topology. The bot's own Public Bot flag
+      # must stay OFF on Discord's side (manual invite URL only) so it
+      # can't be found or joined by anyone outside the org either — the
+      # allowlist alone isn't the whole story, an invite-only bot is the
+      # other half.
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:?DISCORD_BOT_TOKEN is required — create a private (Public Bot = OFF) bot at discord.com/developers/applications, see docs/prod-setup.md}
+      DISCORD_ALLOWED_USERS: ${DISCORD_ALLOWED_USERS:?DISCORD_ALLOWED_USERS is required — comma-separated Discord user IDs, never leave this unset or every Discord user can talk to the agent}
+      # A read-only-scoped PAT for the github MCP server (agent/config.yaml),
+      # never the token a human uses for git operations.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    volumes:
+      - hermes_agent_data:/opt/data
+      - ./agent/config.yaml:/opt/data/config.yaml:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  hermes_agent_data:
+    driver: local

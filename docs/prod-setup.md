@@ -1,6 +1,6 @@
 # Produktives Setup
 
-Der App Store ist ein Web-System, in dem Studierende und Dozierende vorgefertigte Cloud-Apps (Packer + Terraform in einem Git-Repo) per Klick auf OpenStack ausrollen. In Prod läuft alles auf einer einzelnen Ubuntu-VM in zehn Containern: nginx als TLS-Terminator, Vue-Frontend, FastAPI-Backend, Celery-Worker, Keycloak als Identity Provider sowie PostgreSQL (App + Terraform-State + Keycloak), RabbitMQ und Redis als Infrastruktur. Alle Service-Images werden zur Laufzeit aus GHCR gezogen — auf der VM wird nichts gebaut. Diese Anleitung führt von einer leeren Ubuntu-VM bis zum eingeloggten Browser unter `https://<VM-IP>`.
+Der App Store ist ein Web-System, in dem Studierende und Dozierende vorgefertigte Cloud-Apps (Packer + Terraform in einem Git-Repo) per Klick auf OpenStack ausrollen. In Prod läuft alles auf einer einzelnen Ubuntu-VM in zehn Containern: Caddy als TLS-Terminator, Vue-Frontend, FastAPI-Backend, Celery-Worker, Keycloak als Identity Provider sowie PostgreSQL (App + Terraform-State + Keycloak), RabbitMQ und Redis als Infrastruktur. Alle Service-Images werden zur Laufzeit aus GHCR gezogen — auf der VM wird nichts gebaut. Diese Anleitung führt von einer leeren Ubuntu-VM bis zum eingeloggten Browser unter `https://$APP_HOSTNAME`.
 
 > [!TIP]
 > Im CI-Betrieb läuft der Staging-Stack automatisch über
@@ -71,7 +71,7 @@ git clone https://github.com/six7-click-n-deploy/deployment
 cd deployment
 ```
 
-Alle weiteren Befehle werden aus `/opt/app-store/deployment` ausgeführt — dort liegen `Makefile`, `docker-compose.prod.yml`, das `nginx/`-Verzeichnis und der Keycloak-Realm-Export. `frontend/`, `backend/` und `worker/` werden in Prod nicht geklont, weil die Images aus GHCR gezogen werden.
+Alle weiteren Befehle werden aus `/opt/app-store/deployment` ausgeführt — dort liegen `Makefile`, `docker-compose.prod.yml`, das `caddy/`-Verzeichnis und der Keycloak-Realm-Export. `frontend/`, `backend/` und `worker/` werden in Prod nicht geklont, weil die Images aus GHCR gezogen werden.
 
 > [!IMPORTANT]
 > Alle `make`-Targets in dieser Anleitung müssen aus `/opt/app-store/deployment` laufen — Make sucht das `Makefile` im aktuellen Verzeichnis. Wenn der Prompt `ubuntu@prod-test:~$` zeigt (Home-Verzeichnis), kommt `make: *** No rule to make target '…'.  Stop.`. Vorher `cd /opt/app-store/deployment`.
@@ -179,7 +179,7 @@ GIT_ACCESS_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ### 2i. URLs (Pflicht)
 
-Alle URLs zeigen auf deine VM. nginx terminiert HTTPS auf 443 und routet `/api` an das Backend, `/realms` und `/admin` an Keycloak, alles andere an das Frontend — deshalb laufen alle drei `VITE_*_URL`-Werte über dieselbe Origin:
+Alle URLs zeigen auf deine VM. Caddy terminiert HTTPS auf 443 und routet `/api` an das Backend, `/realms` und `/admin` an Keycloak, alles andere an das Frontend — deshalb laufen alle drei `VITE_*_URL`-Werte über dieselbe Origin:
 
 ```
 APP_BASE_URL=https://<VM-IP>
@@ -204,19 +204,16 @@ SMTP_FROM_EMAIL=
 SMTP_FROM_NAME=Click-n-Deploy
 ```
 
-### 2k. Agent-, Moodle- und Runner-Overlays (optional)
+### 2k. Moodle- und Runner-Overlays (optional)
 
-Nur nötig, wenn `make agent-up`, `make moodle-up` bzw. `make
-runner-up` verwendet werden (siehe [Optional: Agent-Stack](#optional-agent-stack-hermes--podman-mcp),
-[Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp) und
-[Optional: Self-Hosted Runner](#optional-self-hosted-runner-für-stagingyml) unten):
+Nur nötig, wenn `make moodle-up` bzw. `make runner-up` verwendet werden
+(siehe [Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp)
+und [Optional: Self-Hosted Runner](#optional-self-hosted-runner-für-stagingyml)
+unten). `GEMINI_API_KEY`/`DISCORD_BOT_TOKEN`/`DISCORD_ALLOWED_USERS`
+gehören seit deployment#49 in die `.env` von `hermes-dhbw-appstore`,
+nicht mehr hierher — siehe [Optional: podman-mcp](#optional-podman-mcp-hermes-läuft-auf-einer-eigenen-vm).
 
 ```
-GEMINI_API_KEY=<eigener-key-von-aistudio.google.com>
-
-DISCORD_BOT_TOKEN=<bot-token-von-discord.com/developers/applications>
-DISCORD_ALLOWED_USERS=<eigene-discord-user-id>[,<weitere-id>,...]
-
 MOODLE_REPO_PATH=/opt/app-store/moodle_appstore
 MOODLE_DB_PASSWORD=<random>
 MOODLE_ADMIN_PASSWORD=<random>
@@ -242,24 +239,22 @@ Governance-Begründung):
    ```
 6. Eigene Discord User-ID: Discord-Einstellungen → Erweitert → Entwicklermodus AN, dann Rechtsklick auf den eigenen Namen → "ID kopieren" → `DISCORD_ALLOWED_USERS`
 7. **`DISCORD_ALLOWED_USERS` niemals leer lassen** — ohne diese Variable kann jeder, der den Bot in seinem Server @mentioned, mit dem Agenten sprechen.
-8. Nach `make agent-up`: den Bot per DM oder `@<Bot-Name>` in einem Kanal ansprechen. Läuft alles, antwortet er direkt und bietet `/sethome` (Home-Channel für Cron-Job-Ergebnisse) sowie ein optionales Nutzerprofil an — beides freiwillig, nicht Teil dieses Setups.
+8. Nach dem Start von `hermes-agent` auf `hermes-dhbw-appstore` (`docker compose -f docker-compose.hermes.yml up -d`, seit deployment#49 nicht mehr hier auf der Prod-VM): den Bot per DM oder `@<Bot-Name>` in einem Kanal ansprechen. Läuft alles, antwortet er direkt und bietet `/sethome` (Home-Channel für Cron-Job-Ergebnisse) sowie ein optionales Nutzerprofil an — beides freiwillig, nicht Teil dieses Setups.
 
-## Schritt 3: Self-signed-Zertifikat erzeugen
+## Schritt 3: TLS-Zertifikat
 
-In Dev terminiert das Frontend HTTP direkt; in Prod sitzt `nginx-prod` davor und erwartet zwei TLS-Dateien unter `nginx/certs/`. Generiere beides mit einem Make-Target:
+Kein manueller Schritt mehr. In Dev terminiert das Frontend HTTP direkt; in Prod sitzt `caddy-prod` davor und holt sich beim ersten Start selbst ein browser-vertrauenswürdiges Zertifikat von DHBWs ACME-Endpoint (HARICA) — per DNS-01 über RFC 2136, weil die VM nur über IPv6 erreichbar ist und die CA sie nicht direkt ansprechen kann.
 
-```bash
-make prod-cert-self-signed PROD_HOST=<VM-IP>
-```
-
-Das Target legt das Verzeichnis an, erzeugt ein 10 Jahre gültiges Zertifikat mit `CN=<VM-IP>` und `subjectAltName=IP:<VM-IP>,DNS:<VM-IP>`, setzt die richtigen Permissions und gibt das Ablaufdatum aus. Resultat:
+Voraussetzungen dafür stehen bereits in der `.env` (Schritt 2):
 
 ```
-nginx/certs/cert.pem      # Public cert
-nginx/certs/key.pem       # Private key, 600
+APP_HOSTNAME        # DNS-Name, der auf die VM zeigt — ACME stellt nie für bare IPs aus
+ACME_CA_URL         # Default: https://certificates.dhbw.cloud/directory
+ACME_EMAIL
+DNS_TSIG_KEY_NAME / DNS_TSIG_KEY_ALG / DNS_TSIG_KEY / DNS_SERVER
 ```
 
-Browser zeigen beim ersten Aufruf eine Sicherheitswarnung („Verbindung nicht sicher") — Ausnahme einmal bestätigen und gut.
+Die Zertifikate und der ACME-Account-Key liegen im Volume `caddy_data`. Geht das Volume verloren, stellt Caddy beim nächsten Start neu aus — die CA rate-limitet das, also nicht ohne Grund löschen.
 
 ## Schritt 4: Stack starten
 
@@ -267,7 +262,7 @@ Browser zeigen beim ersten Aufruf eine Sicherheitswarnung („Verbindung nicht s
 make prod-up
 ```
 
-Anders als in Dev wird hier nichts gebaut — das Target lädt zunächst alle `:latest`-Images aus GHCR (`pull_policy: always`) und startet danach die zehn Container: `nginx`, `frontend`, `backend`, `worker`, `keycloak`, `keycloak-postgres`, `postgres`, `postgres-tfstate`, `redis`, `rabbitmq`. Erstdurchlauf dauert je nach Bandbreite 2–5 Minuten.
+Anders als in Dev wird hier nichts gebaut — das Target lädt zunächst alle `:latest`-Images aus GHCR (`pull_policy: always`) und startet danach die zehn Container: `caddy`, `frontend`, `backend`, `worker`, `keycloak`, `keycloak-postgres`, `postgres`, `postgres-tfstate`, `redis`, `rabbitmq`. Erstdurchlauf dauert je nach Bandbreite 2–5 Minuten.
 
 Status prüfen:
 
@@ -335,7 +330,7 @@ Idempotent — kann beliebig oft laufen. Erneut aufrufen, wenn sich `APP_BASE_UR
 
 Der mit Schritt 5 importierte Realm bringt den `appstore-backend`-Client mit dem maskierten Secret `**********` aus dem Realm-Export mit. Das ist kein gültiger Wert — das echte Secret muss in Keycloak einmalig neu erzeugt und in die `.env` übernommen werden.
 
-Anders als in Dev entfällt der Vorlauf mit `make keycloak-disable-ssl` — nginx terminiert HTTPS schon, der `master`-Realm akzeptiert die Admin-UI direkt.
+Anders als in Dev entfällt der Vorlauf mit `make keycloak-disable-ssl` — Caddy terminiert HTTPS schon, der `master`-Realm akzeptiert die Admin-UI direkt.
 
 1. `https://<VM-IP>/admin` im Browser öffnen (Cert-Warnung akzeptieren).
 2. Mit `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` aus Schritt 2d einloggen.
@@ -356,14 +351,23 @@ Anders als in Dev entfällt der Vorlauf mit `make keycloak-disable-ssl` — ngin
 
 Ab jetzt kann das Backend Tokens validieren.
 
-## Optional: Agent-Stack (Hermes + podman-mcp)
+## Optional: podman-mcp (Hermes läuft auf einer eigenen VM)
 
-Additiv zum laufenden Prod-Stack, siehe `HARNESS.md` in `.github` für die volle Begründung (Systeme 2, 3.2, 3.5). Kurzform:
+Seit deployment#49 läuft `hermes-agent` nicht mehr auf `appstore-prod-01`
+selbst, sondern auf einer eigenen, dedizierten VM
+(`hermes-dhbw-appstore`, siehe `infrastructure/terraform/envs/hermes/`
+und `claude_docs/decisions/2026-hermes-dedicated-vm.md`). Diese VM hier
+läuft weiterhin nur `podman-mcp`, das Hermes über MCP/TCP von außen
+erreicht — additiv zum laufenden Prod-Stack, siehe `HARNESS.md` in
+`.github` für die volle Begründung (Systeme 2, 3.2, 3.5). Kurzform:
 
-1. Eigenen `GEMINI_API_KEY` unter [aistudio.google.com](https://aistudio.google.com) erzeugen und in `.env` eintragen — nie einen geteilten Key verwenden, das ist bewusst der Key jedes Betreibers einzeln.
-2. `make agent-up` startet `podman-mcp` (kein Host-Port, nur intern erreichbar) und `hermes-agent` (Gateway-Modus, Dashboard nur auf `127.0.0.1:9119`, also nur per SSH-Portforward erreichbar — nie öffentlich exponieren).
-3. `agent/config.yaml` filtert, welche podman-mcp-Tools Hermes überhaupt sieht — aktuell nur `container_list`/`container_inspect`/`container_logs`. Das ist die eigentliche Guardrail, nicht der Container selbst; podman-mcp hat kein eingebautes Allowlist/Read-Only-Feature.
-4. `make agent-logs` zum Verifizieren, `make agent-down` zum Entfernen — der Prod-Stack selbst bleibt davon unberührt.
+1. `make podman-mcp-up` startet `podman-mcp` (Port 8080 auf dem Host-Interface, aber per OpenStack-Security-Group ausschließlich für die IPv6-Adresse von `hermes-dhbw-appstore` erreichbar — kein offener Port).
+2. `agent/config.yaml` (auf der Hermes-VM, nicht hier) filtert, welche podman-mcp-Tools Hermes überhaupt sieht — aktuell nur `container_list`/`container_inspect`/`container_logs`. Das ist die eigentliche Guardrail, nicht der Container selbst; podman-mcp hat kein eingebautes Allowlist/Read-Only-Feature.
+3. `make podman-mcp-logs` zum Verifizieren, `make podman-mcp-down` zum Entfernen — der Prod-Stack selbst bleibt davon unberührt.
+
+Für den Hermes-Agent selbst (Gemini-Key, Discord-Bot-Setup,
+`docker-compose.hermes.yml`) siehe die Einrichtung auf
+`hermes-dhbw-appstore`, nicht diese Anleitung.
 
 ## Optional: Moodle-Stack (LTI-Prototyp)
 
@@ -387,7 +391,7 @@ Läuft auf einem eigenen Port, weil die VM keine Domain hat (siehe
    `MOODLE_DB_PASSWORD`, `MOODLE_ADMIN_PASSWORD`, `MOODLE_ADMIN_EMAIL`,
    `MOODLE_WWWROOT=https://<VM-IP>:8443` eintragen.
 3. `make moodle-up` startet `moodle-db` + `moodle` (kein Build, pullt
-   nur das offizielle Image), danach lädt es `nginx` neu, damit der
+   nur das offizielle Image), danach lädt es `caddy` neu, damit der
    neue 8443-Listener aktiv wird.
 4. `make moodle-install` — **einmalig**, nach dem ersten `moodle-up`:
    `moodlehq/moodle-php-apache` hat keinen Auto-Installer, das ist ein
@@ -440,7 +444,7 @@ den CI-Job, verändert diese VM aber nicht.
 
 ## Verifikation
 
-In Dev gibt es `make health`, das drei Endpoints curlt — in Prod fehlt das Target, weil nginx HTTPS mit Self-signed-Cert terminiert. Stattdessen einzeln per `curl -k` (ignoriert die Cert-Warnung) oder im Browser prüfen:
+In Dev gibt es `make health`, das drei Endpoints curlt — in Prod fehlt das Target. Stattdessen einzeln per `curl` oder im Browser prüfen (das Caddy-Zertifikat ist browser-vertrauenswürdig, `-k` ist nicht mehr nötig):
 
 ```bash
 curl -k https://<VM-IP>/health
@@ -458,7 +462,7 @@ Oder im Browser einzeln öffnen:
 | Keycloak Admin | `https://<VM-IP>/admin` | Keycloak Welcome, Login mit `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` aus Schritt 2d |
 | Keycloak OIDC Discovery | `https://<VM-IP>/realms/dhbw/.well-known/openid-configuration` | JSON mit `issuer: https://<VM-IP>/realms/dhbw` |
 
-RabbitMQ-UI und pgAdmin sind in Prod nicht über nginx exponiert (kein Port-Mapping nach außen); für Debugging per Container-Shell oder SSH-Tunnel zugreifen.
+RabbitMQ-UI und pgAdmin sind in Prod nicht über Caddy exponiert (kein Port-Mapping nach außen); für Debugging per Container-Shell oder SSH-Tunnel zugreifen.
 
 ## Login
 
@@ -538,7 +542,7 @@ make prod-logs                  # alle
 make prod-logs SVC=backend      # nur Backend
 make prod-logs SVC=worker       # nur Worker
 make prod-logs SVC=keycloak     # nur Keycloak
-make prod-logs SVC=nginx        # nur nginx (TLS-Terminator)
+make prod-logs SVC=caddy        # nur Caddy (TLS-Terminator)
 ```
 
 ### Komplett zurücksetzen (alle Daten weg)

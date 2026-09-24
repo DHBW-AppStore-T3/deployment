@@ -94,3 +94,19 @@ resource "openstack_networking_secgroup_rule_v2" "icmpv6" {
   remote_ip_prefix  = "::/0"
   description       = "ICMPv6 - required for Path MTU Discovery (RFC 4890)"
 }
+
+# deployment#49 — podman-mcp on this host is reachable only from the Hermes
+# VM, scoped to its single IPv6 address rather than a published port open to
+# the tenant network. docker-compose.podman-mcp.yml publishes 8080 on the
+# host interface; this rule is the only thing keeping it off everyone else,
+# the same pattern as the "WHAT IS DELIBERATELY NOT OPENED" note above.
+resource "openstack_networking_secgroup_rule_v2" "podman_mcp_from_hermes" {
+  security_group_id = openstack_networking_secgroup_v2.appstore_vm.id
+  direction         = "ingress"
+  ethertype         = "IPv6"
+  protocol          = "tcp"
+  port_range_min    = 8080
+  port_range_max    = 8080
+  remote_ip_prefix  = "${var.hermes_vm_ipv6}/128"
+  description       = "podman-mcp - Hermes agent only"
+}
