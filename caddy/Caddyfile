@@ -76,15 +76,30 @@
 # Reuses the zone's TSIG key (DNS_TSIG_KEY*) rather than requesting a second
 # one — both hostnames live in the same DNS zone, and RFC 2136 TSIG keys
 # authenticate against the zone, not a specific record name.
+#
+# TEMPORARY (2026-09-24, deployment#43 follow-up): `tls internal` instead of
+# the ACME dns-rfc2136 block above. certificates.dhbw.cloud (HARICA) fails
+# order finalization for this specific hostname every time — DNS-01
+# authorization validates successfully, the order sits in "processing", then
+# flips to "invalid" with no error detail from the server. Reproduced
+# identically with two independent ACME clients (Caddy itself and a
+# standalone certbot/dns-rfc2136 run against the same TSIG key), so this is
+# a CA-side issue, not a config problem here — see claude_docs/HANDOVER.md
+# for the full investigation. The sibling {$APP_HOSTNAME} block above is
+# UNCHANGED and still uses real ACME; only this one host is affected.
+# Revert to the dns-rfc2136 block (commented out below) once HARICA's issue
+# is resolved — browsers will show a self-signed cert warning until then.
 {$MOODLE_HOSTNAME:moodle-disabled.invalid} {
-	tls {
-		dns rfc2136 {
-			key_name {$DNS_TSIG_KEY_NAME}
-			key_alg {$DNS_TSIG_KEY_ALG}
-			key {$DNS_TSIG_KEY}
-			server {$DNS_SERVER}
-		}
-	}
+	tls internal
+
+	# tls {
+	# 	dns rfc2136 {
+	# 		key_name {$DNS_TSIG_KEY_NAME}
+	# 		key_alg {$DNS_TSIG_KEY_ALG}
+	# 		key {$DNS_TSIG_KEY}
+	# 		server {$DNS_SERVER}
+	# 	}
+	# }
 
 	reverse_proxy moodle:80
 
