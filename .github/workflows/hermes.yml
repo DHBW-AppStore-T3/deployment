@@ -279,17 +279,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: TEMP DIAGNOSTIC - check whether this runner can reach ci-dhbw-appstore's own sshd
-        # Real bug found on the first run: this job assumed the runner
-        # container itself could run `docker compose` — wrong. The runner
-        # (infrastructure/runner-vm/docker-compose.yml) deliberately has no
-        # Docker socket mount (see that file's own header comment) — it
-        # failed with "no such file or directory" on /var/run/docker.sock.
-        # network_mode: host means the container shares the VM's network
-        # namespace, so if sshd on the VM accepts the same deploy key used
-        # everywhere else, 127.0.0.1:22 should reach it — but ci-dhbw-appstore
-        # is hand-built (no Terraform env), so this is unverified. Read-only
-        # probe before committing to any real action.
+      - name: Set up SSH Key
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
@@ -297,16 +287,43 @@ jobs:
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
           chmod 600 ~/.ssh/openstack-key
-          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@127.0.0.1 "whoami && echo REACHABLE" || echo "NOT REACHABLE with this key/user"
-          rm -f ~/.ssh/openstack-key
 
-      # - name: Start podman-mcp locally
-      #   run: |
-      #     MCP_ENV=ci docker compose -f docker-compose.podman-mcp.yml up -d --build podman-mcp
-      #
-      # - name: Verify healthy
-      #   run: |
-      #     docker ps --filter name=podman-mcp-ci --format '{{.Names}}\t{{.Status}}'
+      - name: Sync podman-mcp overlay + agent/ to ci-dhbw-appstore
+        # Real bug found running this job for real: it assumed the runner
+        # container itself could run docker compose — wrong, that
+        # container deliberately has no Docker socket mount (see
+        # infrastructure/runner-vm/docker-compose.yml's header comment),
+        # confirmed by "no such file or directory" on /var/run/docker.sock.
+        # Fixed the same way as prod/staging: SSH into the actual VM.
+        # network_mode: host means this container shares the VM's network
+        # namespace, so 127.0.0.1 reaches its own sshd — confirmed with a
+        # read-only whoami probe before this real change, since
+        # ci-dhbw-appstore is hand-built (no Terraform env) and its
+        # authorized key wasn't otherwise documented anywhere.
+        # /home/ubuntu/app: same convention as prod/staging, and this
+        # host has no prior podman-mcp deploy to contradict it — rsync
+        # creates the destination directory if it doesn't exist yet.
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no -o BatchMode=yes" \
+            --rsync-path="sudo rsync" \
+            --include="docker-compose.podman-mcp.yml" \
+            --include="agent/***" \
+            --exclude="*" \
+            ./ "ubuntu@127.0.0.1:/home/ubuntu/app/"
+
+      - name: Start podman-mcp on ci-dhbw-appstore
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no -o BatchMode=yes ubuntu@127.0.0.1 \
+            "cd /home/ubuntu/app && sudo MCP_ENV=ci docker compose -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
+
+      - name: Verify healthy
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no -o BatchMode=yes ubuntu@127.0.0.1 \
+            "sudo docker ps --filter name=podman-mcp-ci --format '{{.Names}}\t{{.Status}}'"
+
+      - name: Cleanup Sensitive Files
+        if: always()
+        run: rm -f ~/.ssh/openstack-key
 
   start-hermes-agent:
     if: inputs.target == 'start-hermes-agent'
