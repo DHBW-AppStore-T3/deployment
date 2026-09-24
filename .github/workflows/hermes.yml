@@ -186,9 +186,15 @@ jobs:
             ./ "ubuntu@[${PROD_HOST}]:/home/ubuntu/app/"
 
       - name: Start podman-mcp on appstore-prod-01
+        # sudo MCP_ENV=prod, not MCP_ENV=prod sudo: sudo resets the
+        # environment for the command it runs unless -E/env_keep is
+        # configured, so a leading VAR=val before sudo never reaches the
+        # child process — confirmed by the real failure ("MCP_ENV is
+        # missing a value"). sudo itself accepts a leading VAR=val as
+        # part of the command line, which does reach the child.
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "cd /home/ubuntu/app && MCP_ENV=prod sudo docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
+            "cd /home/ubuntu/app && sudo MCP_ENV=prod docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
 
       - name: Verify healthy
         run: |
@@ -252,7 +258,7 @@ jobs:
       - name: Start podman-mcp on staging-dhbw-appstore
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${STAGING_HOST}" \
-            "cd /home/ubuntu/app && MCP_ENV=staging sudo docker compose -f docker-compose.staging.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
+            "cd /home/ubuntu/app && sudo MCP_ENV=staging docker compose -f docker-compose.staging.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
 
       - name: Verify healthy
         run: |
@@ -376,10 +382,30 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
           chmod 600 ~/.ssh/openstack-key
 
-      - name: TEMP DIAGNOSTIC - list existing .env keys (no values) on appstore-prod-01
+      - name: TEMP FIX - append missing Moodle vars to the live .env on appstore-prod-01
+        # Diagnostic (previous version of this step) confirmed
+        # PRODUCTION_ENV_FILE / the deployed .env has zero MOODLE_* keys —
+        # nothing to preserve, safe to append. Values piped through stdin
+        # via a heredoc rather than embedded in the command line, and
+        # sourced from repo secrets (auto-masked in logs) rather than
+        # literals in this file. Fixes the live VM immediately; does NOT
+        # update the PRODUCTION_ENV_FILE secret itself (can't safely
+        # reconstruct a write-only secret's full content) — a human still
+        # needs to add the same values there before the next full
+        # redeploy, or this file-level fix is overwritten.
+        env:
+          MOODLE_DB_PASSWORD: ${{ secrets.TEMP_MOODLE_DB_PASSWORD }}
+          MOODLE_ADMIN_PASSWORD: ${{ secrets.TEMP_MOODLE_ADMIN_PASSWORD }}
+          MOODLE_HOSTNAME: ${{ secrets.TEMP_MOODLE_HOSTNAME }}
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "sudo grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort"
+            "sudo tee -a /home/ubuntu/app/.env > /dev/null" <<-EOF
+          	MOODLE_HOSTNAME=${MOODLE_HOSTNAME}
+          	MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}
+          	MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore
+          	MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}
+          	MOODLE_ADMIN_EMAIL=admin@dhbw.de
+          	EOF
 
       # - name: Remove the stale compose file (Hermes no longer runs here)
       #   # /home/ubuntu/app, not /opt/app-store/deployment — see the
