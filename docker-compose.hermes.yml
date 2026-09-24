@@ -43,12 +43,25 @@ services:
     environment:
       GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY is required — the primary model provider, create a free key at console.groq.com and set it in .env, never commit it}
       GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required — kept as the fallback_chain target in agent/config.yaml, create your own key at aistudio.google.com and set it in .env, never commit it}
-      # Hermes defaults to ~/.hermes for all state (including things like
-      # /sethome's home-channel setting) — with no HOME set for whatever
-      # user this image runs as, that resolved to an empty path and every
-      # write failed with "[Errno 30] Read-only file system: ''" (a real
-      # failure hit in this deployment, not theoretical). /opt/data is
-      # already the mounted, writable volume everything else uses.
+      # Hermes defaults to ~/.hermes for all state — with no HOME set for
+      # whatever user this image runs as, that resolved to an empty path
+      # and every write failed with "[Errno 30] Read-only file system: ''"
+      # (a real failure hit in this deployment, not theoretical). /opt/data
+      # is already the mounted, writable volume everything else uses.
+      #
+      # Known remaining limitation: /sethome still fails the same way,
+      # because Hermes writes its home-channel setting into
+      # $HERMES_HOME/config.yaml — the exact path our own
+      # ./agent/config.yaml:/opt/data/config.yaml:ro bind-mount occupies,
+      # deliberately read-only (see that file's own header comment — the
+      # per-server MCP tool allowlist there IS the container-lifecycle
+      # guardrail, and Hermes has no supported way to split "its own
+      # writable state" from "our read-only MCP config" into separate
+      # files). Not fixed: making config.yaml writable risks Hermes'
+      # own auto-migration silently overwriting that allowlist, which
+      # matters more than /sethome's convenience (proactive cron-job
+      # postings to a designated channel) — DISCORD_ALLOWED_USERS remains
+      # the real security boundary regardless.
       HERMES_HOME: /opt/data
       HERMES_DASHBOARD: "1"
       HERMES_DASHBOARD_HOST: "127.0.0.1"
