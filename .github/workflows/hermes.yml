@@ -491,6 +491,31 @@ jobs:
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
             "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
 
+      - name: Fetch live .env as a downloadable artifact (fixes PRODUCTION_ENV_FILE)
+        # Same pattern as start-hermes-agent's HERMES_ENV_FILE fix: can't
+        # safely rewrite PRODUCTION_ENV_FILE without its current full
+        # content (write-only), and printing it to a GitHub Actions log
+        # is not acceptable (persisted, readable by anyone with repo
+        # read access). Uploads as a workflow artifact instead —
+        # downloadable, not rendered in the log viewer, auto-expires.
+        # Download with `gh run download <run-id> -n prod-env -D
+        # /tmp/prod-env-fix`, then `gh secret set PRODUCTION_ENV_FILE -R
+        # DHBW-AppStore-T3/deployment < /tmp/prod-env-fix/prod.env`, then
+        # delete the local copy. Fixes the real, live, repeatedly-hit
+        # failure: PRODUCTION_ENV_FILE has no MOODLE_* vars at all, so
+        # every push to main that triggers production.yml fails at
+        # "Pull alle Images" for the Moodle overlay.
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "sudo cat /home/ubuntu/app/.env" > /tmp/prod.env
+
+      - name: Upload .env artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-env
+          path: /tmp/prod.env
+          retention-days: 1
+
       - name: Cleanup Sensitive Files
         if: always()
         run: rm -f ~/.ssh/openstack-key
