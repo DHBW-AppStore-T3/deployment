@@ -116,11 +116,16 @@ jobs:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
           ANSIBLE_FORCE_COLOR: 'True'
           PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
-          # inputs.moodle_enabled is only set on a workflow_dispatch run; a
-          # plain push has no inputs context at all, hence the fallback.
+          # inputs.moodle_enabled is only set on a workflow_dispatch run; on
+          # a plain push, `inputs.moodle_enabled` resolves falsy (not a
+          # usable `null`), so `!= false` alone still evaluated to false —
+          # verified on staging's run 35980358702, which skipped every
+          # moodle_enabled task despite being a push. Gate on event_name
+          # explicitly instead: true on every push, and on workflow_dispatch
+          # only when the input isn't explicitly set to false.
           # Moodle now deploys by default on every main push too (previously
           # opt-in only) — see deployment#43 follow-up decision.
-          MOODLE_ENABLED: ${{ inputs.moodle_enabled != false }}
+          MOODLE_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.moodle_enabled != false }}
 
       - name: Cleanup Sensitive Files
         if: always()
