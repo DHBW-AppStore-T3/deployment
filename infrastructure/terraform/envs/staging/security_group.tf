@@ -22,13 +22,14 @@ resource "openstack_networking_secgroup_v2" "appstore_vm" {
 }
 
 resource "openstack_networking_secgroup_rule_v2" "ssh" {
+  for_each          = toset(var.ssh_allowed_cidrs_ipv4)
   security_group_id = openstack_networking_secgroup_v2.appstore_vm.id
   direction         = "ingress"
   ethertype         = "IPv4"
   protocol          = "tcp"
   port_range_min    = 22
   port_range_max    = 22
-  remote_ip_prefix  = var.ssh_source_cidr_ipv4
+  remote_ip_prefix  = each.value
   description       = "SSH for the Ansible deploy step (campus IPv4)"
 }
 
@@ -36,14 +37,15 @@ resource "openstack_networking_secgroup_rule_v2" "ssh" {
 # do not filter IPv6 traffic at all. Without this rule, an IPv6-reachable VM
 # would have port 22 governed by nothing here.
 resource "openstack_networking_secgroup_rule_v2" "ssh_v6" {
+  for_each          = toset(var.ssh_allowed_cidrs_ipv6)
   security_group_id = openstack_networking_secgroup_v2.appstore_vm.id
   direction         = "ingress"
   ethertype         = "IPv6"
   protocol          = "tcp"
   port_range_min    = 22
   port_range_max    = 22
-  remote_ip_prefix  = var.ssh_source_cidr_ipv6
-  description       = "SSH for the Ansible deploy step (campus IPv6)"
+  remote_ip_prefix  = each.value
+  description       = "SSH: CI runner + operator VPN only (IPv6)"
 }
 
 resource "openstack_networking_secgroup_rule_v2" "http" {

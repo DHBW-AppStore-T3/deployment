@@ -15,7 +15,14 @@
     # das Seed-Skript legt Nutzer mit dem Passwort "1234" an.
     seed_data: false
     docker_data_device: "/dev/vdb"
-    compose_files: "-f docker-compose.prod.yml"
+    # Vom Workflow über -e gesetzt (moodle_enabled=true), Default false: ein
+    # Deploy bringt Moodle nicht ungefragt mit. compose_files wird an jeder
+    # Stelle verwendet, an der sonst nur "-f docker-compose.prod.yml" stand.
+    moodle_enabled: false
+    moodle_repo_path: "/home/ubuntu/moodle_appstore"
+    compose_files: >-
+      -f docker-compose.prod.yml
+      {{ '-f docker-compose.moodle.yml' if moodle_enabled | bool else '' }}
     # staging.yml gets these as (possibly empty-string) extra-vars from
     # Terraform's vm_ipv4/vm_ipv4_gateway/vm_ipv4_mac outputs, which
     # envs/production doesn't define (no secondary network right now - same
@@ -247,6 +254,30 @@
         owner: ubuntu
         group: ubuntu
         mode: '0755'
+
+    # Moodle-Setup (nur wenn moodle_enabled=true) - identisch zu staging.yml,
+    # damit moodle_enabled=true allein reicht.
+    - name: Git safe.directory für den Moodle-Klon setzen
+      when: moodle_enabled | bool
+      ansible.builtin.command:
+        cmd: git config --global --add safe.directory {{ moodle_repo_path }}
+      changed_when: false
+
+    - name: moodle_appstore für die Moodle-Instanz klonen
+      when: moodle_enabled | bool
+      ansible.builtin.git:
+        repo: https://github.com/DHBW-AppStore-T3/moodle_appstore.git
+        dest: "{{ moodle_repo_path }}"
+        version: main
+        force: yes
+
+    - name: Repo-Rechte für www-data (UID 33) setzen
+      when: moodle_enabled | bool
+      ansible.builtin.file:
+        path: "{{ moodle_repo_path }}"
+        owner: "33"
+        group: "33"
+        recurse: yes
 
   roles:
     - role: geerlingguy.docker

@@ -9,6 +9,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
     inputs:
+      moodle_enabled:
+        description: "Also deploy the Moodle LTI stack (docker-compose.moodle.yml)"
+        type: boolean
+        default: false
       seed_data:
         description: "Seed Keycloak users/courses/apps (only for a genuinely empty DB - creates users with password '1234')"
         type: boolean
@@ -105,12 +109,16 @@ jobs:
         run: |
           ansible-playbook -i inventory.ini \
             --private-key ~/.ssh/openstack-key \
+            -e "moodle_enabled=${MOODLE_ENABLED:-false}" \
             -e "seed_data=${{ inputs.seed_data || 'false' }}" \
             production.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
           ANSIBLE_FORCE_COLOR: 'True'
           PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+          # inputs.moodle_enabled is only set on a workflow_dispatch run; a
+          # plain push has no inputs context at all, hence the fallback.
+          MOODLE_ENABLED: ${{ inputs.moodle_enabled || 'false' }}
 
       - name: Cleanup Sensitive Files
         if: always()

@@ -151,6 +151,7 @@ services:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/10-consumer-timeout.conf:ro
       - rabbitmq_dev_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -236,11 +237,22 @@ services:
       # to deep-link back to the deployment detail page.
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
 
+      # LTI 1.3 (Moodle launch) + Self-Service handoff — see backend#9.
+      # LTI13_PLATFORM_ISSUER defaults to host.docker.internal so a locally
+      # running moodle_appstore (outside this compose network) can be used
+      # as the LTI platform during development.
+      LTI13_PLATFORM_ISSUER: ${LTI13_PLATFORM_ISSUER:-http://host.docker.internal:8081}
+      LTI13_CLIENT_ID: ${LTI13_CLIENT_ID:-}
+      LTI13_SESSION_SECRET: ${LTI13_SESSION_SECRET:-change-me-in-production}
+      HANDOFF_SESSION_SECRET: ${HANDOFF_SESSION_SECRET:-change-me-in-production}
+
       # Application
       DEBUG: "True"
       APP_NAME: ${APP_NAME:-Backend API Dev}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
