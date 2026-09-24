@@ -17,12 +17,19 @@ staging auf einer separaten VM — prod kann das architektonisch nicht.
 
 ## OpenStack-Realität
 
-`appstore-prod-01` läuft mit **einer** IPv6-Adresse
-(`2001:7c0:1b20:c913:1::15a`), **keiner DNS-Domain**. Das
-selbstsignierte Zertifikat trägt CN/SAN direkt auf diese IP.
-Konsequenzen: kein Let's-Encrypt-Flow möglich (bräuchte eine Domain),
-Moodle bekommt deshalb einen eigenen Port (8443) statt einer
+`appstore-prod-01` läuft mit **einer** IPv6-Adresse, **keiner
+DNS-Domain**. Das selbstsignierte Zertifikat trägt CN/SAN direkt auf
+diese IP. Konsequenzen: kein Let's-Encrypt-Flow möglich (bräuchte eine
+Domain), Moodle bekommt deshalb einen eigenen Port (8443) statt einer
 Subdomain (siehe `docker-compose.moodle.yml`-Kommentarkopf).
+
+Die konkrete Adresse hier absichtlich nicht mehr hartkodiert — eine
+frühere Version dieser Datei nannte `2001:7c0:1b20:c913:1::15a`, was
+nach einem VM-Rebuild bereits veraltet war (echte, per
+`terraform output -raw vm_ip` gegen `envs/production` verifizierte
+Adresse: `2001:7c0:1b20:c913:1::180`, siehe deployment#49). Immer per
+`terraform output` gegen den Terraform-State abfragen, nicht aus einer
+Doku zitieren — die Adresse ändert sich bei jedem VM-Rebuild.
 
 ## Vierte VM: `hermes-dhbw-appstore` (deployment#49)
 

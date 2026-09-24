@@ -168,17 +168,27 @@ jobs:
           chmod 600 ~/.ssh/openstack-key
 
       - name: Sync podman-mcp overlay + agent/ to appstore-prod-01
+        # /home/ubuntu/app, not /opt/app-store/deployment: that path is
+        # docs/prod-setup.md's manual-bootstrap walkthrough location, but
+        # this VM was actually provisioned by production.yml's Ansible
+        # playbook (infrastructure/ansible/production.yml), whose
+        # project_root is /home/ubuntu/app — same as staging. Verified
+        # against the real failure: the manual-doc path doesn't exist on
+        # this host at all ("mkdir failed: No such file or directory").
+        # --rsync-path="sudo rsync": the tree is root-owned from Ansible's
+        # own become:yes synchronize task, same reasoning as staging below.
         run: |
           rsync -az --delete -e "ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no" \
+            --rsync-path="sudo rsync" \
             --include="docker-compose.podman-mcp.yml" \
             --include="agent/***" \
             --exclude="*" \
-            ./ "ubuntu@[${PROD_HOST}]:/opt/app-store/deployment/"
+            ./ "ubuntu@[${PROD_HOST}]:/home/ubuntu/app/"
 
       - name: Start podman-mcp on appstore-prod-01
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "cd /opt/app-store/deployment && MCP_ENV=prod sudo docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
+            "cd /home/ubuntu/app && MCP_ENV=prod sudo docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
 
       - name: Verify healthy
         run: |
@@ -225,8 +235,15 @@ jobs:
           chmod 600 ~/.ssh/openstack-key
 
       - name: Sync podman-mcp overlay + agent/ to staging-dhbw-appstore
+        # --rsync-path="sudo rsync": staging.yml's Ansible playbook runs
+        # with become:yes (root) throughout, including its own
+        # synchronize task, so /home/ubuntu/app is root-owned — a plain
+        # ubuntu-user rsync fails with "Permission denied" on write
+        # (verified against a real run). docker compose below needs the
+        # same elevation for the same reason.
         run: |
           rsync -az --delete -e "ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no" \
+            --rsync-path="sudo rsync" \
             --include="docker-compose.podman-mcp.yml" \
             --include="agent/***" \
             --exclude="*" \
@@ -235,12 +252,12 @@ jobs:
       - name: Start podman-mcp on staging-dhbw-appstore
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${STAGING_HOST}" \
-            "cd /home/ubuntu/app && MCP_ENV=staging docker compose -f docker-compose.staging.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
+            "cd /home/ubuntu/app && MCP_ENV=staging sudo docker compose -f docker-compose.staging.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
 
       - name: Verify healthy
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${STAGING_HOST}" \
-            "docker ps --filter name=podman-mcp-staging --format '{{.Names}}\t{{.Status}}'"
+            "sudo docker ps --filter name=podman-mcp-staging --format '{{.Names}}\t{{.Status}}'"
 
       - name: Cleanup Sensitive Files
         if: always()
@@ -360,9 +377,11 @@ jobs:
           chmod 600 ~/.ssh/openstack-key
 
       - name: Remove the stale compose file (Hermes no longer runs here)
+        # /home/ubuntu/app, not /opt/app-store/deployment — see the
+        # rollout-podman-mcp-prod job's comment for why.
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "test -f /opt/app-store/deployment/docker-compose.agent.yml && rm -v /opt/app-store/deployment/docker-compose.agent.yml || echo 'already absent'"
+            "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
 
       - name: Cleanup Sensitive Files
         if: always()
