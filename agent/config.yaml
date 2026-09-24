@@ -27,7 +27,7 @@
 
 mcp_servers:
   podman-prod:
-    url: "http://[2001:7c0:1b20:c913:1::15a]:8080/mcp"
+    url: "http://[2001:7c0:1b20:c913:1::180]:8080/mcp"
     tools:
       # Allowlist, not blocklist: podman-mcp's tool surface grows over
       # time, and a blocklist silently admits new tools on upgrade. An
