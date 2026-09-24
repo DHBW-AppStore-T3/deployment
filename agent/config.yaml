@@ -27,23 +27,34 @@
 
 # Primary model: Groq (free tier, 1,000 req/day on llama-3.3-70b-versatile —
 # far past Gemini's free-tier 5 req/day for gemini-3.8-flash, which this
-# agent hit almost immediately in real use). Groq is OpenAI-API-compatible,
-# reached via Hermes' generic `custom:<name>` provider mechanism rather than
-# a named integration. Falls back to Gemini (existing key, kept as a second
-# layer) if Groq's daily cap is ever actually exhausted — fallback_chain
-# triggers on rate-limit/5xx/auth-failure responses from the primary,
-# tried once per request, no silent retry loop against the same provider.
-providers:
-  groq:
-    api: https://api.groq.com/openai/v1
-    key_env: GROQ_API_KEY
-
+# agent hit almost immediately in real use, confirmed live via a real
+# Discord interaction that still 429'd on Gemini). Groq is OpenAI-API-
+# compatible, configured as `provider: custom` directly on the model:
+# entry (base_url + key_env) — there is no separate top-level `providers:`
+# map or `custom:<name>` provider-reference syntax; an earlier version of
+# this file invented both, which Hermes silently ignored, leaving it on
+# its prior Gemini-only config. Verified against the raw doc source
+# (configuring-models.md's "What gets written to config.yaml" section:
+# model: needs provider/default/base_url/api_mode; features/
+# fallback-providers.md's "Custom Endpoint Fallback" section for the
+# custom-provider shape), not an AI-summarized paraphrase of it — two
+# earlier summarized fetches of the same pages each gave a different,
+# wrong schema.
+#
+# fallback_providers is top-level, not nested under model: (also
+# confirmed against the raw source) — falls back to Gemini (existing
+# key) if Groq's daily cap is ever actually exhausted. Fallback is
+# turn-scoped: each new message retries the primary first.
 model:
+  provider: custom
   default: llama-3.3-70b-versatile
-  provider: custom:groq
-  fallback_chain:
-    - provider: gemini
-      model: gemini-3.8-flash
+  base_url: https://api.groq.com/openai/v1
+  key_env: GROQ_API_KEY
+  api_mode: chat_completions
+
+fallback_providers:
+  - provider: gemini
+    model: gemini-3.8-flash
 
 mcp_servers:
   podman-prod:
