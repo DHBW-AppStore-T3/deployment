@@ -376,6 +376,31 @@ jobs:
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
             "grep -q '^GROQ_API_KEY=' /home/ubuntu/app/.env && sudo sed -i \"s|^GROQ_API_KEY=.*|GROQ_API_KEY=${GROQ_API_KEY}|\" /home/ubuntu/app/.env || echo 'GROQ_API_KEY=${GROQ_API_KEY}' | sudo tee -a /home/ubuntu/app/.env > /dev/null"
 
+      - name: TEMP - fetch live .env as a downloadable artifact (fixes HERMES_ENV_FILE)
+        # Two attempts to pipe `ssh ... | gh secret set HERMES_ENV_FILE` from
+        # a local machine both failed at the SSH step (wrong key — the
+        # deploy keypair only exists as the SSH_PRIVATE_KEY repo secret,
+        # never on any operator's own machine) — but gh secret set still
+        # reported success both times, silently setting the secret to empty
+        # content from the failed pipe's empty stdin. GitHub Actions logs
+        # are not an acceptable place to print this file (persisted,
+        # visible to anyone with repo read access), so this uploads it as a
+        # build artifact instead — downloadable, not rendered in the log
+        # viewer, auto-expires. Download with `gh run download <run-id> -n
+        # hermes-env -D /tmp/hermes-env-fix`, then `gh secret set
+        # HERMES_ENV_FILE -R DHBW-AppStore-T3/deployment < /tmp/hermes-env-fix/.env`,
+        # then delete the local copy.
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
+            "sudo cat /home/ubuntu/app/.env" > /tmp/hermes.env
+
+      - name: Upload .env artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-env
+          path: /tmp/hermes.env
+          retention-days: 1
+
       - name: Start hermes-agent
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
