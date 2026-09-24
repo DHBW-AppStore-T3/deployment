@@ -412,30 +412,32 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
           chmod 600 ~/.ssh/openstack-key
 
-      - name: TEMP FIX - append missing Moodle vars to the live .env on appstore-prod-01
-        # Diagnostic (previous version of this step) confirmed
-        # PRODUCTION_ENV_FILE / the deployed .env has zero MOODLE_* keys —
-        # nothing to preserve, safe to append. Values piped through stdin
-        # via a heredoc rather than embedded in the command line, and
-        # sourced from repo secrets (auto-masked in logs) rather than
-        # literals in this file. Fixes the live VM immediately; does NOT
-        # update the PRODUCTION_ENV_FILE secret itself (can't safely
-        # reconstruct a write-only secret's full content) — a human still
-        # needs to add the same values there before the next full
-        # redeploy, or this file-level fix is overwritten.
+      - name: TEMP FIX - replace Moodle passwords in the live .env with retained values
+        # One-off correction: an earlier version of this step generated
+        # and applied MOODLE_DB_PASSWORD/MOODLE_ADMIN_PASSWORD, then the
+        # temp secrets holding those exact values were deleted before
+        # being recorded anywhere durable — a real mistake, not
+        # intentional rotation. Safe to replace rather than needing to
+        # recover the old values: verified via `gh run view` that no
+        # `docker compose up` for docker-compose.moodle.yml has run yet
+        # against this .env, so no Moodle DB has been initialized with
+        # the old password to invalidate.
         env:
           MOODLE_DB_PASSWORD: ${{ secrets.TEMP_MOODLE_DB_PASSWORD }}
           MOODLE_ADMIN_PASSWORD: ${{ secrets.TEMP_MOODLE_ADMIN_PASSWORD }}
-          MOODLE_HOSTNAME: ${{ secrets.TEMP_MOODLE_HOSTNAME }}
         run: |
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "sudo tee -a /home/ubuntu/app/.env > /dev/null" <<-EOF
-          	MOODLE_HOSTNAME=${MOODLE_HOSTNAME}
-          	MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}
-          	MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore
-          	MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}
-          	MOODLE_ADMIN_EMAIL=admin@dhbw.de
-          	EOF
+            "sudo sed -i \
+              -e \"s|^MOODLE_DB_PASSWORD=.*|MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}|\" \
+              -e \"s|^MOODLE_ADMIN_PASSWORD=.*|MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}|\" \
+              /home/ubuntu/app/.env"
+
+      # - name: Remove the stale compose file (Hermes no longer runs here)
+      #   # /home/ubuntu/app, not /opt/app-store/deployment — see the
+      #   # rollout-podman-mcp-prod job's comment for why.
+      #   run: |
+      #     ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+      #       "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
 
       # - name: Remove the stale compose file (Hermes no longer runs here)
       #   # /home/ubuntu/app, not /opt/app-store/deployment — see the
