@@ -279,21 +279,34 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Start podman-mcp locally
-        # Standalone, not combined with infrastructure/runner-vm/
-        # docker-compose.yml: that file's runner/tfstate-postgres services
-        # require ACCESS_TOKEN/TFSTATE_RUNNER_DB_* values that live only in
-        # a .env on this host's real deployed copy of the repo, not in this
-        # job's fresh checkout — combining them here just fails "docker
-        # compose config" on unrelated required vars. podman-mcp needs
-        # nothing from that file (no shared network, no shared volume), so
-        # standalone is both simpler and correct.
+      - name: TEMP DIAGNOSTIC - check whether this runner can reach ci-dhbw-appstore's own sshd
+        # Real bug found on the first run: this job assumed the runner
+        # container itself could run `docker compose` — wrong. The runner
+        # (infrastructure/runner-vm/docker-compose.yml) deliberately has no
+        # Docker socket mount (see that file's own header comment) — it
+        # failed with "no such file or directory" on /var/run/docker.sock.
+        # network_mode: host means the container shares the VM's network
+        # namespace, so if sshd on the VM accepts the same deploy key used
+        # everywhere else, 127.0.0.1:22 should reach it — but ci-dhbw-appstore
+        # is hand-built (no Terraform env), so this is unverified. Read-only
+        # probe before committing to any real action.
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          MCP_ENV=ci docker compose -f docker-compose.podman-mcp.yml up -d --build podman-mcp
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
+          chmod 600 ~/.ssh/openstack-key
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@127.0.0.1 "whoami && echo REACHABLE" || echo "NOT REACHABLE with this key/user"
+          rm -f ~/.ssh/openstack-key
 
-      - name: Verify healthy
-        run: |
-          docker ps --filter name=podman-mcp-ci --format '{{.Names}}\t{{.Status}}'
+      # - name: Start podman-mcp locally
+      #   run: |
+      #     MCP_ENV=ci docker compose -f docker-compose.podman-mcp.yml up -d --build podman-mcp
+      #
+      # - name: Verify healthy
+      #   run: |
+      #     docker ps --filter name=podman-mcp-ci --format '{{.Names}}\t{{.Status}}'
 
   start-hermes-agent:
     if: inputs.target == 'start-hermes-agent'
