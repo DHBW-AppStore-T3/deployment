@@ -1,6 +1,8 @@
 # Hermes Agent config — the claude-agent replacement described in
 # HARNESS.md System 3.2 / 3.5. Mounted read-only into the hermes-agent
-# container at /opt/data/config.yaml.
+# container at /opt/data/config.yaml, on hermes-dhbw-appstore
+# (deployment#49) — a dedicated VM, not an overlay on appstore-prod-01
+# any more.
 #
 # The container-lifecycle guardrail lives here, not on the Linux user:
 # podman-mcp exposes container start/remove/build/push tools with no
@@ -14,10 +16,18 @@
 # the full container-tool surface is: container_inspect, container_list,
 # container_logs, container_remove, container_run, container_stop.
 # (Image/network/volume tools also exist; none are needed here.)
+#
+# Three separate entries, one per target VM, instead of one shared
+# "podman" entry: podman-mcp no longer runs alongside hermes-agent on
+# the same host (see docker-compose.podman-mcp.yml), so each instance
+# is reached over MCP/TCP at its own VM's IPv6 address rather than by
+# Docker-network service name. The exact IPs must be re-verified
+# against `openstack server list` after every rebuild of any of the
+# three target VMs — they are not guaranteed stable across a replacement.
 
 mcp_servers:
-  podman:
-    url: "http://podman-mcp:8080/mcp"
+  podman-prod:
+    url: "http://[2001:7c0:1b20:c913:1::180]:8080/mcp"
     tools:
       # Allowlist, not blocklist: podman-mcp's tool surface grows over
       # time, and a blocklist silently admits new tools on upgrade. An
@@ -30,6 +40,22 @@ mcp_servers:
         # image_*/network_*/volume_* tools at all — those require a
         # human with the ubuntu/sudo login or the CI/CD pipeline,
         # never this agent directly.
+
+  podman-staging:
+    url: "http://[2001:7c0:1b20:c913:1::4a4]:8080/mcp"
+    tools:
+      include:
+        - container_list
+        - container_inspect
+        - container_logs
+
+  podman-ci:
+    url: "http://[2001:7c0:1b20:c913:1::206]:8080/mcp"
+    tools:
+      include:
+        - container_list
+        - container_inspect
+        - container_logs
 
   # HARNESS.md System 2 — github-mcp-server, activated 2026-09-23.
   # GitHub hosts the MCP server itself (no container needed). PAT scopes:

@@ -19,12 +19,15 @@ vorgesehen. Nur über GHCR (Image mit dem alten Digest manuell taggen
 und pullen) oder durch Wechsel auf `docker-compose.staging.yml`
 (pinnbar) auf einer separaten VM.
 
-## Agent-/Moodle-Overlays gezielt zurückrollen
+## podman-mcp-/Moodle-Overlays gezielt zurückrollen
 
 ```bash
-make agent-down     # entfernt nur podman-mcp + hermes-agent, Kern-Stack unberührt
-make moodle-down    # entfernt nur moodle + moodle-db, Kern-Stack unberührt
+make podman-mcp-down    # entfernt nur podman-mcp auf dieser VM, Kern-Stack unberührt
+make moodle-down        # entfernt nur moodle + moodle-db, Kern-Stack unberührt
 ```
 
 Beide sind additive Overlays — ein Rollback hier betrifft nie den
-laufenden Kern-Stack (backend/frontend/worker/keycloak/etc.).
+laufenden Kern-Stack (backend/frontend/worker/keycloak/etc.). Seit
+deployment#49 läuft `hermes-agent` nicht mehr auf dieser VM — dessen
+Rollback ist `docker compose -f docker-compose.hermes.yml rm -sf
+hermes-agent` auf `hermes-dhbw-appstore`.

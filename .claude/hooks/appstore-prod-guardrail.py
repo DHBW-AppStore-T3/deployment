@@ -76,6 +76,10 @@ BLOCKED_SUBCOMMANDS = {
 # is the one write action this host permits. Anything not in this
 # exact list — including the stateful data stores — stays blocked.
 # Keep this in sync with deployment/.claude/skills/restart-service/SKILL.md.
+#
+# hermes-agent-prod removed (deployment#49): hermes-agent no longer
+# runs on this host, only on the dedicated hermes-dhbw-appstore VM —
+# there is nothing left here by that name to restart.
 RESTART_ALLOWLIST = {
     "backend-prod",
     "worker-prod",
@@ -83,7 +87,6 @@ RESTART_ALLOWLIST = {
     "caddy-prod",
     "keycloak-prod",
     "podman-mcp-prod",
-    "hermes-agent-prod",
     "moodle-prod",
 }
 

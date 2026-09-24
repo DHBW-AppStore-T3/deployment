@@ -24,13 +24,19 @@ skill does not attempt to route around.
 ## Allowed restart targets and command
 
 Only these service names, matching `docker-compose.prod.yml` /
-`docker-compose.agent.yml` / `docker-compose.moodle.yml` container
+`docker-compose.podman-mcp.yml` / `docker-compose.moodle.yml` container
 names:
 
 ```
 backend-prod, worker-prod, frontend-prod, caddy-prod, keycloak-prod,
-podman-mcp-prod, hermes-agent-prod, moodle-prod
+podman-mcp-prod, moodle-prod
 ```
+
+`hermes-agent-prod` is no longer a valid target here — since
+deployment#49, `hermes-agent` runs on its own dedicated VM
+(`hermes-dhbw-appstore`), not on `appstore-prod-01`. A restart of
+Hermes itself is `docker restart hermes-agent` on that host, outside
+this guardrail's scope.
 
 **Not** `postgres-prod`, `postgres-tfstate-prod`,
 `keycloak-postgres-prod`, `rabbitmq-prod`, `redis-prod`,

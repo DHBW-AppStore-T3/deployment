@@ -1,0 +1,366 @@
+name: CD - Hermes VM Provisioning & Rollout
+
+# deployment#49. workflow_dispatch only — unlike staging.yml/production.yml,
+# this never runs on a plain push. Provisioning a new dedicated VM and
+# rolling podman-mcp out to three existing production/staging/ci hosts is
+# not something that should happen implicitly on every merge; the issue's
+# own Design Spec calls this out as a human-triggered, one-time migration
+# step. Runs on the self-hosted runner (same as staging/production) because
+# that is the only thing with both tfstate-postgres access and network
+# reach to appstore-prod-01/staging-dhbw-appstore, and it already *is*
+# ci-dhbw-appstore for the "ci" rollout target.
+#
+# Run order: provision-hermes-vm, THEN set the HERMES_VM_IPV6 repo secret
+# (used by envs/production and envs/staging's podman_mcp_from_hermes
+# security-group rule — see their variables.tf) and re-verify/update
+# agent/config.yaml's podman-* URLs against the real IP Terraform assigned,
+# THEN the three rollout-podman-mcp-* jobs (any order), THEN
+# start-hermes-agent, THEN cleanup-prod-old-overlay.
+#
+# Precondition the first job cannot satisfy itself: the HERMES_ENV_FILE
+# repo secret (GEMINI_API_KEY, DISCORD_BOT_TOKEN, DISCORD_ALLOWED_USERS,
+# GITHUB_TOKEN — same shape as PRODUCTION_ENV_FILE/STAGING_ENV_FILE) must
+# already be set before provision-hermes-vm runs its Ansible step. GitHub
+# secrets are write-only — this cannot be derived from PRODUCTION_ENV_FILE
+# programmatically even though Hermes' credentials previously lived there;
+# a human who holds the actual Discord bot token and Gemini key must set
+# it by hand, once, carrying the existing bot identity over 1:1 rather
+# than minting new credentials (see claude_docs/decisions/
+# 2026-hermes-dedicated-vm.md).
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which step to run"
+        type: choice
+        options:
+          - provision-hermes-vm
+          - rollout-podman-mcp-prod
+          - rollout-podman-mcp-staging
+          - rollout-podman-mcp-ci
+          - start-hermes-agent
+          - cleanup-prod-old-overlay
+        required: true
+
+jobs:
+  provision-hermes-vm:
+    if: inputs.target == 'provision-hermes-vm'
+    name: Provision hermes-dhbw-appstore (Terraform + Ansible)
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    # Same OpenStack tenant as production/staging (one project,
+    # ma_wwi_24sea_appstore_g3) — reuses PROD_OS_* rather than minting a
+    # near-duplicate HERMES_OS_* secret family for an identical credential.
+    env:
+      OS_AUTH_URL: ${{ secrets.PROD_OS_AUTH_URL }}
+      OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_ID }}
+      OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_SECRET }}
+      OS_REGION_NAME: ${{ secrets.PROD_OS_REGION_NAME }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Format Check
+        working-directory: infrastructure/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Set up SSH Key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
+          chmod 600 ~/.ssh/openstack-key
+          ssh-keygen -y -P '' -f ~/.ssh/openstack-key > ~/.ssh/openstack-key.pub
+          echo "TF_VAR_ssh_public_key=$(cat ~/.ssh/openstack-key.pub)" >> "$GITHUB_ENV"
+
+      - name: Terraform Init, Validate, Plan & Apply
+        working-directory: infrastructure/terraform/envs/hermes
+        run: |
+          terraform init
+          terraform validate
+          terraform plan -out=tfplan
+          terraform apply tfplan
+          echo "VM_IP=$(terraform output -raw vm_ip)" >> "$GITHUB_ENV"
+
+      - name: Report VM IP
+        run: |
+          echo "hermes-dhbw-appstore provisioned at: $VM_IP"
+          echo "::notice::Set this as the HERMES_VM_IPV6 repo secret before the next staging/production deploy (needed by envs/production and envs/staging's podman_mcp_from_hermes security-group rule), and verify agent/config.yaml's podman-* URLs match this IP — update them if it differs from the placeholders committed there."
+
+      - name: Install Ansible and Dependencies
+        run: |
+          sudo apt-get install -y rsync python3-pip
+          pip3 install --user --break-system-packages "ansible>=8.0"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          ansible-galaxy role install -r infrastructure/ansible/requirements.yml -p infrastructure/ansible/roles_external
+          ansible-galaxy collection install -r infrastructure/ansible/requirements.yml
+
+      - name: Generate Ansible Inventory
+        working-directory: infrastructure/ansible
+        run: |
+          cat > inventory.ini <<EOF
+          [docker_vm]
+          ${VM_IP} ansible_user=ubuntu
+          EOF
+
+      - name: Run Ansible Playbook
+        working-directory: infrastructure/ansible
+        run: |
+          ansible-playbook -i inventory.ini \
+            --private-key ~/.ssh/openstack-key \
+            hermes.yml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+          ANSIBLE_FORCE_COLOR: 'True'
+          HERMES_ENV_FILE: ${{ secrets.HERMES_ENV_FILE }}
+
+      - name: Cleanup Sensitive Files
+        if: always()
+        run: |
+          rm -f ~/.ssh/openstack-key ~/.ssh/openstack-key.pub
+          rm -f infrastructure/ansible/inventory.ini
+
+  rollout-podman-mcp-prod:
+    if: inputs.target == 'rollout-podman-mcp-prod'
+    name: Roll out podman-mcp on appstore-prod-01
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    env:
+      OS_AUTH_URL: ${{ secrets.PROD_OS_AUTH_URL }}
+      OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_ID }}
+      OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_SECRET }}
+      OS_REGION_NAME: ${{ secrets.PROD_OS_REGION_NAME }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # Reads the existing envs/production state rather than a hardcoded
+      # IP — same source of truth production.yml itself uses, so this
+      # never drifts from the VM Terraform actually manages.
+      - name: Resolve appstore-prod-01's current IP from Terraform state
+        working-directory: infrastructure/terraform/envs/production
+        run: |
+          terraform init
+          echo "PROD_HOST=$(terraform output -raw vm_ip)" >> "$GITHUB_ENV"
+
+      - name: Set up SSH Key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
+          chmod 600 ~/.ssh/openstack-key
+
+      - name: Sync podman-mcp overlay + agent/ to appstore-prod-01
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no" \
+            --include="docker-compose.podman-mcp.yml" \
+            --include="agent/***" \
+            --exclude="*" \
+            ./ "ubuntu@[${PROD_HOST}]:/opt/app-store/deployment/"
+
+      - name: Start podman-mcp on appstore-prod-01
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "cd /opt/app-store/deployment && MCP_ENV=prod sudo docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
+
+      - name: Verify healthy
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "sudo docker ps --filter name=podman-mcp-prod --format '{{.Names}}\t{{.Status}}'"
+
+      - name: Cleanup Sensitive Files
+        if: always()
+        run: rm -f ~/.ssh/openstack-key
+
+  rollout-podman-mcp-staging:
+    if: inputs.target == 'rollout-podman-mcp-staging'
+    name: Roll out podman-mcp on staging-dhbw-appstore
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    env:
+      OS_AUTH_URL: ${{ secrets.STAGING_OS_AUTH_URL }}
+      OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.STAGING_OS_APPLICATION_CREDENTIAL_ID }}
+      OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.STAGING_OS_APPLICATION_CREDENTIAL_SECRET }}
+      OS_REGION_NAME: ${{ secrets.STAGING_OS_REGION_NAME }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve staging-dhbw-appstore's current IP from Terraform state
+        working-directory: infrastructure/terraform/envs/staging
+        run: |
+          terraform init
+          echo "STAGING_HOST=$(terraform output -raw vm_ip)" >> "$GITHUB_ENV"
+
+      - name: Set up SSH Key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
+          chmod 600 ~/.ssh/openstack-key
+
+      - name: Sync podman-mcp overlay + agent/ to staging-dhbw-appstore
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no" \
+            --include="docker-compose.podman-mcp.yml" \
+            --include="agent/***" \
+            --exclude="*" \
+            ./ "ubuntu@[${STAGING_HOST}]:/home/ubuntu/app/"
+
+      - name: Start podman-mcp on staging-dhbw-appstore
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${STAGING_HOST}" \
+            "cd /home/ubuntu/app && MCP_ENV=staging docker compose -f docker-compose.staging.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp"
+
+      - name: Verify healthy
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${STAGING_HOST}" \
+            "docker ps --filter name=podman-mcp-staging --format '{{.Names}}\t{{.Status}}'"
+
+      - name: Cleanup Sensitive Files
+        if: always()
+        run: rm -f ~/.ssh/openstack-key
+
+  rollout-podman-mcp-ci:
+    if: inputs.target == 'rollout-podman-mcp-ci'
+    name: Roll out podman-mcp on ci-dhbw-appstore (local — this runner IS ci-dhbw-appstore)
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Start podman-mcp locally
+        # This runner IS ci-dhbw-appstore, which runs
+        # infrastructure/runner-vm/docker-compose.yml (the dedicated-VM
+        # runner + its own tfstate-postgres) — not docker-compose.runner.yml,
+        # an older variant for colocating the runner on appstore-prod-01
+        # that this host does not use.
+        run: |
+          MCP_ENV=ci docker compose -f infrastructure/runner-vm/docker-compose.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp
+
+      - name: Verify healthy
+        run: |
+          docker ps --filter name=podman-mcp-ci --format '{{.Names}}\t{{.Status}}'
+
+  start-hermes-agent:
+    if: inputs.target == 'start-hermes-agent'
+    name: Start hermes-agent on hermes-dhbw-appstore
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    env:
+      OS_AUTH_URL: ${{ secrets.PROD_OS_AUTH_URL }}
+      OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_ID }}
+      OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_SECRET }}
+      OS_REGION_NAME: ${{ secrets.PROD_OS_REGION_NAME }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # Same one already applied by the provision-hermes-vm job — the
+      # 'provision-hermes-vm' run must have completed first, same as this
+      # workflow's Ansible playbook already required.
+      - name: Resolve hermes-dhbw-appstore's current IP from Terraform state
+        working-directory: infrastructure/terraform/envs/hermes
+        run: |
+          terraform init
+          echo "HERMES_HOST=$(terraform output -raw vm_ip)" >> "$GITHUB_ENV"
+
+      - name: Set up SSH Key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
+          chmod 600 ~/.ssh/openstack-key
+
+      - name: Start hermes-agent
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
+            "cd /home/ubuntu/app && docker compose -f docker-compose.hermes.yml up -d --pull always"
+
+      - name: Verify
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${HERMES_HOST}" \
+            "docker ps --filter name=hermes-agent --format '{{.Names}}\t{{.Status}}'"
+
+      - name: Cleanup Sensitive Files
+        if: always()
+        run: rm -f ~/.ssh/openstack-key
+
+  cleanup-prod-old-overlay:
+    if: inputs.target == 'cleanup-prod-old-overlay'
+    name: Remove old docker-compose.agent.yml copy from appstore-prod-01
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    env:
+      OS_AUTH_URL: ${{ secrets.PROD_OS_AUTH_URL }}
+      OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_ID }}
+      OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.PROD_OS_APPLICATION_CREDENTIAL_SECRET }}
+      OS_REGION_NAME: ${{ secrets.PROD_OS_REGION_NAME }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve appstore-prod-01's current IP from Terraform state
+        working-directory: infrastructure/terraform/envs/production
+        run: |
+          terraform init
+          echo "PROD_HOST=$(terraform output -raw vm_ip)" >> "$GITHUB_ENV"
+
+      - name: Set up SSH Key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/openstack-key
+          chmod 600 ~/.ssh/openstack-key
+
+      - name: Remove the stale compose file (Hermes no longer runs here)
+        run: |
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "test -f /opt/app-store/deployment/docker-compose.agent.yml && rm -v /opt/app-store/deployment/docker-compose.agent.yml || echo 'already absent'"
+
+      - name: Cleanup Sensitive Files
+        if: always()
+        run: rm -f ~/.ssh/openstack-key

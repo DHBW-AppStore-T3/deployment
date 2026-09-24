@@ -1,0 +1,82 @@
+---
+# Minimal playbook for hermes-dhbw-appstore (deployment#49) — this VM runs
+# only hermes-agent (docker-compose.hermes.yml), not the application stack,
+# so this is deliberately much smaller than staging.yml/production.yml: no
+# data volume mount, no Keycloak realm template, no GHCR image pulls (Hermes
+# ships as a public image), no Moodle overlay.
+- name: CONFIGURE Docker and Deploy hermes-agent on the Hermes VM
+  hosts: docker_vm
+  become: yes
+  gather_facts: yes
+
+  vars:
+    docker_users: ["ubuntu"]
+    docker_install_compose: true
+    project_root: "/home/ubuntu/app"
+    local_compose_path: "{{ playbook_dir }}/../../"
+    compose_files: "-f docker-compose.hermes.yml"
+
+  tasks:
+    - name: Projektverzeichnis anlegen
+      ansible.builtin.file:
+        path: "{{ project_root }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+  roles:
+    - role: geerlingguy.docker
+      tags: [docker_install]
+
+  tasks:
+    - name: Repo-Dateien kopieren (nur was hermes-agent braucht)
+      ansible.posix.synchronize:
+        src: "{{ local_compose_path }}"
+        dest: "{{ project_root }}"
+        recursive: yes
+        delete: yes
+        rsync_opts:
+          - "--exclude=.ssh"
+          - "--exclude=.git"
+          - "--exclude=.history"
+          - "--exclude=docker-compose.override.yml"
+          - "--exclude=node_modules"
+          - "--exclude=__pycache__"
+          - "--exclude=.venv"
+          - "--exclude=.terraform"
+          - "--exclude=frontend"
+          - "--exclude=backend"
+          - "--exclude=worker"
+          - "--exclude=keycloak"
+          - "--exclude=.DS_Store"
+          - "--exclude=*.pyc"
+          - "--exclude=.env"
+
+    - name: .env auf VM schreiben
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'HERMES_ENV_FILE') }}"
+        dest: "{{ project_root }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        # 0644, nicht 0600: docker-compose.hermes.yml liest diese Datei über
+        # Compose selbst (${VAR:?...}-Substitution), kein Secret-Mount in
+        # den Container hinein — gleiche Begründung wie staging.yml.
+        mode: '0644'
+
+    - name: Compose-Konfiguration validieren
+      ansible.builtin.command:
+        cmd: docker compose {{ compose_files }} config -q
+        chdir: "{{ project_root }}"
+      changed_when: false
+
+    - name: hermes-agent starten
+      ansible.builtin.command:
+        cmd: docker compose {{ compose_files }} up -d --pull always
+        chdir: "{{ project_root }}"
+      register: compose_output
+      changed_when: true
+
+    - name: Compose-Output ausgeben
+      ansible.builtin.debug:
+        var: compose_output.stdout_lines
