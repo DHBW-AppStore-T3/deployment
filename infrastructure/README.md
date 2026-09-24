@@ -20,16 +20,21 @@ output and writes a small `inventory.ini` that Ansible then deploys onto. The tw
 | Environment | Terraform dir               | Ansible playbook | Inventory                         | Trigger                          |
 |-------------|-----------------------------|------------------|-----------------------------------|----------------------------------|
 | staging     | `terraform/envs/staging`    | `staging.yml`    | generated `inventory.ini`         | manual dispatch (Forgejo Actions) |
+| production  | `terraform/envs/production` | —                | —                                  | run by hand (`make prod-up` etc., no CI apply) |
+| hermes      | `terraform/envs/hermes`     | —                | —                                  | run by hand (deployment#49)      |
 | forgejo     | `terraform/envs/forgejo`    | `forgejo.yml`    | `inventory-forgejo.sh`            | run by hand from a workstation   |
 
 `forgejo` is bootstrap infrastructure: it hosts the forge, its database and the
 Actions runner that deploys staging. It therefore cannot be deployed by that
 runner, and its state backend is local rather than the database this host runs.
 
-> A separate production environment is documented as future work in
-> the project plan but not yet wired into the codebase. The Terraform
-> module is environment-agnostic, so adding `envs/production/` plus a
-> matching playbook is the obvious extension point.
+`production` and `hermes` have no Ansible playbook or generated inventory —
+both are provisioned by a human running `terraform apply` directly (see each
+env's own comments), then configured via `make` targets over SSH rather than
+an Ansible run. `hermes-dhbw-appstore` runs only `hermes-agent`
+(`docker-compose.hermes.yml`); see
+`claude_docs/decisions/2026-hermes-dedicated-vm.md` for why it is a separate
+VM rather than an overlay on `appstore-prod-01`.
 
 ## Terraform
 
@@ -39,6 +44,8 @@ terraform/
 │                                     # optional Cinder data volume, optional second interface)
 └── envs/
     ├── staging/                      # the application stack (gp1.large)
+    ├── production/                   # the application stack (general.medium)
+    ├── hermes/                       # hermes-agent only, SSH-only ingress (gp1.large)
     └── forgejo/                      # the forge, its database and the Actions runner (gp1.medium)
 ```
 

@@ -108,3 +108,16 @@ resource "openstack_networking_secgroup_rule_v2" "https_v6" {
   remote_ip_prefix  = "::/0"
   description       = "HTTPS - the application (IPv6)"
 }
+
+# deployment#49 — same podman-mcp exposure as envs/production, scoped to
+# the Hermes VM alone. See that file's rule of the same name.
+resource "openstack_networking_secgroup_rule_v2" "podman_mcp_from_hermes" {
+  security_group_id = openstack_networking_secgroup_v2.appstore_vm.id
+  direction         = "ingress"
+  ethertype         = "IPv6"
+  protocol          = "tcp"
+  port_range_min    = 8080
+  port_range_max    = 8080
+  remote_ip_prefix  = "${var.hermes_vm_ipv6}/128"
+  description       = "podman-mcp - Hermes agent only"
+}

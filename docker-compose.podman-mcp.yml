@@ -1,0 +1,87 @@
+# ================================================================
+# Reusable podman-mcp overlay — deployment#49. Extracted out of
+# docker-compose.agent.yml so the same container definition applies
+# additively to whichever base compose file the target host already runs,
+# on all three hosts hermes-agent talks to (prod, staging, ci):
+#
+#   MCP_ENV=prod    docker compose -f docker-compose.prod.yml    -f docker-compose.podman-mcp.yml up -d --build podman-mcp
+#   MCP_ENV=staging docker compose -f docker-compose.staging.yml -f docker-compose.podman-mcp.yml up -d --build podman-mcp
+#   MCP_ENV=ci      docker compose -f docker-compose.runner.yml  -f docker-compose.podman-mcp.yml up -d --build podman-mcp
+#
+# Governance carried over unchanged from the old docker-compose.agent.yml:
+#
+#   - podman-mcp's tool surface is fully read/write (container_run,
+#     container_remove, image_push, ...) with no built-in allowlist. The
+#     actual boundary is Hermes' own per-server MCP tool filter in
+#     agent/config.yaml (include: container_list/inspect/logs only) — see
+#     that file for why an allowlist and not a blocklist.
+#   - No shared Docker network with hermes-agent any more: Hermes now runs
+#     on its own VM (envs/hermes), so this publishes 8080 on the host
+#     interface instead of only being reachable inside a bridge network.
+#     The OpenStack security group is what scopes that port to the Hermes
+#     VM's IPv6 address alone (envs/production and envs/staging's
+#     podman_mcp_from_hermes rule; ci-dhbw-appstore's equivalent is applied
+#     by hand, see claude_docs/decisions/2026-hermes-dedicated-vm.md) — do
+#     not treat the Docker layer as the boundary here, the security group
+#     is.
+# ================================================================
+services:
+  podman-mcp:
+    # manusa/podman-mcp-server publishes no container image (verified
+    # against its .github/workflows/: build.yaml has no docker/build-push
+    # step, release.yaml only publishes to npm) — only an npm/PyPI wrapper
+    # and raw linux-amd64 GitHub release binaries. This builds a minimal
+    # image from the official binary instead of pulling a nonexistent
+    # quay.io tag.
+    build:
+      context: ./agent
+      dockerfile: podman-mcp.Dockerfile
+    container_name: podman-mcp-${MCP_ENV:?MCP_ENV is required — one of prod, staging, ci}
+    # --port 8080 serves Streamable HTTP at /mcp and SSE at /sse (verified
+    # against pkg/podman-mcp-server/cmd/root.go) — matches the
+    # mcp_servers.podman-*.url entries in agent/config.yaml.
+    #
+    # --podman-impl cli forces the CLI backend (which agent/
+    # podman-mcp.Dockerfile makes work by aliasing `podman` to `docker`).
+    # Auto-detection prefers the "api" backend whenever any podman-looking
+    # socket answers a ping — including the mounted Docker socket below —
+    # then fails on the first real call because "api" speaks the Podman
+    # REST protocol, which the Docker Engine API doesn't understand.
+    # Forcing "cli" skips that trap entirely.
+    command: ["--port", "8080", "--podman-impl", "cli"]
+    # cmd.Execute()'s Run callback blocks the main thread on
+    # ServeStdio(ctx) unconditionally, even with --port set. Without an
+    # open stdin, ServeStdio hits EOF immediately and the container exits
+    # right after startup, taking the HTTP server down with it — a silent
+    # restart loop with no panic in the logs. stdin_open keeps a pipe open
+    # so ServeStdio blocks for real instead of racing edge to EOF.
+    stdin_open: true
+    # Needs the runtime socket to inspect/list/log containers. This is the
+    # one place with real docker-group-equivalent access on the host — the
+    # actual guardrail is the Hermes-side tool filter in agent/config.yaml,
+    # not this mount.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Published on the host interface rather than kept inside a Docker
+    # network — Hermes now reaches this host over the network, not a
+    # shared bridge. The OpenStack security group (not this port mapping)
+    # is what actually restricts who can reach it; see the header comment.
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    # A plain GET on the Streamable-HTTP /mcp endpoint returns 400 (it
+    # rejects GET without a session), which is fine for a healthcheck: -f
+    # only fails curl on 5xx by default, so a live 400 still counts as
+    # healthy — the server is up and speaking HTTP, which is all this
+    # needs to confirm.
+    healthcheck:
+      test: ["CMD", "curl", "-sS", "-o", "/dev/null", "http://localhost:8080/mcp"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
