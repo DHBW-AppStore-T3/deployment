@@ -20,17 +20,20 @@
 #     instance isn't answering yet when hermes-agent starts, that one MCP
 #     connection stays dead until hermes-agent is restarted, same as
 #     before.
-#   - GEMINI_API_KEY is the operator's own key (Google AI Studio), never
-#     committed; required-env enforcement below fails the compose
+#   - GROQ_API_KEY is the primary model provider (free tier, 1,000 req/day
+#     — Gemini's free tier is 5 req/day for gemini-3.8-flash, exhausted in
+#     a handful of real messages). GEMINI_API_KEY stays as the fallback_chain
+#     target in agent/config.yaml's model: block, not the primary any more.
+#     Neither committed; required-env enforcement below fails the compose
 #     invocation loudly instead of silently starting keyless.
 #   - Discord secrets are carried over 1:1 from the old appstore-prod-01
 #     overlay — same bot identity, same allowlist, no new features.
 # ================================================================
 services:
   # ----------------------------------------------------------------
-  # Hermes Agent — self-improving agent, Gemini-backed, MCP client for
-  # podman-mcp@prod, podman-mcp@staging, podman-mcp@ci. Gateway mode only
-  # (no TUI on a headless VM).
+  # Hermes Agent — self-improving agent, Groq-backed (Gemini fallback),
+  # MCP client for podman-mcp@prod, podman-mcp@staging, podman-mcp@ci.
+  # Gateway mode only (no TUI on a headless VM).
   # ----------------------------------------------------------------
   hermes-agent:
     image: nousresearch/hermes-agent:latest
@@ -38,7 +41,15 @@ services:
     container_name: hermes-agent
     command: ["gateway", "run"]
     environment:
-      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required — create your own key at aistudio.google.com and set it in .env, never commit it}
+      GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY is required — the primary model provider, create a free key at console.groq.com and set it in .env, never commit it}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required — kept as the fallback_chain target in agent/config.yaml, create your own key at aistudio.google.com and set it in .env, never commit it}
+      # Hermes defaults to ~/.hermes for all state (including things like
+      # /sethome's home-channel setting) — with no HOME set for whatever
+      # user this image runs as, that resolved to an empty path and every
+      # write failed with "[Errno 30] Read-only file system: ''" (a real
+      # failure hit in this deployment, not theoretical). /opt/data is
+      # already the mounted, writable volume everything else uses.
+      HERMES_HOME: /opt/data
       HERMES_DASHBOARD: "1"
       HERMES_DASHBOARD_HOST: "127.0.0.1"
       # Loopback-only bind: the dashboard is reached via SSH port-forward

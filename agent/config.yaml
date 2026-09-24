@@ -25,6 +25,26 @@
 # against `openstack server list` after every rebuild of any of the
 # three target VMs — they are not guaranteed stable across a replacement.
 
+# Primary model: Groq (free tier, 1,000 req/day on llama-3.3-70b-versatile —
+# far past Gemini's free-tier 5 req/day for gemini-3.8-flash, which this
+# agent hit almost immediately in real use). Groq is OpenAI-API-compatible,
+# reached via Hermes' generic `custom:<name>` provider mechanism rather than
+# a named integration. Falls back to Gemini (existing key, kept as a second
+# layer) if Groq's daily cap is ever actually exhausted — fallback_chain
+# triggers on rate-limit/5xx/auth-failure responses from the primary,
+# tried once per request, no silent retry loop against the same provider.
+providers:
+  groq:
+    api: https://api.groq.com/openai/v1
+    key_env: GROQ_API_KEY
+
+model:
+  default: llama-3.3-70b-versatile
+  provider: custom:groq
+  fallback_chain:
+    - provider: gemini
+      model: gemini-3.8-flash
+
 mcp_servers:
   podman-prod:
     url: "http://[2001:7c0:1b20:c913:1::180]:8080/mcp"
