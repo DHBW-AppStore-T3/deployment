@@ -506,15 +506,21 @@ jobs:
         env:
           MOODLE_DB_PASSWORD: ${{ secrets.TEMP_MOODLE_DB_PASSWORD_2 }}
           MOODLE_ADMIN_PASSWORD: ${{ secrets.TEMP_MOODLE_ADMIN_PASSWORD_2 }}
-          MOODLE_HOSTNAME: ${{ secrets.TEMP_MOODLE_HOSTNAME }}
         run: |
-          echo "MOODLE_HOSTNAME length (local, masked value): ${#MOODLE_HOSTNAME}"
           add_line() {
             local content="$1"
             ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
               "grep -qxF '${content}' /home/ubuntu/app/.env || echo '${content}' | sudo tee -a /home/ubuntu/app/.env > /dev/null"
           }
-          add_line "MOODLE_HOSTNAME=${MOODLE_HOSTNAME}"
+          # Hardcoded, not sourced from a secret: this specific value
+          # failed to land via env-var + secret indirection on two
+          # independent attempts, with no error anywhere and the secret
+          # itself confirmed intact (63 chars, matching this string,
+          # verified via a length-only diagnostic) — root cause not
+          # fully explained, but not needed either: this is a public DNS
+          # hostname, already visible in the Discord staging-health
+          # message, not sensitive.
+          add_line "MOODLE_HOSTNAME=moodle-prod.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
           add_line "MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}"
           add_line "MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore"
           add_line "MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}"
@@ -522,9 +528,6 @@ jobs:
           echo "Verifying (keys only):"
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
             "grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort"
-          echo "Verifying MOODLE_HOSTNAME specifically (length only, value masked):"
-          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "grep '^MOODLE_HOSTNAME=' /home/ubuntu/app/.env | wc -c"
 
       - name: Fetch live .env as a downloadable artifact (fixes PRODUCTION_ENV_FILE)
         # Same pattern as start-hermes-agent's HERMES_ENV_FILE fix: can't
