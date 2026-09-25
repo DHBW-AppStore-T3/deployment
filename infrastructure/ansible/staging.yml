@@ -441,6 +441,49 @@
         group: "33"
         recurse: yes
 
+    # Der Klon-Task oben nutzt force: yes und überschreibt bei jedem Deploy
+    # config.php mit dem Repo-Stand (kein config.php dort committet — also
+    # zurück auf "Datei existiert nicht"). Ohne die drei Tasks unten verliert
+    # Moodle bei jedem Redeploy sslproxy/wwwroot und fällt in einen
+    # Redirect-Loop zurück (root-caused 2026-09-25, siehe
+    # claude_docs/HANDOVER.md) — ein manueller SSH-Fix an der laufenden
+    # Instanz überlebt keinen Redeploy, deshalb wird config.php hier bei
+    # jedem Deploy frisch aus dem Template gerendert.
+    - name: MOODLE_DB_PASSWORD aus .env lesen
+      when: moodle_enabled | bool
+      ansible.builtin.shell:
+        cmd: |
+          grep -E '^MOODLE_DB_PASSWORD=' "{{ project_root }}/.env" \
+            | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'
+        executable: /bin/bash
+      register: moodle_db_password_raw
+      changed_when: false
+      no_log: true
+
+    - name: MOODLE_HOSTNAME aus .env lesen
+      when: moodle_enabled | bool
+      ansible.builtin.shell:
+        cmd: |
+          grep -E '^MOODLE_HOSTNAME=' "{{ project_root }}/.env" \
+            | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'
+        executable: /bin/bash
+      register: moodle_hostname_raw
+      changed_when: false
+
+    - name: moodle_appstore/config.php aus Template rendern
+      when: moodle_enabled | bool
+      ansible.builtin.template:
+        src: "{{ local_compose_path }}/moodle/config.php.j2"
+        dest: "{{ moodle_repo_path }}/config.php"
+        owner: "33"
+        group: "33"
+        mode: '0640'
+      vars:
+        moodle_db_name: "moodle"
+        moodle_db_user: "moodle"
+        moodle_db_password: "{{ moodle_db_password_raw.stdout | trim }}"
+        moodle_wwwroot: "https://{{ moodle_hostname_raw.stdout | trim }}"
+
     - name: APP_BASE_URL aus .env lesen
       ansible.builtin.shell:
         cmd: |

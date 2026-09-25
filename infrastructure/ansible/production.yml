@@ -281,6 +281,45 @@
         group: "33"
         recurse: yes
 
+    # Gleicher Grund wie in staging.yml: der Klon-Task oben nutzt force: yes
+    # und wirft config.php bei jedem Deploy weg — ohne diesen Task verliert
+    # Moodle sslproxy/wwwroot und landet in einem Redirect-Loop (siehe
+    # staging.yml und claude_docs/HANDOVER.md für die volle Herleitung).
+    - name: MOODLE_DB_PASSWORD aus .env lesen
+      when: moodle_enabled | bool
+      ansible.builtin.shell:
+        cmd: |
+          grep -E '^MOODLE_DB_PASSWORD=' "{{ project_root }}/.env" \
+            | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'
+        executable: /bin/bash
+      register: moodle_db_password_raw
+      changed_when: false
+      no_log: true
+
+    - name: MOODLE_HOSTNAME aus .env lesen
+      when: moodle_enabled | bool
+      ansible.builtin.shell:
+        cmd: |
+          grep -E '^MOODLE_HOSTNAME=' "{{ project_root }}/.env" \
+            | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'
+        executable: /bin/bash
+      register: moodle_hostname_raw
+      changed_when: false
+
+    - name: moodle_appstore/config.php aus Template rendern
+      when: moodle_enabled | bool
+      ansible.builtin.template:
+        src: "{{ local_compose_path }}/moodle/config.php.j2"
+        dest: "{{ moodle_repo_path }}/config.php"
+        owner: "33"
+        group: "33"
+        mode: '0640'
+      vars:
+        moodle_db_name: "moodle"
+        moodle_db_user: "moodle"
+        moodle_db_password: "{{ moodle_db_password_raw.stdout | trim }}"
+        moodle_wwwroot: "https://{{ moodle_hostname_raw.stdout | trim }}"
+
   roles:
     - role: geerlingguy.docker
       tags: [docker_install]
