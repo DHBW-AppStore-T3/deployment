@@ -504,6 +504,12 @@ networks:
   backend-network:
     driver: bridge
     name: backend-network-prod
+    # IPv6 egress for LTI 1.3 JWKS fetch — see docker-compose.staging.yml's
+    # identical block for the full root-cause writeup.
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:dead:beef:1::/64
   worker-network:
     driver: bridge
     name: worker-network-prod
