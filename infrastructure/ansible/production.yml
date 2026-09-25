@@ -306,7 +306,11 @@
       register: moodle_hostname_raw
       changed_when: false
 
-    - name: moodle_appstore/config.php aus Template rendern
+    # Moodle 5.x moved the actual webroot to public/ (Apache's DocumentRoot
+    # points there) — but the repo-root config.php is also read by some
+    # CLI/setup code paths, so both copies are kept in sync. See
+    # staging.yml's identical pair of tasks for the full root-cause writeup.
+    - name: moodle_appstore/config.php aus Template rendern (Repo-Root)
       when: moodle_enabled | bool
       ansible.builtin.template:
         src: "{{ local_compose_path }}/moodle/config.php.j2"
@@ -319,6 +323,22 @@
         moodle_db_user: "moodle"
         moodle_db_password: "{{ moodle_db_password_raw.stdout | trim }}"
         moodle_wwwroot: "https://{{ moodle_hostname_raw.stdout | trim }}"
+        moodle_setup_relpath: "/public/lib/setup.php"
+
+    - name: moodle_appstore/public/config.php aus Template rendern (Apache-DocumentRoot)
+      when: moodle_enabled | bool
+      ansible.builtin.template:
+        src: "{{ local_compose_path }}/moodle/config.php.j2"
+        dest: "{{ moodle_repo_path }}/public/config.php"
+        owner: "33"
+        group: "33"
+        mode: '0640'
+      vars:
+        moodle_db_name: "moodle"
+        moodle_db_user: "moodle"
+        moodle_db_password: "{{ moodle_db_password_raw.stdout | trim }}"
+        moodle_wwwroot: "https://{{ moodle_hostname_raw.stdout | trim }}"
+        moodle_setup_relpath: "/lib/setup.php"
 
   roles:
     - role: geerlingguy.docker
