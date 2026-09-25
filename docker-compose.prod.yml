@@ -273,6 +273,17 @@ services:
       # to deep-link back to the deployment detail page.
       APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL is required}
 
+      # LTI 1.3 (Moodle launch) and self-service-ui handoff. Was set in
+      # docker-compose.dev.yml (deployment#43) but never backported here —
+      # see docker-compose.staging.yml for the same fix and full context.
+      LTI13_PLATFORM_ISSUER: ${LTI13_PLATFORM_ISSUER:-}
+      LTI13_CLIENT_ID: ${LTI13_CLIENT_ID:-}
+      LTI13_DEPLOYMENT_ID: ${LTI13_DEPLOYMENT_ID:-}
+      LTI13_PLATFORM_JWKS_URL: ${LTI13_PLATFORM_JWKS_URL:-}
+      LTI13_REDIRECT_URI: ${LTI13_REDIRECT_URI:-}
+      LTI13_SESSION_SECRET: ${LTI13_SESSION_SECRET:-change-me-in-production}
+      HANDOFF_SESSION_SECRET: ${HANDOFF_SESSION_SECRET:-change-me-in-production}
+
       # Application
       DEBUG: "False"
       APP_NAME: ${APP_NAME:-Backend API}
