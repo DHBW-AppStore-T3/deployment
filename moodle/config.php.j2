@@ -39,4 +39,4 @@ $CFG->directorypermissions = 02777;
 // Reverse proxy (Caddy) terminates TLS — see file header comment.
 $CFG->sslproxy = true;
 
-require_once(__DIR__ . '/public/lib/setup.php');
+require_once(__DIR__ . '{{ moodle_setup_relpath }}');
