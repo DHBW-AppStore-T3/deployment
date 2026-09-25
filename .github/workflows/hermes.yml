@@ -492,42 +492,29 @@ jobs:
             "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
 
       - name: TEMP FIX - append missing Moodle vars to the live .env on appstore-prod-01 (retry)
-        # An earlier attempt at this exact fix used an SSH command with a
-        # <<-EOF heredoc for the tee input — it produced zero output (no
-        # error, no confirmation) and, confirmed by later re-downloading
-        # the .env artifact, silently appended nothing at all. Root cause
-        # not fully diagnosed (Actions' step runner + <<-EOF + a remote
-        # command string is a fragile combination), so this retry avoids
-        # heredocs entirely: one plain `echo ... | ssh ... tee -a` per
-        # line, each independently verifiable. grep -q guards make this
-        # idempotent — safe to run again even though PRODUCTION_ENV_FILE
-        # was already set from an .env that (per this same investigation)
-        # never actually had these lines.
+        # Simplest version: build the whole block locally in one
+        # variable, send it over stdin to a single non-interactive SSH
+        # call, one sudo tee -a. No loop, no per-line round trips, no
+        # heredoc — each of those was tried first and one specific line
+        # (MOODLE_HOSTNAME) silently failed to land across three
+        # separate attempts with zero errors anywhere, cause never fully
+        # explained. This sends the entire, already-assembled text as a
+        # single write.
         env:
           MOODLE_DB_PASSWORD: ${{ secrets.TEMP_MOODLE_DB_PASSWORD_2 }}
           MOODLE_ADMIN_PASSWORD: ${{ secrets.TEMP_MOODLE_ADMIN_PASSWORD_2 }}
         run: |
-          add_line() {
-            local content="$1"
-            ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-              "grep -qxF '${content}' /home/ubuntu/app/.env || echo '${content}' | sudo tee -a /home/ubuntu/app/.env > /dev/null"
-          }
-          # Hardcoded, not sourced from a secret: this specific value
-          # failed to land via env-var + secret indirection on two
-          # independent attempts, with no error anywhere and the secret
-          # itself confirmed intact (63 chars, matching this string,
-          # verified via a length-only diagnostic) — root cause not
-          # fully explained, but not needed either: this is a public DNS
-          # hostname, already visible in the Discord staging-health
-          # message, not sensitive.
-          add_line "MOODLE_HOSTNAME=moodle-prod.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
-          add_line "MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}"
-          add_line "MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore"
-          add_line "MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}"
-          add_line "MOODLE_ADMIN_EMAIL=admin@dhbw.de"
+          BLOCK=$(printf '%s\n' \
+            "MOODLE_HOSTNAME=moodle-prod.s242437-at-student-dhbw-mannheim-de.users.dhbw.site" \
+            "MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}" \
+            "MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore" \
+            "MOODLE_ADMIN_PASSWORD=${MOODLE_ADMIN_PASSWORD}" \
+            "MOODLE_ADMIN_EMAIL=admin@dhbw.de")
+          echo "$BLOCK" | ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "sudo tee -a /home/ubuntu/app/.env > /dev/null"
           echo "Verifying (keys only):"
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
-            "grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort"
+            "grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort -u"
 
       - name: Fetch live .env as a downloadable artifact (fixes PRODUCTION_ENV_FILE)
         # Same pattern as start-hermes-agent's HERMES_ENV_FILE fix: can't
