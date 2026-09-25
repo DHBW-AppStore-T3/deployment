@@ -519,6 +519,18 @@ networks:
   backend-network:
     driver: bridge
     name: backend-network-prod
+    # IPv6 egress: backend must reach Moodle's JWKS endpoint
+    # (moodle-staging.<zone>) to validate LTI 1.3 id_tokens — Moodle sits
+    # in its own network, only reachable at its public, IPv6-only hostname
+    # (this host itself only has an IPv6 address, no IPv4). Without this,
+    # every real launch failed with "Network is unreachable" — root-caused
+    # 2026-09-25 wiring up backend#9 Task 7, see claude_docs/HANDOVER.md.
+    # Requires the Docker daemon's ip6tables:true (see docs/prod-setup.md)
+    # for NAT66 egress; enable_ipv6 alone only assigns addresses.
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:dead:beef:1::/64
   worker-network:
     driver: bridge
     name: worker-network-prod
