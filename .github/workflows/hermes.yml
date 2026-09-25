@@ -528,6 +528,12 @@ jobs:
           echo "Verifying (keys only):"
           ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
             "grep -oE '^[A-Z_]+=' /home/ubuntu/app/.env | sort"
+          echo "Raw grep for any HOSTNAME line (cat -A, shows hidden whitespace):"
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "grep -n HOSTNAME /home/ubuntu/app/.env | cat -A"
+          echo "Last 5 lines of .env, raw (cat -A):"
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "tail -5 /home/ubuntu/app/.env | cat -A"
 
       - name: Fetch live .env as a downloadable artifact (fixes PRODUCTION_ENV_FILE)
         # Same pattern as start-hermes-agent's HERMES_ENV_FILE fix: can't
