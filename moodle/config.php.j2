@@ -1,0 +1,42 @@
+<?php
+// Rendered by Ansible on every deploy that has moodle_enabled set — the
+// moodle_appstore checkout itself is force-cloned fresh each time (see
+// staging.yml/production.yml's "moodle_appstore für die Moodle-Instanz
+// klonen" task), which wipes out any config.php a previous manual fix or
+// the web installer wrote. This template is the durable fix: it always
+// regenerates config.php with the right values, so a config.php edit made
+// by hand (or via the browser installer) never has to survive a redeploy.
+//
+// $CFG->sslproxy is the one setting that matters most here: Moodle sits
+// behind Caddy, which terminates TLS — without sslproxy, Moodle thinks
+// every request is plain HTTP and redirects forever trying to "fix" the
+// mismatch against its own https:// wwwroot (root-caused and fixed
+// 2026-09-25, see claude_docs/HANDOVER.md).
+
+unset($CFG);
+global $CFG;
+$CFG = new stdClass();
+
+$CFG->dbtype    = 'pgsql';
+$CFG->dblibrary = 'native';
+$CFG->dbhost    = 'moodle-db';
+$CFG->dbname    = '{{ moodle_db_name }}';
+$CFG->dbuser    = '{{ moodle_db_user }}';
+$CFG->dbpass    = '{{ moodle_db_password }}';
+$CFG->prefix    = 'mdl_';
+$CFG->dboptions = [
+    'dbpersist' => false,
+    'dbsocket'  => false,
+    'dbport'    => '',
+];
+
+$CFG->wwwroot   = '{{ moodle_wwwroot }}';
+$CFG->dataroot  = '/var/www/moodledata';
+$CFG->admin     = 'admin';
+
+$CFG->directorypermissions = 02777;
+
+// Reverse proxy (Caddy) terminates TLS — see file header comment.
+$CFG->sslproxy = true;
+
+require_once(__DIR__ . '/public/lib/setup.php');
