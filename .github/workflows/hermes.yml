@@ -492,19 +492,28 @@ jobs:
             "test -f /home/ubuntu/app/docker-compose.agent.yml && sudo rm -v /home/ubuntu/app/docker-compose.agent.yml || echo 'already absent'"
 
       - name: TEMP FIX - append missing Moodle vars to the live .env on appstore-prod-01 (retry)
-        # Simplest version: build the whole block locally in one
-        # variable, send it over stdin to a single non-interactive SSH
-        # call, one sudo tee -a. No loop, no per-line round trips, no
-        # heredoc — each of those was tried first and one specific line
-        # (MOODLE_HOSTNAME) silently failed to land across three
-        # separate attempts with zero errors anywhere, cause never fully
-        # explained. This sends the entire, already-assembled text as a
-        # single write.
+        # Root cause finally found (not a shell/quoting/masking bug at
+        # all): the original .env had NO TRAILING NEWLINE after its last
+        # line (LOG_LEVEL=info) — every previous append concatenated
+        # directly onto that line instead of starting a new one
+        # (confirmed by downloading the artifact: "LOG_LEVEL=info
+        # MOODLE_HOSTNAME=..." on one physical line), invisible to any
+        # grep anchored at line-start (^). The other 4 lines "worked"
+        # only because MOODLE_HOSTNAME happened to be first in every
+        # attempt and absorbed the missing-newline damage; everything
+        # appended after it got a real newline from its own preceding
+        # echo. Fix: `printf '\n%s...'` guarantees a leading newline
+        # before this block regardless of whether the file already ends
+        # in one (a harmless blank line if it did) — and this run first
+        # removes the one already-mangled line so it isn't left behind
+        # as dead, confusingly-named cruft alongside the corrected one.
         env:
           MOODLE_DB_PASSWORD: ${{ secrets.TEMP_MOODLE_DB_PASSWORD_2 }}
           MOODLE_ADMIN_PASSWORD: ${{ secrets.TEMP_MOODLE_ADMIN_PASSWORD_2 }}
         run: |
-          BLOCK=$(printf '%s\n' \
+          ssh -i ~/.ssh/openstack-key -o StrictHostKeyChecking=no "ubuntu@${PROD_HOST}" \
+            "sudo sed -i 's/^LOG_LEVEL=infoMOODLE_HOSTNAME=.*$/LOG_LEVEL=info/' /home/ubuntu/app/.env"
+          BLOCK=$(printf '\n%s\n' \
             "MOODLE_HOSTNAME=moodle-prod.s242437-at-student-dhbw-mannheim-de.users.dhbw.site" \
             "MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}" \
             "MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore" \
