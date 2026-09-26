@@ -303,6 +303,14 @@ services:
       PORT: 8000
       WORKERS: ${BACKEND_WORKERS:-4}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Lets `requests` (used by lti13_service.py's JWKS fetch) trust
+      # Caddy's self-signed cert for MOODLE_HOSTNAME — needed only while
+      # the real ACME cert is blocked on the certificates.dhbw.cloud
+      # (HARICA) bug, see claude_docs/HANDOVER.md. Points at the file the
+      # "Backend-CA-Bundle (Caddy Root + certifi) erzeugen" Ansible task
+      # builds and mounts below.
+      REQUESTS_CA_BUNDLE: /etc/ssl/certs/backend-ca-bundle.pem
     depends_on:
       postgres:
         condition: service_healthy
@@ -315,6 +323,16 @@ services:
     volumes:
       - backend_git_repos:/tmp/repos
       - ./.env:/app/.env
+      # Lets `requests` (used by lti13_service.py's JWKS fetch) trust
+      # Caddy's self-signed cert for MOODLE_HOSTNAME — needed only while
+      # the real ACME cert is blocked on the certificates.dhbw.cloud
+      # (HARICA) bug, see claude_docs/HANDOVER.md. Built by the
+      # "Backend-CA-Bundle (Caddy Root + certifi) erzeugen" Ansible task,
+      # which runs AFTER Caddy's first start (Caddy generates its root CA
+      # lazily, on first use) — so this file may not exist yet on a brand
+      # new host's very first deploy; the backend falls back to its
+      # baked-in certifi bundle if the mount source is missing, no crash.
+      - ./backend-ca-bundle.pem:/etc/ssl/certs/backend-ca-bundle.pem:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
