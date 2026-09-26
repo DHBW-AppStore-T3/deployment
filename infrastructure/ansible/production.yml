@@ -447,6 +447,50 @@
       register: compose_output
       changed_when: true
 
+    # TEMPORARY, same reason as staging.yml's identical block: Moodle
+    # currently runs with `tls internal` (Caddy self-signs) because
+    # certificates.dhbw.cloud (HARICA) has a server-side bug blocking the
+    # real ACME cert — see claude_docs/HANDOVER.md. Without this, backend's
+    # `requests`-based JWKS fetch fails validating a real Moodle id_token
+    # with SSLCertVerificationError. Only relevant once moodle_enabled is
+    # actually exercised on prod (Task 6) — harmless no-op otherwise.
+    - name: Warten bis Caddys lokale Root-CA existiert
+      when: moodle_enabled | bool
+      ansible.builtin.command:
+        cmd: docker exec caddy-prod test -f /data/caddy/pki/authorities/local/root.crt
+      register: caddy_root_ca_check
+      until: caddy_root_ca_check.rc == 0
+      retries: 15
+      delay: 4
+      changed_when: false
+      failed_when: false
+
+    - name: Backend-CA-Bundle (Caddy Root + certifi) erzeugen
+      when:
+        - moodle_enabled | bool
+        - caddy_root_ca_check.rc == 0
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          docker exec backend-prod cat /app/.venv/lib/python3.11/site-packages/certifi/cacert.pem \
+            > "{{ project_root }}/backend-ca-bundle.pem"
+          docker exec caddy-prod cat /data/caddy/pki/authorities/local/root.crt \
+            >> "{{ project_root }}/backend-ca-bundle.pem"
+        executable: /bin/bash
+      register: ca_bundle_build
+      changed_when: true
+
+    - name: Backend neu starten, damit es das aktualisierte CA-Bundle einliest
+      when:
+        - moodle_enabled | bool
+        - ca_bundle_build is changed
+      ansible.builtin.command:
+        cmd: >-
+          docker compose {{ compose_files }}
+          up -d --force-recreate --no-deps backend
+        chdir: "{{ project_root }}"
+      changed_when: true
+
     - name: GHCR credentials aus root-Store entfernen
       ansible.builtin.file:
         path: /root/.docker/config.json

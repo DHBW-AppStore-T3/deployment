@@ -293,6 +293,13 @@ services:
       PORT: 8000
       WORKERS: ${BACKEND_WORKERS:-4}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Lets `requests` (used by lti13_service.py's JWKS fetch) trust
+      # Caddy's self-signed cert for MOODLE_HOSTNAME — see
+      # docker-compose.staging.yml's identical block for the full
+      # writeup. Needed only while the real ACME cert is blocked on the
+      # certificates.dhbw.cloud (HARICA) bug.
+      REQUESTS_CA_BUNDLE: /etc/ssl/certs/backend-ca-bundle.pem
     depends_on:
       postgres:
         condition: service_healthy
@@ -305,6 +312,7 @@ services:
     volumes:
       - backend_git_repos:/tmp/repos
       - ./.env:/app/.env
+      - ./backend-ca-bundle.pem:/etc/ssl/certs/backend-ca-bundle.pem:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
