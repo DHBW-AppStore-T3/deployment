@@ -252,7 +252,7 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.88.0.1"
     depends_on:
       postgres:
         condition: service_healthy
