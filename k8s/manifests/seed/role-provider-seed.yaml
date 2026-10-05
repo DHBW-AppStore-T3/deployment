@@ -1,0 +1,54 @@
+# Fills role-provider-service with the demo course and roles through its write
+# API. Idempotent (an existing group/member answers with an error that is
+# ignored), so it can rerun on every sync. Edit the lists below to change who
+# is Dozent / student / AppStore admin.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: role-provider-seed
+data:
+  seed.sh: |
+    #!/bin/sh
+    set -u
+    API=http://role-provider-service:8085
+    H="Authorization: Bearer $WRITE_TOKEN"
+    until curl -sf -o /dev/null -H "$H" "$API/v1/admin/health"; do echo "waiting for role-provider"; sleep 3; done
+    post() { # path json
+      code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$H" -H 'Content-Type: application/json' -d "$2" "$API$1")
+      echo "POST $1 $2 -> $code"
+    }
+    group() { post /v1/groups "{\"id\":\"$1\",\"display_name\":\"$2\"}"; }
+    member() { post "/v1/groups/group:$1/members" "{\"member\":\"user:$2\",\"relation\":\"$3\"}"; }
+
+    group root_uni "AppStore admins"          # APPSTORE_ADMIN_GROUPS=group:root_uni
+    group wwi23seb "WWI23SEB (demo course)"
+
+    member root_uni root.admin@uni.example member
+    member wwi23seb faculty@cs.example      dozent
+    member wwi23seb cs-student@cs.com       studierende
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: role-provider-seed
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: docker.io/curlimages/curl:8.11.1
+          command: [sh, /seed/seed.sh]
+          env:
+            - name: WRITE_TOKEN
+              valueFrom: { secretKeyRef: { name: role-provider-secret, key: api-write-tokens } }
+          volumeMounts: [{ name: seed, mountPath: /seed }]
+          resources: { requests: { cpu: 10m, memory: 16Mi } }
+      volumes:
+        - name: seed
+          configMap: { name: role-provider-seed }

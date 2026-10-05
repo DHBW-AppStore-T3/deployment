@@ -1,0 +1,433 @@
+{
+    "actions": {
+        "open": "Öffnen",
+        "details": "Details",
+        "requestBudget": "Budget anfragen",
+        "approve": "Genehmigen",
+        "reject": "Ablehnen",
+        "subBudget": "Teilbudget",
+        "edit": "Bearbeiten",
+        "move": "Verschieben",
+        "delete": "Löschen",
+        "release": "Freigeben",
+        "newProject": "Neues Projekt",
+        "cancel": "Abbrechen",
+        "close": "Schließen",
+        "showMore": "Mehr anzeigen",
+        "loading": "Lädt…",
+        "adopt": "Übernehmen",
+        "ownerAction": "Verantwortlich"
+    },
+    "adopt": {
+        "title": "Projekt übernehmen: {{name}}",
+        "note": "Dieses OpenStack-Projekt wird hier noch nicht verwaltet. Beim Übernehmen wird es einem Budget zugeordnet; der nächste Abgleich schickt es dann durch den normalen Genehmigungsweg. Die jetzigen Mitglieder bleiben erhalten.",
+        "owner": "Verantwortlich",
+        "ownerHint": "Die Person, die für dieses Projekt verantwortlich ist.",
+        "ownerPlaceholder": "name@dhbw.de",
+        "ownerRequired": "Bitte die E-Mail-Adresse der verantwortlichen Person eingeben",
+        "budget": "Bezahlt aus Budget",
+        "budgetPlaceholder": "Budget wählen, das die Ressourcen bereitstellt",
+        "budgetRequired": "Bitte das zahlende Budget wählen",
+        "budgetsYouManage": "Selbst verwaltete Budgets",
+        "budgetsOwnerCanRequest": "Budgets, aus denen die verantwortliche Person anfragen darf",
+        "purpose": "Zweck",
+        "purposeRequired": "Bitte den Zweck beschreiben (mindestens 5 Zeichen)",
+        "reasonDefault": "Übernommenes OpenStack-Projekt „{{name}}“",
+        "grantedResources": "Gewährte Ressourcen",
+        "externalGroups": "Diesem Projekt sind OpenStack-Gruppen außerhalb dieses Systems zugewiesen; sie bleiben automatisch erhalten."
+    },
+    "approve": {
+        "title": "Genehmigen: {{name}}",
+        "titleChange": "Änderung genehmigen: {{name}}",
+        "requestedByLabel": "Angefragt von:",
+        "purposeLabel": "Zweck:",
+        "budgetNote": "Damit wird ein <1>Budget</1> genehmigt: Wer es verwaltet, kann dann selbst Anfragen genehmigen und innerhalb der gewährten Obergrenze weitergeben.",
+        "requestedAmount": "Angefragte Menge",
+        "adjust": "Andere Menge gewähren",
+        "adjustHint": "Mit einer angepassten Zuteilung genehmigen statt mit der angefragten.",
+        "impact": "Auswirkung auf Budget „{{name}}“"
+    },
+    "autoApprove": {
+        "perPerson": "Bis zu {{amount}} pro Person",
+        "whileRoom": "Solange das Budget Platz hat",
+        "beyondRefused": "Wird abgelehnt",
+        "beyondManager": "Entscheidet eine verwaltende Person"
+    },
+    "budgetCard": {
+        "autoApproveBadge": "Automatisch",
+        "resourceUsage": "Ressourcen-Nutzung",
+        "managedByHint": "Diese Personen genehmigen Anfragen und können Teile dieses Budgets weitergeben."
+    },
+    "budgetForm": {
+        "titleEdit": "Budget bearbeiten: {{name}}",
+        "titleRequest": "Budget anfragen",
+        "titleNew": "Neues Teilbudget unter „{{name}}“",
+        "submitCreate": "Budget anlegen",
+        "requestFrom": "Anfragen aus",
+        "requestFromHint": "Das Budget, das die Ressourcen bereitstellt — wer es verwaltet, genehmigt die Anfrage.",
+        "requestFromRequired": "Bitte das Budget wählen, aus dem angefragt wird",
+        "stillFree": "Dort noch frei: {{summary}}",
+        "name": "Name",
+        "nameHint": "Ein kurzer, wiedererkennbarer Name, z. B. „Fakultät Wirtschaftsinformatik“ oder „KI-Labor WS26“.",
+        "nameRequired": "Bitte einen Namen für das Budget angeben (mindestens 3 Zeichen)",
+        "purpose": "Zweck",
+        "purposeHint": "Wofür ist dieses Budget?",
+        "purposeRequired": "Bitte beschreiben, wofür dieses Budget ist (mindestens 5 Zeichen)",
+        "endDateNeeded": "Das Budget darüber endet am {{date}}, deshalb braucht dieses auch ein Enddatum",
+        "endDateAfterParent": "Das Budget darüber endet am {{date}} — länger kann dieses nicht laufen",
+        "adminScopeRequired": "Mindestens eine Person oder Gruppe ist nötig — ein Budget, das niemand verwaltet, taucht in niemandes „Meine Budgets“ auf, und Anfragen darunter landen stattdessen beim Budget darüber",
+        "shortensSubtree": "Alles unter diesem Budget, das länger läuft — Teilbudgets, Projekte und offene Anfragen — endet dann ebenfalls am {{date}}.",
+        "resourceCap": "Obergrenze",
+        "resourceCapHint": "Das Maximum, das alles unter diesem Budget zusammen nutzen darf.",
+        "managedByHint": "Diese Personen oder Gruppen führen dieses Budget: Anfragen genehmigen, Einstellungen ändern und Teile davon als Teilbudget weitergeben. Projekte dieser Personen entstehen hier ohne Genehmigung.",
+        "requestersHint": "Diese Personen oder Gruppen dürfen Projekte aus diesem Budget anlegen, ohne darüber mitzubestimmen. Deren Projekte warten auf eine Genehmigung, sofern die automatische Genehmigung sie nicht abdeckt. Leer lassen, um Anfragen abzuschalten.",
+        "allowBudgetRequests": "Neben Projekten auch Budget-Anfragen erlauben",
+        "allowBudgetRequestsHint": "Wer anfragen darf, kann dann ein eigenes Budget hier anfragen und weiter verteilen. Für ein Kursbudget, das nur Projekte halten soll, bleibt das aus — wer das Budget verwaltet, kann Teilbudgets ohnehin direkt anlegen.",
+        "allowBudgetRequestsInactive": "Nur relevant, sobald jemand hier anfragen darf.",
+        "tabAccess": "Zugriff",
+        "tabAutoApprove": "Automatisch",
+        "autoApproveNoRequesters": "Aus diesem Budget darf noch niemand anfragen, also gibt es nichts automatisch zu genehmigen. Zuerst unter <1>Zugriff → „Wer hier anfragen darf“</1> Personen oder Gruppen eintragen; danach lässt sich dieser Tab bearbeiten.",
+        "autoApprove": "Anfragen automatisch genehmigen",
+        "autoApproveHint": "Projekte der Personen unter „Wer hier anfragen darf“ entstehen sofort und ohne verwaltende Person, solange dieses Budget Platz hat — spätere Änderungen daran ebenso, solange sie darin bleiben. Was darüber hinausgeht, regelt der nächste Schalter.",
+        "allowBeyond": "Anfragen darüber hinaus erlauben",
+        "allowBeyondOn": "Was die automatische Genehmigung nicht abdeckt, wartet auf eine verwaltende Person. Ausgeschaltet wird daraus eine harte Grenze.",
+        "allowBeyondOff": "Aus: Was die automatische Genehmigung nicht abdeckt, wird sofort abgelehnt — nichts wartet auf eine verwaltende Person. Für die Personen, die dieses Budget verwalten, gilt das nicht.",
+        "individual": "Persönliche Grenzen anwenden",
+        "individualOn": "Jede Person bekommt höchstens die Mengen unten, über all ihre Projekte hier zusammengerechnet — die Einstellung für einen Kurs.",
+        "individualOff": "Aus: Alle ziehen aus dem ganzen Budget, bis es aufgebraucht ist — die Einstellung für einen persönlichen oder Team-Pool. Eingeschaltet bekommt jede Person einen festen Anteil.",
+        "neverNeedApproval": "Egal, was hier eingestellt ist: Ressourcen zurückgeben, ein Projekt früher beenden und seine Mitglieder ändern brauchen nie eine Genehmigung."
+    },
+    "budgets": {
+        "deleteTitle": "Budget „{{name}}“ löschen?",
+        "deleteMessage": "Nur möglich, solange darunter nichts aktiv ist und nichts auf eine Entscheidung wartet.",
+        "releaseTitle": "Projekt „{{name}}“ freigeben?",
+        "releaseMessage": "Beim Freigeben werden das Projekt und seine Ressourcen aus OpenStack entfernt. Das lässt sich nicht rückgängig machen.",
+        "loadError": "Die Budgets konnten nicht geladen werden",
+        "intro": "Die selbst verwalteten Budgets als Baum.",
+        "introWithRequestable": "Die selbst verwalteten Budgets, dazu die, aus denen angefragt werden darf (nur lesbar).",
+        "introSelect": "Ein Eintrag lässt sich zum Ansehen auswählen. Weitergeben geht über ein Teilbudget, bei dem jemand anderes unter „Verwaltet von“ steht.",
+        "none": "Noch kein Budget in eigener Verwaltung. Wer ein übergeordnetes Budget verwaltet, kann eines übertragen.",
+        "noneCanRequest": "Noch kein Budget in eigener Verwaltung. Eines lässt sich aus einem Budget anfragen, das Teilbudget-Anfragen annimmt.",
+        "shown": "Gezeigte Budgets: {{shown}}/{{total}}. Die übrigen sind über die Suche zu finden.",
+        "filterAll": "Alle",
+        "filterWaiting": "Wartet",
+        "filterCount": "{{label}} ({{count}})",
+        "includeSubtree": "Anfragen in weitergegebenen Teilbudgets einschließen",
+        "openShown": "Gezeigte offene Anfragen: {{shown}}/{{total}}",
+        "searchPlaceholder": "Name, Person, Gruppe suchen…",
+        "searchLabel": "Budget-Baum durchsuchen",
+        "clearSearch": "Suche leeren",
+        "searching": "Suche läuft…",
+        "noMatches": "Keine Treffer.",
+        "nothingWaiting": "Nichts wartet auf eine Entscheidung."
+    },
+    "changes": {
+        "proposed": "Vorgeschlagene Änderungen",
+        "resource": "Ressource",
+        "before": "Vorher",
+        "after": "Nachher",
+        "change": "Änderung",
+        "endDate": "Enddatum",
+        "added": "Hinzugefügt:",
+        "removed": "Entfernt:",
+        "rolesChanged": "Rollen geändert:"
+    },
+    "endDate": {
+        "label": "Enddatum",
+        "pick": "Datum wählen",
+        "date": "Datum",
+        "dateWithRelative": "Datum ({{relative}})",
+        "duration": "Dauer",
+        "unit": "Einheit",
+        "days": "Tage",
+        "weeks": "Wochen",
+        "months": "Monate",
+        "setEndDate": "Enddatum setzen",
+        "setEndDateHint": "Aus bedeutet: Das Budget läuft, bis jemand es ändert.",
+        "atMost": "Höchstens bis {{date}}, dann endet das Budget.",
+        "ends": "Endet: {{date}} ({{relative}})"
+    },
+    "expiry": {
+        "validUntil": "Gültig bis {{date}}",
+        "expiredOn": "Abgelaufen {{date}}",
+        "expiredValue": "{{date}} — abgelaufen"
+    },
+    "fact": {
+        "requestedBy": "Angefragt von",
+        "createdBy": "Angelegt von",
+        "managedBy": "Verwaltet von",
+        "managedByEmpty": "Wer das Budget darüber verwaltet",
+        "canRequest": "Anfragen dürfen",
+        "canRequestEmpty": "Niemand — nur verwaltende Personen können hier etwas anlegen",
+        "mayAskFor": "Anfragbar",
+        "mayAskProjects": "Projekte",
+        "mayAskProjectsAndBudgets": "Projekte und Teilbudgets",
+        "grantedAtOnce": "Sofort gewährt",
+        "beyondThat": "Darüber hinaus",
+        "validUntil": "Gültig bis",
+        "paidFrom": "Bezahlt aus",
+        "resources": "Ressourcen",
+        "members": "Mitglieder",
+        "owner": "Verantwortlich",
+        "inUse": "In Benutzung"
+    },
+    "forms": {
+        "add": "Hinzufügen",
+        "remove": "Entfernen",
+        "whoCanRequest": "Wer hier anfragen darf",
+        "saveChanges": "Änderungen speichern",
+        "submitRequest": "Anfrage senden"
+    },
+    "inspect": {
+        "titleBudget": "Budget: {{name}}",
+        "titleProject": "Projekt: {{name}}",
+        "tabHistory": "Verlauf",
+        "status": "Status",
+        "purpose": "Zweck",
+        "resourceCap": "Obergrenze",
+        "created": "Angelegt",
+        "id": "ID",
+        "access": "Zugriff",
+        "managedByEmpty": "Nur wer die Budgets darüber verwaltet",
+        "mayRequestProjects": "Darf nur Projekte anfragen",
+        "mayRequestProjectsAndBudgets": "Darf Projekte und Teilbudgets anfragen",
+        "ownerOnly": "Nur die verantwortliche Person hat Zugriff.",
+        "noHistory": "Kein Verlauf vorhanden.",
+        "actor": "Von: {{actor}}",
+        "statusNew": "neu",
+        "budgetChange": "Budget: {{from}} → {{to}}",
+        "ownerChange": "Verantwortlich: {{from}} → {{to}}",
+        "changes": "Änderungen",
+        "grantedResources": "Gewährte Ressourcen:",
+        "reason": "Begründung:",
+        "events": {
+            "created": "Angelegt",
+            "approved": "Genehmigt",
+            "rejected": "Abgelehnt",
+            "change_requested": "Änderung angefragt",
+            "change_rejected": "Änderung abgelehnt (bleibt wie vorher)",
+            "amended": "Anfrage aktualisiert",
+            "updated": "Von einer verwaltenden Person bearbeitet",
+            "released": "Freigegeben",
+            "reparented": "In ein anderes Budget verschoben",
+            "owner_transferred": "Verantwortung übertragen",
+            "promote_requested": "Zur Übernahme vorgemerkt",
+            "end_shortened": "Endet früher mit seinem Budget"
+        }
+    },
+    "itemSelector": {
+        "placeholder": "Suchen und hinzufügen…",
+        "searchHint": "Tippen, um zu suchen",
+        "empty": "Nichts ausgewählt"
+    },
+    "memberEditor": {
+        "placeholder": "Personen oder Gruppen suchen und hinzufügen…",
+        "searchHint": "Tippen, um Personen oder Gruppen zu finden, die Zugriff bekommen sollen",
+        "empty": "Niemand hat zusätzlichen Zugriff",
+        "openstackRole": "OpenStack-Rolle"
+    },
+    "move": {
+        "title": "Verschieben: {{name}}",
+        "budgetScope": "Dieses Budget und alles darunter wird ab dann aus dem Zielbudget bezahlt.",
+        "projectScope": "Dieses Projekt wird ab dann aus dem Zielbudget bezahlt.",
+        "requirement": "Nötig sind Verwaltungsrechte auf beiden Seiten — am jetzigen und am neuen Ort — und im Zielbudget muss genug frei sein.",
+        "target": "Verschieben nach",
+        "targetPlaceholder": "Zielbudget wählen",
+        "targetRequired": "Bitte das Zielbudget wählen"
+    },
+    "myProjects": {
+        "releaseTitle": "Projekt freigeben?",
+        "loadError": "Die Projekte konnten nicht geladen werden",
+        "intro": "Ein Projekt ist ein eigener Bereich in der DHBW-Cloud, mit den angefragten Ressourcen.",
+        "shown": "Gezeigte Projekte: {{shown}}/{{total}}",
+        "noneCanRequest": "Noch keine Projekte. Über „Neues Projekt“ geht es los — Budgets mit „Sofort“ legen es direkt an.",
+        "none": "Noch keine Projekte, und derzeit nimmt kein Budget Anfragen an. Den Zugang zu einem Budget richtet die Lehrkraft oder die Administration ein."
+    },
+    "offers": {
+        "heading": "Nutzbare Budgets",
+        "instant": "Sofort",
+        "onRequest": "Auf Anfrage",
+        "yoursRightAway": "Sofort verfügbar",
+        "stillFree": "Hier noch frei",
+        "everyProject": "Jedes Projekt",
+        "nothing": "Nichts"
+    },
+    "principalSearch": {
+        "placeholder": "z. B. group:cs-students",
+        "unreachable": "Das Gruppenverzeichnis ist nicht erreichbar — keine Vorschläge. Ein Token lässt sich trotzdem von Hand eintippen."
+    },
+    "projectCard": {
+        "overcommittedBadge": "Über dem Limit",
+        "overcommittedWithAmount": "Nutzt {{amount}} in OpenStack, mehr als gewährt. Dem Budget wird der höhere Wert berechnet, und neue Ressourcen sind gesperrt.",
+        "overcommitted": "Das Projekt nutzt in OpenStack gerade mehr, als gewährt wurde. Neue Ressourcen sind gesperrt.",
+        "openInOpenStack": "In OpenStack öffnen",
+        "adoptionQueued": "Zur Übernahme vorgemerkt — der nächste Abgleich stellt dieses Projekt unter Verwaltung.",
+        "importedManager": "Dieses Projekt existiert in OpenStack, wird hier aber noch nicht verwaltet. Mit „Übernehmen“ wird es einem Budget zugeordnet.",
+        "imported": "Dieses Projekt existiert in OpenStack, wird hier aber nicht verwaltet. Es lässt sich nicht bearbeiten.",
+        "inUseHint": "Wird dem Budget statt der gewährten Menge berechnet.",
+        "ownerPlus": "Verantwortlich + {{count}}"
+    },
+    "projectForm": {
+        "titleNew": "Neues Projekt",
+        "titleEdit": "Anfrage bearbeiten",
+        "titleChange": "Projekt ändern",
+        "submitNew": "Projekt anlegen",
+        "submitUpdateRequest": "Anfrage aktualisieren",
+        "submitChangeRequest": "Änderung anfragen",
+        "budget": "Budget",
+        "budgetHint": "Jedes Projekt hängt an einem Budget, das seine Ressourcen bereitstellt.",
+        "budgetPlaceholder": "Budget für dieses Projekt wählen",
+        "budgetNone": "Derzeit ist keine Projektanfrage möglich. Den Zugang zu einem Budget richtet die Lehrkraft oder die Administration ein.",
+        "budgetsManaged": "Selbst verwaltete Budgets (wird sofort angelegt)",
+        "budgetsRequestable": "Budgets, aus denen angefragt werden kann",
+        "instantBadge": "Sofort",
+        "prefilled": "Die Ressourcen sind mit dem vorbelegt, was dieses Budget sofort genehmigt: {{amount}}. Weniger geht genauso sofort.",
+        "name": "Name",
+        "nameHint": "Ein kurzer, wiedererkennbarer Name — so heißt das Projekt in OpenStack.",
+        "namePlaceholder": "z. B. Cloud Computing Labor WS26",
+        "nameRequired": "Bitte einen Namen für das Projekt angeben (mindestens 3 Zeichen)",
+        "purpose": "Zweck",
+        "purposeHint": "Wofür ist dieses Projekt? Wer es genehmigt, sieht diesen Text.",
+        "purposePlaceholder": "z. B. Laborübungen zur Vorlesung Verteilte Systeme",
+        "purposeRequired": "Bitte den Zweck beschreiben (mindestens 5 Zeichen)",
+        "budgetRequired": "Bitte ein Budget wählen",
+        "endDateRequired": "Bitte ein Enddatum setzen",
+        "endDateInPast": "Das Enddatum muss in der Zukunft liegen",
+        "endDateAfterBudget": "Das Budget endet am {{date}} — länger kann das Projekt nicht laufen",
+        "membersEmpty": "Sonst hat noch niemand Zugriff. Die verantwortliche Person hat ihn immer.",
+        "belowInUseTitle": "Weniger, als das Projekt schon nutzt",
+        "belowInUse": "OpenStack lässt die vorhandenen Server weiterlaufen und lehnt nur neue ab. Dadurch wird nichts frei — das Projekt liegt über seiner Quota, bis die Ressourcen wirklich freigegeben werden.",
+        "requested": "Angefragt",
+        "proposedChanges": "Vorgeschlagene Änderungen",
+        "outcomeBlocked": "Dieses Budget gewährt nicht mehr als den persönlichen Anteil und nimmt darüber hinaus keine Anfragen an. Entweder weniger anfragen oder eine verwaltende Person um einen höheren Anteil bitten.",
+        "outcomeRefused": "Mehr, als dieses Budget frei hat — das Projekt wird nicht angelegt. Entweder die Menge verringern oder zuerst das Budget erhöhen.",
+        "outcomeDirect": "Dieses Budget ist in eigener Verwaltung — das Projekt wird sofort angelegt.",
+        "outcomeInstantChange": "Wird sofort wirksam — keine Genehmigung nötig.",
+        "outcomeInstant": "Wird sofort angelegt — dieses Budget genehmigt es automatisch.",
+        "outcomeWaitingPolicyChange": "Mehr, als dieses Budget automatisch genehmigt. Eine verwaltende Person entscheidet; bis dahin behält das Projekt seine jetzigen Ressourcen.",
+        "outcomeWaitingPolicy": "Mehr, als dieses Budget automatisch genehmigt. Eine Person, die dieses Budget verwaltet, entscheidet.",
+        "outcomeWaitingChange": "Eine verwaltende Person entscheidet. Bis dahin behält das Projekt seine jetzigen Ressourcen.",
+        "outcomeWaiting": "Eine Person, die dieses Budget verwaltet, entscheidet über diese Anfrage."
+    },
+    "quotaInputs": {
+        "filter": "Ressourcen filtern",
+        "noMatches": "Nichts passt zu „{{query}}“.",
+        "noCap": "Kein Limit",
+        "noCapHint": "Darunter darf beliebig viel genutzt werden",
+        "exceedsFree": "Mehr als die {{free}}, die in dem Budget noch frei sind — eine verwaltende Person müsste es erst erhöhen.",
+        "freeShare": "{{free}} frei in dem Budget · davon nimmt das hier {{share}}%",
+        "grantedOrNot": "Muss gewährt oder nicht gewährt sein",
+        "range": "Erlaubt ist ein Wert zwischen {{min}} und {{max}}"
+    },
+    "reject": {
+        "title": "Anfrage ablehnen",
+        "titleChange": "Änderungsanfrage ablehnen",
+        "submitChange": "Änderung ablehnen",
+        "requestedBy": "Angefragt von: {{email}}",
+        "changeNote": "Nur die vorgeschlagene Änderung wird verworfen — das Projekt läuft mit seinen jetzigen Ressourcen weiter.",
+        "reason": "Begründung",
+        "reasonPlaceholder": "Begründung der Entscheidung…",
+        "reasonRequired": "Bitte eine Begründung angeben (mindestens 5 Zeichen) — die anfragende Person sieht sie."
+    },
+    "requestTypes": {
+        "project": "Neue Projekte",
+        "budget": "Neue Budgets",
+        "change": "Änderungsanfragen",
+        "imported": "Importiert"
+    },
+    "roleSwitch": {
+        "become": "Auftreten als",
+        "searchPlaceholder": "Person suchen oder E-Mail eingeben…",
+        "noMatch": "Kein Treffer — eine vollständige E-Mail funktioniert trotzdem.",
+        "button": "Rolle wechseln",
+        "actingAs": "Unterwegs als {{name}}",
+        "moreMatches": "weitere Treffer — weitertippen.",
+        "reset": "Zurücksetzen"
+    },
+    "rootAdmin": {
+        "loadError": "Der Abgleichstatus konnte nicht geladen werden",
+        "disabled": "Der Abgleich ist abgeschaltet.",
+        "title": "OpenStack-Abgleich",
+        "running": "Läuft…",
+        "refresh": "Aktualisieren",
+        "trigger": "Abgleich starten",
+        "triggered": "Abgleich angestoßen. Der Status lässt sich gleich aktualisieren.",
+        "lastRun": "Letzter Lauf",
+        "projectsSynced": "Abgeglichene Projekte",
+        "projectsCreated": "Angelegte Projekte",
+        "osOnlyImported": "Nur in OpenStack, importiert",
+        "osOnlyRemoved": "Nur in OpenStack, entfernt",
+        "orphanedUsersRemoved": "Entfernte verwaiste Zugriffe",
+        "lastError": "Letzter Fehler",
+        "overdueTitle": "Abgelaufene Projekte auf der Kommandozeile",
+        "overdueText": "Jedes verwaltete Projekt trägt sein Enddatum als Tag <1>{{tag}}</1>. Dieser Befehl listet damit, was abgelaufen ist — direkt aus OpenStack, mit den eigenen Zugangsdaten. Projekte ohne Datum tragen keinen Tag und tauchen nie auf.",
+        "preseedTitle": "Einige Zugriffe konnten in OpenStack nicht vorbereitet werden",
+        "preseedText": "Diese Personen haben ihre Rolle nicht bekommen. Ihr OpenStack-Konto ist nicht eindeutig — meist weicht der OIDC-Benutzername von der E-Mail-Adresse ab. Abhilfe: die Rolle von Hand am richtigen Konto vergeben oder den Benutzernamen korrigieren; der nächste Abgleich versucht es erneut."
+    },
+    "shell": {
+        "renderErrorTitle": "Diese Ansicht ließ sich nicht darstellen",
+        "renderErrorMessage": "Ein anderer Bereich oder ein Neuladen der Seite hilft weiter. Bleibt es dabei, ist hier womöglich ein Datensatz fehlerhaft."
+    },
+    "status": {
+        "pending": {
+            "label": "Wartet auf Genehmigung",
+            "description": "Angefragt, aber noch existiert nichts. Jemand, der das zahlende Budget verwaltet, muss es erst genehmigen."
+        },
+        "approved": {
+            "label": "Aktiv",
+            "description": "Genehmigt und in Betrieb. Das OpenStack-Projekt existiert, und die hier gezeigten Ressourcen sind reserviert."
+        },
+        "change_pending": {
+            "label": "Änderung angefragt",
+            "description": "Eine Änderung wartet auf eine Entscheidung. Bis sie genehmigt ist, läuft das Projekt mit den bisherigen Grenzen weiter, und die kosten es auch."
+        },
+        "rejected": {
+            "label": "Abgelehnt",
+            "description": "Die Anfrage wurde abgelehnt. Es wurde nichts angelegt, und dem Budget wird nichts berechnet."
+        },
+        "released": {
+            "label": "Freigegeben",
+            "description": "Dieses Projekt wurde aufgegeben. Es bleibt in der Liste und belegt weiter sein Budget, bis OpenStack es wirklich gelöscht hat — bis dahin laufen die Maschinen ja noch. Das lässt sich nicht rückgängig machen."
+        },
+        "imported": {
+            "label": "Importiert",
+            "description": "In OpenStack gefunden, aber hier nicht verwaltet — es wurde außerhalb des Self-Service angelegt. Es muss erst in ein Budget übernommen werden, bevor es geändert werden kann."
+        },
+        "provisioning": {
+            "label": "Wird eingerichtet",
+            "description": "Genehmigt. Das OpenStack-Projekt wird gerade angelegt — das dauert meist ein paar Minuten."
+        }
+    },
+    "tokenList": {
+        "placeholder": "group:name oder user:email@…",
+        "empty": "Noch niemand eingetragen."
+    },
+    "transferOwner": {
+        "title": "Verantwortung übertragen: {{name}}",
+        "submit": "Übertragen",
+        "explain": "Die verantwortliche Person kümmert sich um ein Projekt — sie kann es bearbeiten, Änderungen anfragen und es freigeben.",
+        "currentOwner": "Bisher verantwortlich: <1>{{email}}</1>",
+        "newOwner": "Neu verantwortlich",
+        "newOwnerHint": "E-Mail-Adresse der Person, die übernimmt.",
+        "newOwnerPlaceholder": "name@dhbw.de",
+        "newOwnerRequired": "Bitte die E-Mail-Adresse der neuen verantwortlichen Person eingeben"
+    },
+    "tree": {
+        "statusTooltip": "{{status}} — {{description}}",
+        "requestOnly": "Aus diesem Budget darf angefragt werden, verwaltet wird es aber von anderen — daher nur lesbar.",
+        "autoApprove": "Automatisch: kleine Anfragen werden ohne Nachfrage genehmigt.",
+        "inBudget": "in {{name}}"
+    },
+    "usage": {
+        "pending": "+{{count}} angefragt",
+        "incoming": "+{{count}} kommt hinzu",
+        "ofLimit": "{{used}} / {{limit}}",
+        "ofLimitWith": "{{used}} ({{extra}}) / {{limit}}"
+    },
+    "relations": {
+        "dozent": "Dozent:in",
+        "studierende": "Studierende",
+        "studiengangsleiter": "Studiengangsleitung",
+        "sekretariat": "Sekretariat"
+    }
+}

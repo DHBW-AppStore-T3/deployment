@@ -1,0 +1,31 @@
+Deployment ist bereit
+=====================
+
+Guten Tag,
+
+das Deployment "{{ deployment.name }}" ({{ deployment.app_name }}) wurde
+erfolgreich ausgerollt. Alle Team-Mitglieder haben eine E-Mail erhalten und
+finden ihre Zugangsdaten unter "Meine Zugänge".
+
+Deployment öffnen: {{ detail_url }}
+{% for team in teams %}
+Team {{ team.name }}
+{{ "-" * (team.name|length + 5) }}
+{% if team.vm -%}
+{% if team.vm.url %}Adresse:          {{ team.vm.url }}
+{% endif -%}
+{% if team.vm.floating_ip %}Öffentliche IP:   {{ team.vm.floating_ip }}
+{% endif -%}
+{% if team.vm.fixed_ip %}Interne IP:       {{ team.vm.fixed_ip }}
+{% endif -%}
+{% if team.vm.instance_name %}Instanz:          {{ team.vm.instance_name }}
+{% endif -%}
+{% endif -%}
+{% for member in team.members %}  - {{ member }}
+{% else %}  (keine Mitglieder)
+{% endfor %}
+{%- endfor %}
+Ausgerollt aus {{ deployment.git_url }}, Version {{ deployment.release_tag }}.
+
+--
+Automatisch verschickt vom DHBW AppStore. Bitte antworten Sie nicht auf diese E-Mail.
