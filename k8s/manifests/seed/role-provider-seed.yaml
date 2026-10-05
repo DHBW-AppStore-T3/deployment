@@ -12,7 +12,7 @@ data:
     set -u
     API=http://role-provider-service:8085
     H="Authorization: Bearer $WRITE_TOKEN"
-    until curl -sf -o /dev/null "$API/health"; do echo "waiting for role-provider"; sleep 3; done
+    until curl -sf -o /dev/null -H "$H" "$API/v1/admin/health"; do echo "waiting for role-provider"; sleep 3; done
     post() { # path json
       code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$H" -H 'Content-Type: application/json' -d "$2" "$API$1")
       echo "POST $1 $2 -> $code"
