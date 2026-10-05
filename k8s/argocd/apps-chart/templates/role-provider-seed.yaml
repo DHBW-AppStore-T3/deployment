@@ -2,17 +2,18 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: role-provider-seed
+  name: {{ .Values.env.name }}-role-provider-seed
   namespace: argocd
   annotations: { argocd.argoproj.io/sync-wave: "4" }
 spec:
   project: default
   source:
-    repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
-    targetRevision: spike/k8s
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.env.branch }}
     path: k8s/manifests/seed
   destination:
     server: https://kubernetes.default.svc
-    namespace: appstore
+    namespace: {{ .Values.env.namespace }}
   syncPolicy:
     automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

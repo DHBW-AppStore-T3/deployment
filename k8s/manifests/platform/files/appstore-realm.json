@@ -1,0 +1,102 @@
+{
+  "realm": "appstore",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 28800,
+  "offlineSessionIdleTimeout": 2592000,
+  "clients": [
+    {
+      "clientId": "appstore",
+      "name": "AppStore (BFF)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${BFF_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://__APP_HOST__/oauth2/callback"
+      ],
+      "webOrigins": [
+        "https://__APP_HOST__"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://__APP_HOST__/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ],
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "appstore",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "faculty@cs.example",
+      "email": "faculty@cs.example",
+      "firstName": "faculty",
+      "lastName": "Demo",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["default-roles-appstore", "offline_access", "uma_authorization"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEMO_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "cs-student@cs.com",
+      "email": "cs-student@cs.com",
+      "firstName": "cs-student",
+      "lastName": "Demo",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["default-roles-appstore", "offline_access", "uma_authorization"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEMO_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "root.admin@uni.example",
+      "email": "root.admin@uni.example",
+      "firstName": "root.admin",
+      "lastName": "Demo",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["default-roles-appstore", "offline_access", "uma_authorization"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEMO_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

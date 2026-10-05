@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: appstore-api
+  name: {{ .Values.env.name }}-appstore-api
   namespace: argocd
   annotations: { argocd.argoproj.io/sync-wave: "3" }
 spec:
   project: default
   source:
-    repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
-    targetRevision: spike/k8s
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.env.branch }}
     path: k8s/src/appstore-api/helm-chart
     helm:
       valueFiles: [../../../env/appstore-api.yaml]
@@ -16,25 +16,24 @@ spec:
         fullnameOverride: appstore       # Services appstore-api / appstore-worker
         appstore:
           existingSecret: appstore-secret
-          # Real OpenStack: the worker runs tofu/packer with the caller's credential.
-          simulate: false
+          simulate: {{ .Values.appstore.simulate }}
           api:
             image: ghcr.io/dhbw-appstore-t3/k8s-appstore-api
-            mode: production
-            uiUrl: https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+            mode: {{ .Values.appstore.mode }}
+            uiUrl: https://{{ .Values.env.host }}
             adminGroups: "group:root_uni"
           worker:
             image: ghcr.io/dhbw-appstore-t3/k8s-appstore-worker
           oidc:
-            issuerUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore
+            issuerUrl: https://{{ .Values.env.ssoHost }}/realms/appstore
             clientId: appstore
-            jwksUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/certs
+            jwksUrl: https://{{ .Values.env.ssoHost }}/realms/appstore/protocol/openid-connect/certs
           roleProvider:
             type: http
             url: http://role-provider-service:8085
   destination:
     server: https://kubernetes.default.svc
-    namespace: appstore
+    namespace: {{ .Values.env.namespace }}
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [CreateNamespace=true]

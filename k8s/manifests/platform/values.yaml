@@ -1,0 +1,3 @@
+# Set per environment through k8s/environments/<env>.yaml (see argocd/apps-chart).
+appHost: appstore.example.org     # public host of the UI (the OIDC client's redirect target)
+ssoHost: sso.example.org          # public host of Keycloak

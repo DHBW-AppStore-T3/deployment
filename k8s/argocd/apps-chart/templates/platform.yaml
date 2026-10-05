@@ -1,0 +1,23 @@
+# PostgreSQL (CloudNativePG cluster) and Keycloak (the OIDC issuer).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.env.name }}-platform
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.env.branch }}
+    path: k8s/manifests/platform
+    helm:
+      values: |
+        appHost: {{ .Values.env.host }}
+        ssoHost: {{ .Values.env.ssoHost }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.env.namespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

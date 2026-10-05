@@ -1,12 +1,18 @@
 name: K8s - build images (spike)
 
-# Spike only. This builds the three images the k3s cluster runs and hands the
-# new tag to Argo CD through git (k8s/env/*.yaml). It must NOT run for main or
-# dev: production.yml / staging.yml keep deploying exactly as before, and the
-# Argo CD root application of the cluster tracks spike/k8s alone.
+# Spike only. Builds the three images of the k3s cluster and hands the new tag
+# to Argo CD through git (k8s/env/*.yaml).
+#
+#   spike/dev   -> builds, tags the images, STAGING picks the tag up.
+#   spike/main  -> never builds. Production runs exactly the images that were
+#                  built on spike/dev: promote by merging spike/dev into
+#                  spike/main (PR), which carries the tag files along.
+#
+# It must NOT run for main or dev: production.yml / staging.yml keep deploying
+# the compose stack exactly as before.
 on:
   push:
-    branches: ['spike/**']
+    branches: ['spike/dev']
     paths:
       - 'k8s/src/**'
       - '.github/workflows/k8s-images.yml'

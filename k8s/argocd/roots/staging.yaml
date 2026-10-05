@@ -1,16 +1,17 @@
-# App of apps. Applied ONCE by bootstrap.sh; everything else is synced from git.
-# Tracks spike/k8s only - main (production) is not watched by this cluster.
+# Root Application of the staging environment. Applied once by bootstrap.sh staging.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root
+  name: staging-root
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
-    targetRevision: spike/k8s
-    path: k8s/argocd/apps
+    targetRevision: spike/dev
+    path: k8s/argocd/apps-chart
+    helm:
+      valueFiles: [../../environments/staging.yaml]
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

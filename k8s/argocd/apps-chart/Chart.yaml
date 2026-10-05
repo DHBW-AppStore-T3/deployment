@@ -1,0 +1,5 @@
+apiVersion: v2
+name: appstore-env-apps
+description: The Argo CD Applications of one AppStore environment (staging or prod)
+type: application
+version: 0.1.0

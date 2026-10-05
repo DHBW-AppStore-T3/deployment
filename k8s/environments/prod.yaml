@@ -1,0 +1,8 @@
+# Production: tracks spike/main (analogous to main -> prod of the compose stack).
+# Reached only by promoting spike/dev (PR), never built from source here.
+env:
+  name: prod
+  namespace: appstore-prod
+  branch: spike/main
+  host: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  ssoHost: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site

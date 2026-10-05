@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# One-time setup of the k3s cluster for the spike/k8s AppStore.
+# One-time setup of one AppStore environment on the k3s cluster.
 # Creates the namespace and every Secret (nothing secret lives in git), then
-# applies the Argo CD root application, which syncs the rest from spike/k8s.
+# applies the environment's Argo CD root application, which syncs the rest from
+# the environment's branch (staging: spike/dev, prod: spike/main).
 #
 #   export KUBECONFIG=/path/to/kubeconfig-ma_wwi_24sea_appstore_g3.yaml
-#   k8s/bootstrap.sh
+#   k8s/bootstrap.sh staging|prod
 #
 # Idempotent: existing Secrets are left alone (rotating a Fernet key or the
 # cookie secret by accident would lock people out), so re-running is safe.
 # The generated values are printed once at the end of the FIRST run only.
 set -euo pipefail
 cd "$(dirname "$0")"
-NS=appstore
+ENV_NAME=${1:?usage: bootstrap.sh staging|prod}
+case "$ENV_NAME" in staging|prod) ;; *) echo "unknown environment: $ENV_NAME" >&2; exit 2;; esac
+NS=$(awk '/^  namespace:/{print $2}' "environments/$ENV_NAME.yaml")
 
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -63,14 +66,14 @@ if ! have keycloak-secret; then
   kubectl -n "$NS" create secret generic oauth2-proxy-ui-secret \
     --from-literal=client-id=appstore --from-literal=client-secret="$BFF" \
     --from-literal=cookie-secret="$(python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
-  NEW+=("Keycloak admin (https://sso.<zone>/admin, user admin): $ADMINPW"
+  NEW+=("Keycloak admin (https://<sso host>/admin, user admin): $ADMINPW"
         "Demo users (faculty@cs.example, cs-student@cs.com, root.admin@uni.example): $DEMOPW")
 fi
 
-kubectl apply -f argocd/root.yaml
+kubectl apply -f "argocd/roots/$ENV_NAME.yaml"
 
 if ((${#NEW[@]})); then
   echo; echo "== Generated credentials - store them in a password manager, they are not shown again =="
   printf '%s\n' "${NEW[@]}"
 fi
-echo "Watch: kubectl -n argocd get applications"
+echo "Environment $ENV_NAME (namespace $NS). Watch: kubectl -n argocd get applications | grep $ENV_NAME"
