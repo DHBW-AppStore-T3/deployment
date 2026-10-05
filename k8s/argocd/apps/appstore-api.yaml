@@ -16,11 +16,11 @@ spec:
         fullnameOverride: appstore       # Services appstore-api / appstore-worker
         appstore:
           existingSecret: appstore-secret
-          # Demonstrator: OpenStack and the jobs are simulated (api.mode must be development).
-          simulate: true
+          # Real OpenStack: the worker runs tofu/packer with the caller's credential.
+          simulate: false
           api:
             image: ghcr.io/dhbw-appstore-t3/k8s-appstore-api
-            mode: development
+            mode: production
             uiUrl: https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
             adminGroups: "group:root_uni"
           worker:

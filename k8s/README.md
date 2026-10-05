@@ -27,11 +27,11 @@ Argo CD (root app, tracks spike/k8s) ◄───┘  syncs:
 - `bootstrap.sh`: creates namespace + all Secrets (none in git), applies the root app. Run once.
 
 ## Demonstrator mode
-`appstore.simulate: true`: OpenStack and the worker jobs are simulated; login and roles are real
+`appstore.simulate` is **false** now (real OpenStack, `api.mode: production`). With `simulate: true` + `mode: development` OpenStack and the worker jobs are simulated; login and roles are real either way
 (Keycloak + role-provider-service). Demo users: `faculty@cs.example` (Dozent), `cs-student@cs.com`
 (student), `root.admin@uni.example` (AppStore admin); password printed by `bootstrap.sh`.
 The role-provider keeps its data in Postgres; `manifests/seed` (Sync-hook Job) fills the demo course and roles. Edit the member list there to change who is Dozent / student / admin.
-Real OpenStack: set `simulate: false`, `api.mode: production` and add a credential in the UI.
+Add an OpenStack application credential in the UI (Credentials) as the Dozent.
 
 ## Not done yet / known limits
 - No Trivy scan in `k8s-images.yml` (Pfisterer's CI has one).
