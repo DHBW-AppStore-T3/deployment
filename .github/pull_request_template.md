@@ -15,6 +15,10 @@ Closes #
 ## Checkliste
 
 <!--
+Checkliste für Änderungs-PRs (Feature-/Fix-Branch → `dev`, Hotfix → `main`).
+Release-PRs (`dev` oder `promote/*` → `main`) verwenden stattdessen
+`.github/pull_request_template/release.md`.
+
 Jeder Punkt wird abgehakt, bevor der PR gemergt werden kann. Der CI-Check
 "PR Checklist" blockiert den Merge, solange hier noch ein offenes "- [ ]" steht.
 
@@ -31,7 +35,6 @@ nach dem Merge; deshalb werden sie hier vorab lokal bestätigt.
 - [ ] Vollständigkeit: Alle Akzeptanzkriterien des verlinkten Issues sind umgesetzt; Abweichungen oder offene Punkte sind oben begründet
 - [ ] Lokal verifiziert: Betroffener Stack startet (`make dev-up` bzw. passende Compose-Datei), alle Container sind healthy (`make health`) und der geänderte Ablauf funktioniert
 - [ ] Terraform/Ansible: `terraform fmt -check -recursive` und `terraform validate` lokal grün; `terraform plan` geprüft, keine unbeabsichtigten `destroy`/`replace`
-- [ ] Nur PR nach `main`: Die Änderung lief auf Staging erfolgreich (Staging-Deploy grün, Hermes-Healthcheck GUT)
 
 **Betrieb & Konfiguration**
 
