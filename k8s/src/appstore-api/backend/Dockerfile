@@ -73,4 +73,4 @@ USER 10001
 EXPOSE 8000
 
 # One process per container; scale with replicas.
-CMD ["uvicorn", "appstore_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["uvicorn", "appstore_api.main:app", "--host", "::", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
