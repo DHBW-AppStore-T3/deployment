@@ -23,7 +23,7 @@ spec:
             - { name: KC_DB_USERNAME, value: keycloak }
             - name: KC_DB_PASSWORD
               valueFrom: { secretKeyRef: { name: keycloak-db, key: password } }
-            - { name: KC_HOSTNAME, value: "https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site" }
+            - { name: KC_HOSTNAME, value: "https://{{ .Values.ssoHost }}" }
             - { name: KC_HTTP_ENABLED, value: "true" }       # TLS ends at Traefik
             - { name: KC_PROXY_HEADERS, value: xforwarded }
             - { name: KC_HEALTH_ENABLED, value: "true" }
@@ -65,11 +65,11 @@ metadata:
   annotations: { argocd.argoproj.io/sync-wave: "2" }
 spec:
   rules:
-    - host: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+    - host: {{ .Values.ssoHost }}
       http:
         paths:
           - path: /
             pathType: Prefix
             backend: { service: { name: keycloak, port: { number: 8080 } } }
   tls:
-    - hosts: [sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site]
+    - hosts: [{{ .Values.ssoHost }}]

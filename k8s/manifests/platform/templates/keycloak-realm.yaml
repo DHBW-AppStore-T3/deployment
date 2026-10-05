@@ -1,0 +1,10 @@
+# Realm import file. ${DEMO_PASSWORD} / ${BFF_CLIENT_SECRET} are substituted by
+# Keycloak itself from the keycloak-secret Secret, so no secret is in git.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+data:
+  appstore-realm.json: |-
+{{ .Files.Get "files/appstore-realm.json" | replace "__APP_HOST__" .Values.appHost | indent 4 }}

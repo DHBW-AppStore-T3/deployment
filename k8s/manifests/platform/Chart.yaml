@@ -1,0 +1,5 @@
+apiVersion: v2
+name: appstore-platform
+description: Postgres (CloudNativePG) and Keycloak for one AppStore environment
+type: application
+version: 0.1.0

@@ -1,0 +1,14 @@
+# Per-environment values live in k8s/environments/<env>.yaml and are passed by
+# the environment's root Application (k8s/argocd/roots/<env>.yaml).
+repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
+env:
+  name: ""          # staging | prod; prefixes every Application name
+  namespace: ""     # target namespace of the whole environment
+  branch: ""        # git branch Argo tracks for this environment
+  host: ""          # public UI host
+  ssoHost: ""       # public Keycloak host
+appstore:
+  simulate: false   # true: OpenStack and the jobs are faked (needs mode: development)
+  mode: production
+roleProvider:
+  chartVersion: 0.8.0

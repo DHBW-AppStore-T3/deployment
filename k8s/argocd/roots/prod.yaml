@@ -1,19 +1,19 @@
-# PostgreSQL (CloudNativePG cluster) and Keycloak (the OIDC issuer).
+# Root Application of the prod environment. Applied once by bootstrap.sh prod.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: platform
+  name: prod-root
   namespace: argocd
-  annotations: { argocd.argoproj.io/sync-wave: "1" }
 spec:
   project: default
   source:
     repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
-    targetRevision: spike/k8s
-    path: k8s/manifests/platform
+    targetRevision: spike/main
+    path: k8s/argocd/apps-chart
+    helm:
+      valueFiles: [../../environments/prod.yaml]
   destination:
     server: https://kubernetes.default.svc
-    namespace: appstore
+    namespace: argocd
   syncPolicy:
     automated: { prune: true, selfHeal: true }
-    syncOptions: [CreateNamespace=true, ServerSideApply=true]
