@@ -60,6 +60,7 @@ data:
           "lastName": "Demo",
           "enabled": true,
           "emailVerified": true,
+          "realmRoles": ["default-roles-appstore", "offline_access", "uma_authorization"],
           "credentials": [
             {
               "type": "password",
@@ -75,6 +76,7 @@ data:
           "lastName": "Demo",
           "enabled": true,
           "emailVerified": true,
+          "realmRoles": ["default-roles-appstore", "offline_access", "uma_authorization"],
           "credentials": [
             {
               "type": "password",
@@ -90,6 +92,7 @@ data:
           "lastName": "Demo",
           "enabled": true,
           "emailVerified": true,
+          "realmRoles": ["default-roles-appstore", "offline_access", "uma_authorization"],
           "credentials": [
             {
               "type": "password",

@@ -1,0 +1,18 @@
+# Seeds roles (Dozent, students, admin) into role-provider-service.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: role-provider-seed
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "4" }
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
+    targetRevision: spike/k8s
+    path: k8s/manifests/seed
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: appstore
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

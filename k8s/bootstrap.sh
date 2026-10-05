@@ -28,6 +28,11 @@ if ! have keycloak-db; then
     --from-literal=username=keycloak --from-literal=password="$(rand)"
 fi
 
+if ! have role-provider-db; then
+  kubectl -n "$NS" create secret generic role-provider-db --type=kubernetes.io/basic-auth \
+    --from-literal=username=roleprovider --from-literal=password="$(rand)"
+fi
+
 # Needs the Fernet key of the cryptography package; falls back to the same format by hand.
 fernet() { python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'; }
 if ! have appstore-secret; then
@@ -38,9 +43,15 @@ if ! have appstore-secret; then
     --from-literal=credential-encryption-key="$(fernet)" \
     --from-literal=role-provider-api-token="$RPTOKEN" \
     --from-literal=smtp-password=''
-  # same read token on the role-provider side
+fi
+
+# read token is shared with appstore-api (appstore-secret), write token is for the seed Job
+if ! have role-provider-secret; then
+  RPPW=$(kubectl -n "$NS" get secret role-provider-db -o jsonpath='{.data.password}' | base64 -d)
+  RPREAD=$(kubectl -n "$NS" get secret appstore-secret -o jsonpath='{.data.role-provider-api-token}' | base64 -d)
   kubectl -n "$NS" create secret generic role-provider-secret \
-    --from-literal=db-connection-string='' --from-literal=api-tokens="$RPTOKEN"
+    --from-literal=db-connection-string="host=postgres-cluster-rw user=roleprovider password=${RPPW} dbname=roleprovider port=5432 sslmode=disable TimeZone=UTC" \
+    --from-literal=api-tokens="$RPREAD" --from-literal=api-write-tokens="$(rand 32)"
 fi
 
 if ! have keycloak-secret; then

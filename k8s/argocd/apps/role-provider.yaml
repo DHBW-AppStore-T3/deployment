@@ -15,11 +15,10 @@ spec:
         fullnameOverride: role-provider-service
         roleProviderService:
           hostname: role-provider.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
-          # In-memory store with the chart's mock seed (faculty@cs.example is
-          # #dozent of wwi23seb, cs-student@cs.com #studierende, root.admin@uni.example
-          # in group root_uni). State is lost on a pod restart.
-          db: { type: memory }
-          existingSecret: role-provider-secret   # keys: db-connection-string, api-tokens
+          # Persistent (CNPG database roleprovider). Groups and members are
+          # filled by the role-provider-seed Job (k8s/manifests/seed).
+          db: { type: postgres }
+          existingSecret: role-provider-secret   # keys: db-connection-string, api-tokens, api-write-tokens
           groupRelations: [dozent, studierende]
         # Only appstore-api talks to it, in-cluster.
         ingress: { enabled: false }
