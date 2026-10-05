@@ -1,0 +1,139 @@
+{{- $comp := dict "context" . "component" "self-service-ui" -}}
+{{- $uiName := include "cloud-self-service.componentName" $comp -}}
+{{- $labels := include "cloud-self-service.labels" $comp -}}
+{{- $selectors := include "cloud-self-service.selectorLabels" $comp -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  replicas: {{ .Values.selfServiceUI.replicas }}
+  selector:
+    matchLabels:
+      {{- $selectors | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "cloud-self-service.rolloutAnnotations" . | nindent 8 }}
+      labels:
+        {{- $selectors | nindent 8 }}
+    spec:
+      # This pod never talks to the Kubernetes API — do not hand it a token for it.
+      automountServiceAccountToken: false
+      containers:
+        - name: self-service-ui
+          # The tag falls back to this chart's appVersion, which is what makes a
+          # pinned chart version pin the image too: under the umbrella chart no
+          # version is passed at all, so "new chart, old image" cannot occur.
+          # An explicit value still wins — that is how argocd-image-updater
+          # keeps driving the standalone releases.
+          image: {{ .Values.selfServiceUI.image }}:{{ .Values.selfServiceUI.version | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.selfServiceUI.imagePullPolicy | default "Always" }}
+          ports:
+            - containerPort: 8080
+          # Hardening: non-root, no privilege escalation, no capabilities, default
+          # seccomp. The image sets USER 65532 and owns the three paths this
+          # container writes. readOnlyRootFilesystem is deliberately NOT set: the
+          # entrypoint renders /srv/www/config.js at startup and Caddy keeps state
+          # in /config and /data — making those writable again via emptyDir would
+          # shadow the built assets, so the rootfs stays writable here.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+          env:
+            - name: DYN_ZONES_BASE_URL
+              value: "{{ .Values.selfServiceUI.dynamicZonesBaseUrl }}"
+            - name: DYN_ZONES_MCP_URL
+              value: "{{ .Values.selfServiceUI.dynamicZonesMcpUrl }}"
+            # Empty -> Cloud Projects tab disabled (route not registered, nav link hidden).
+            - name: CLOUD_RESOURCES_BASE_URL
+              value: "{{ .Values.selfServiceUI.cloudResourcesBaseUrl }}"
+            - name: CLOUD_RESOURCES_MCP_URL
+              value: "{{ .Values.selfServiceUI.cloudResourcesMcpUrl }}"
+            # Empty -> AppStore section disabled (route not registered, nav link hidden).
+            - name: APPSTORE_BASE_URL
+              value: "{{ .Values.selfServiceUI.appstoreBaseUrl }}"
+            - name: ACME_SERVER
+              value: "{{ .Values.selfServiceUI.acmeServer }}"
+            {{- if .Values.selfServiceUI.dynamicZonesUpstream }}
+            - name: DYN_ZONES_UPSTREAM
+              value: "{{ .Values.selfServiceUI.dynamicZonesUpstream }}"
+            {{- end }}
+            {{- if .Values.selfServiceUI.cloudResourcesUpstream }}
+            - name: CLOUD_RESOURCES_UPSTREAM
+              value: "{{ .Values.selfServiceUI.cloudResourcesUpstream }}"
+            {{- end }}
+            {{- if .Values.selfServiceUI.appstoreUpstream }}
+            - name: APPSTORE_UPSTREAM
+              value: "{{ .Values.selfServiceUI.appstoreUpstream }}"
+            {{- end }}
+            - name: OIDC_ISSUER_URL
+              value: "{{ .Values.auth.oidc.issuerUrl  }}"
+            - name: OIDC_CLIENT_ID
+              value: "{{ .Values.auth.oidc.clientId }}"
+            - name: OIDC_END_SESSION_URL
+              value: "{{ .Values.auth.oidc.endSessionUrl }}"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  selector:
+    {{- $selectors | nindent 4 }}
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+# enable if ingress.enabled is true
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.selfServiceUI.hostname | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $uiName }}
+                port:
+                  number: 8080
+  tls:
+    - hosts:
+        - {{ .Values.selfServiceUI.hostname | quote }}
+{{- end }}

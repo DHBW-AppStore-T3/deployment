@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{# Addresses and team layout only, no credentials (plan E5).
+   Context (deployment_notifier._send_owner_mail, shared with owner_summary.txt):
+   deployment.{name, app_name, git_url, release_tag}, detail_url,
+   teams = [{name, vm: {url, floating_ip, fixed_ip, instance_name} | None, members: [e-mail]}]. #}
+{% block title %}Deployment {{ deployment.name }} ist bereit{% endblock %}
+{% block content %}
+<h1>Deployment ist bereit</h1>
+
+<p>Guten Tag,</p>
+
+<p>
+  das Deployment <strong>{{ deployment.name }}</strong> ({{ deployment.app_name }})
+  wurde erfolgreich ausgerollt. Alle Team-Mitglieder haben eine E-Mail erhalten
+  und finden ihre Zugangsdaten unter „Meine Zugänge“.
+</p>
+
+<p>
+  <a class="button" href="{{ detail_url }}">Deployment öffnen</a>
+</p>
+
+{% for team in teams %}
+<h2>Team {{ team.name }}</h2>
+
+{% if team.vm %}
+<table class="card" role="presentation" cellpadding="0" cellspacing="0">
+  {% if team.vm.url %}
+  <tr>
+    <td>Adresse</td>
+    <td><a href="{{ team.vm.url }}">{{ team.vm.url }}</a></td>
+  </tr>
+  {% endif %}
+  {% if team.vm.floating_ip %}
+  <tr>
+    <td>Öffentliche IP</td>
+    <td><code>{{ team.vm.floating_ip }}</code></td>
+  </tr>
+  {% endif %}
+  {% if team.vm.fixed_ip %}
+  <tr>
+    <td>Interne IP</td>
+    <td><code>{{ team.vm.fixed_ip }}</code></td>
+  </tr>
+  {% endif %}
+  {% if team.vm.instance_name %}
+  <tr>
+    <td>Instanz</td>
+    <td><code>{{ team.vm.instance_name }}</code></td>
+  </tr>
+  {% endif %}
+</table>
+{% endif %}
+
+{% if team.members %}
+<ul>
+  {% for member in team.members %}
+  <li><a href="mailto:{{ member }}">{{ member }}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted">Dieses Team hat keine Mitglieder.</p>
+{% endif %}
+{% endfor %}
+
+<p class="muted">
+  Ausgerollt aus <code>{{ deployment.git_url }}</code>, Version
+  <code>{{ deployment.release_tag }}</code>.
+</p>
+{% endblock %}

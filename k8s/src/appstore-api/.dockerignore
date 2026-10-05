@@ -1,0 +1,20 @@
+# Build context is the repository root (both images). Only sources, lockfile
+# and alembic go in; tests, caches and local state stay out.
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/tests
+**/.coverage*
+**/htmlcov
+.venv
+.git
+.github
+.env
+.env.*
+**/clouds.yaml
+**/.terraform
+**/*.tfstate*
+helm-chart
+docs

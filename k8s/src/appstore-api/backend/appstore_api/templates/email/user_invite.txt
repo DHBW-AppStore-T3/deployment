@@ -1,0 +1,18 @@
+Ihr Zugang ist bereit
+=====================
+
+Guten Tag,
+
+die Umgebung "{{ deployment.name }}" ({{ deployment.app_name }}) steht für Sie
+bereit. Ihre persönlichen Zugangsdaten finden Sie nach der Anmeldung unter
+"Meine Zugänge":
+
+{{ my_access_url }}
+{% if teammates %}
+Ihr Team: {{ team_name }}
+Sie teilen sich diese Umgebung mit:
+{% for mate in teammates %}  - {{ mate }}
+{% endfor -%}
+{% endif %}
+--
+Automatisch verschickt vom DHBW AppStore. Bitte antworten Sie nicht auf diese E-Mail.

@@ -1,0 +1,560 @@
+import { useMemo, useState } from 'react';
+import { Alert, Badge, Group, Select, Stack, Table, Text, Textarea, TextInput } from '@mantine/core';
+import { Clock, Zap } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useNodesApi } from './api-nodes.jsx';
+import { projectKeys } from './query-keys.js';
+import { useApiMutation } from '/helper/query-state.jsx';
+import { formatError } from '/helper/api-error.js';
+import { useForm } from '@mantine/form';
+import { NodeChangesDiff, TerminationDatePicker, TokenBadgeList } from './component-common.jsx';
+import { formatDate } from '../format-date.js';
+import { FormModal, FormTabs } from './component-form-modal.jsx';
+import { defaultQuota, QuotaInputs, validateQuota } from './component-quota-inputs.jsx';
+import { TokenRoleEditor } from './component-token-role-editor.jsx';
+import { autoApproveHeadroom, changeOutcome, COLOR, hasAutoApprove, isAvailability, isPoolAutoApprove, requestOutcome, resourceSummaryText, visibleResources } from './util-project.jsx';
+
+const DEFAULT_TERM_DAYS = 90;
+
+const TAB_DETAILS = 'details';
+const TAB_RESOURCES = 'resources';
+const TAB_MEMBERS = 'members';
+
+// BudgetSelect groups the budgets a user can place a project under:
+//   - budgets they manage → the project is created active immediately
+//   - budgets they may request under → the project awaits approval
+//     (or is approved instantly when the budget's auto-approve covers it)
+function BudgetSelect({ myBudgets, eligibleBudgets, value, onChange, error }) {
+    const { t } = useTranslation();
+    // Which budgets grant on the spot — shown as a badge beside the name
+    // instead of a clause appended to it.
+    const instantIds = useMemo(
+        () => new Set((eligibleBudgets || []).filter(hasAutoApprove).map(b => b.id)),
+        [eligibleBudgets]);
+
+    const data = useMemo(() => {
+        const managedIds = new Set((myBudgets || []).map(b => b.id));
+        const managed = (myBudgets || []).map(b => ({ value: b.id, label: b.name || b.id }));
+        const eligible = (eligibleBudgets || [])
+            .filter(b => !managedIds.has(b.id))
+            .map(b => ({ value: b.id, label: b.name || b.id }));
+
+        const groups = [];
+        if (managed.length) groups.push({ group: t('projects.projectForm.budgetsManaged'), items: managed });
+        // Not "needs approval": with auto-approve many of these grant on the
+        // spot, and the note under the form says which way it goes.
+        if (eligible.length) groups.push({ group: t('projects.projectForm.budgetsRequestable'), items: eligible });
+        return groups;
+    }, [myBudgets, eligibleBudgets, t]);
+
+    if (!data.length) {
+        return (
+            <Select label={t('projects.projectForm.budget')} required data={[]} value={null} disabled error={error}
+                description={t('projects.projectForm.budgetNone')} />
+        );
+    }
+
+    // What choosing a budget means for this request — instant, waiting, or
+    // refused for lack of room — is said under the form (see OutcomeNote).
+    return (
+        <Select
+            label={t('projects.projectForm.budget')}
+            description={t('projects.projectForm.budgetHint')}
+            required
+            searchable
+            data={data}
+            value={value}
+            onChange={onChange}
+            error={error}
+            placeholder={t('projects.projectForm.budgetPlaceholder')}
+            renderOption={({ option }) => (
+                <Group gap="xs" wrap="nowrap" style={{ flex: 1 }}>
+                    <Text size="sm" truncate>{option.label}</Text>
+                    {instantIds.has(option.value) && (
+                        <Badge size="xs" variant="light" color={COLOR.positive} leftSection={<Zap size="10" />}>
+                            {t('projects.projectForm.instantBadge')}
+                        </Badge>
+                    )}
+                </Group>
+            )}
+        />
+    );
+}
+
+// OutcomeNote says, while the form is being filled in, what pressing the button
+// will do — the one thing a requester cannot otherwise tell before it happened.
+function OutcomeNote({ outcome, isChange, budget, hasPolicy }) {
+    const { t } = useTranslation();
+    if (!outcome) return null;
+    // One whole sentence per outcome — the budget is named by the picker above,
+    // so it does not have to be spliced into the sentence as well.
+    if (outcome === 'blocked') {
+        return (
+            <Text size="sm" c={COLOR.negative} mt="sm">
+                {t('projects.projectForm.outcomeBlocked')}
+            </Text>
+        );
+    }
+    if (outcome === 'refused') {
+        return (
+            <Text size="sm" c={COLOR.negative} mt="sm">
+                {t('projects.projectForm.outcomeRefused')}
+            </Text>
+        );
+    }
+    if (outcome === 'direct' || outcome === 'instant') {
+        const text = outcome === 'direct'
+            ? t('projects.projectForm.outcomeDirect')
+            : isChange
+                ? t('projects.projectForm.outcomeInstantChange')
+                : t('projects.projectForm.outcomeInstant');
+        return (
+            <Group gap={6} wrap="nowrap" mt="sm">
+                <Zap size="14" color="var(--mantine-color-green-7)" style={{ flexShrink: 0 }} />
+                <Text size="sm" c="green.8">{text}</Text>
+            </Group>
+        );
+    }
+    const waiting = hasPolicy
+        ? (isChange
+            ? t('projects.projectForm.outcomeWaitingPolicyChange')
+            : t('projects.projectForm.outcomeWaitingPolicy'))
+        : (isChange
+            ? t('projects.projectForm.outcomeWaitingChange')
+            : t('projects.projectForm.outcomeWaiting'));
+    return (
+        <Stack gap={4} mt="sm">
+            <Group gap={6} wrap="nowrap">
+                <Clock size="14" color="var(--mantine-color-orange-7)" style={{ flexShrink: 0 }} />
+                <Text size="sm" c="orange.8">{waiting}</Text>
+            </Group>
+            {budget?.admin_scope?.length > 0 && (
+                <Group gap={6} pl={20}>
+                    <Text size="xs" c="dimmed">{t('projects.fact.managedBy')}</Text>
+                    <TokenBadgeList size="xs" tokens={budget.admin_scope} />
+                </Group>
+            )}
+        </Stack>
+    );
+}
+
+// ProjectFormModal creates a new project request or proposes changes to an
+// existing project (mode is derived from `node`):
+//   node == null  → create: budget picker + purpose + resources + members
+//   node != null  → change: resources, end date and members are editable;
+//                   pending projects are amended in place, active projects get
+//                   a change request that a manager must approve.
+//
+// initialBudgetId preselects the budget of a new project — set when the dialog
+// is opened from a budget's own card.
+export function ProjectFormModal({ opened, onClose, onDone, resources, openstackRoles, node = null, myBudgets = [], eligibleBudgets = [], myProjects = [], initialBudgetId = null }) {
+    const { t } = useTranslation();
+    const api = useNodesApi();
+    const isChange = !!node;
+
+    const [activeTab, setActiveTab] = useState(TAB_DETAILS);
+
+    // Group token search for the members editor.
+    const [tokenSearchResults, setTokenSearchResults] = useState([]);
+    const [isSearchingTokens, setIsSearchingTokens] = useState(false);
+
+    // Auto-approve only ever applies to budgets you REQUEST under. On a budget
+    // you manage the project is created approved outright, so its headroom is
+    // not a limit for you — neither prefill the form with it nor talk about it.
+    const managedIds = useMemo(() => new Set((myBudgets || []).map(b => b.id)), [myBudgets]);
+    // Which resources a project may even ask for: only what the budget it hangs
+    // under was delegated. Defined here rather than inline because validation
+    // runs inside useForm, before the render has a chosen budget to look at —
+    // and a form that validates a different set from the one it renders will
+    // demand a value for a field nobody was shown.
+    const budgetById = (id) => [...(myBudgets || []), ...(eligibleBudgets || [])].find(b => b.id === id);
+    // Nothing outlives the budget it draws from: its end is the latest a
+    // project there may run.
+    const budgetEndOf = (id) => {
+        const end = budgetById(id)?.termination_date;
+        return end ? new Date(end) : null;
+    };
+    const withinBudget = (date, id) => {
+        const bound = budgetEndOf(id);
+        return bound && (!date || date > bound) ? bound : date;
+    };
+    const offeredFor = (id) => {
+        // A change request has no budget picker — the project stays where it
+        // is, so the scope is its PARENT budget: that is what a request could
+        // draw from. The leaf itself is the fallback when the parent is not in
+        // view (never the whole catalogue: offering an availability the budget
+        // was never delegated reads as a promise the approval cannot keep).
+        const budget = budgetById(isChange ? node.parent_id : id) || (isChange ? node : null);
+        return budget ? visibleResources(resources, budget) : resources;
+    };
+
+    const headroomFor = (id) => managedIds.has(id)
+        ? null
+        : autoApproveHeadroom(
+            [...(myBudgets || []), ...(eligibleBudgets || [])].find(b => b.id === id),
+            resources, myProjects);
+
+    // A headroom is only worth PRE-FILLING when every quantity in it is a
+    // valid request on its own (>= the resource's minimum). Once the requester
+    // has used up even one resource, filling the form with it would produce
+    // invalid zeros — and a green "set to nothing left" note, which reads as
+    // success while meaning the opposite.
+    //
+    // A pool is never pre-filled: its headroom is the whole budget, and a
+    // form that opens asking for everything is a trap, not a convenience.
+    const usableHeadroomFor = (id) => {
+        const h = headroomFor(id);
+        if (!h || isPoolAutoApprove(budgetById(id))) return null;
+        const ok = offeredFor(id).every(r =>
+            isAvailability(r) || (h[r.id] ?? 0) >= (r.min ?? 0));
+        return ok ? h : null;
+    };
+
+    // Reading the clock is a side effect, so it happens once in a lazy
+    // initialiser rather than on every render. The dialog is remounted per
+    // opening (see the `key` at the call sites), so once = per opening.
+    const [defaultEnd] = useState(() => new Date(Date.now() + DEFAULT_TERM_DAYS * 24 * 60 * 60 * 1000));
+
+    // The whole form is initialised HERE instead of by an effect that fired on
+    // `opened` and wrote eight setStates. Remounting is what makes that correct:
+    // "initial" and "for the node currently being edited" are the same moment.
+    const initialParentId = isChange ? null : (initialBudgetId ?? myBudgets[0]?.id ?? eligibleBudgets[0]?.id ?? null);
+    const form = useForm({
+        initialValues: isChange
+            ? {
+                parentId: null,
+                name: node.name || '',
+                reason: node.reason || '',
+                quota: { ...(node.pending?.limit || node.limit) },
+                terminationDate: (node.pending?.termination_date || node.termination_date)
+                    ? new Date(node.pending?.termination_date || node.termination_date)
+                    : null,
+                authorizedUsers: node.pending?.authorized_users || node.authorized_users || [],
+            }
+            : {
+                parentId: initialParentId,
+                name: '',
+                reason: '',
+                // A budget that approves instantly starts filled with the most
+                // it would grant, so the common case is one click — unless the
+                // allowance is (partly) used up: then the defaults stay.
+                quota: usableHeadroomFor(initialParentId) ?? defaultQuota(resources),
+                terminationDate: withinBudget(defaultEnd, initialParentId),
+                authorizedUsers: [],
+            },
+        validate: (values) => ({
+            name: (values.name || '').trim().length < 3
+                ? t('projects.projectForm.nameRequired') : null,
+            reason: (values.reason || '').trim().length < 5
+                ? t('projects.projectForm.purposeRequired') : null,
+            parentId: (!isChange && !values.parentId) ? t('projects.projectForm.budgetRequired') : null,
+            terminationDate: (() => {
+                if (!values.terminationDate) return t('projects.projectForm.endDateRequired');
+                if (values.terminationDate <= new Date()) return t('projects.projectForm.endDateInPast');
+                const bound = budgetEndOf(isChange ? node.parent_id : values.parentId);
+                return bound && values.terminationDate > bound
+                    ? t('projects.projectForm.endDateAfterBudget', { date: formatDate(bound) }) : null;
+            })(),
+            ...Object.fromEntries(
+                Object.entries(validateQuota(t, offeredFor(values.parentId), values.quota)).map(([id, msg]) => [`quota.${id}`, msg])),
+        }),
+    });
+
+    const { parentId, quota, terminationDate, authorizedUsers } = form.values;
+    const selectedHeadroom = headroomFor(parentId);
+    // The per-person notes below are about individual limits; a pool's
+    // "headroom" is just the budget's free capacity, which the picker shows.
+    const selectedIsPool = isPoolAutoApprove(budgetById(parentId));
+
+    // What the button will do. An amended pending request stays a request, so
+    // it has no outcome worth announcing.
+    const outcomeBudget = budgetById(isChange ? node.parent_id : parentId) || null;
+    const outcome = isChange
+        ? (node.status === 'pending' ? null : changeOutcome({
+            node, budget: outcomeBudget, quota, terminationDate, resources, myProjects,
+            manages: managedIds.has(node.parent_id),
+        }))
+        : requestOutcome({
+            budget: outcomeBudget, manages: managedIds.has(parentId), quota, resources, myProjects,
+        });
+
+    const offered = offeredFor(parentId);
+
+    // Picking a budget with auto-approve fills the resources with the most it
+    // would grant on the spot. Any other budget leaves the numbers alone —
+    // overwriting carefully typed values with a default would be worse than a
+    // stale form.
+    const selectBudget = (id) => {
+        form.setFieldValue('parentId', id);
+        form.clearFieldError('parentId');
+        const headroom = usableHeadroomFor(id);
+        if (headroom) form.setFieldValue('quota', headroom);
+        // A budget that ends sooner pulls the date in with it.
+        const date = withinBudget(form.values.terminationDate, id);
+        if (date !== form.values.terminationDate) form.setFieldValue('terminationDate', date);
+    };
+
+    // What the form was showing when it opened — a change request is only worth
+    // sending when one of these actually moved. The user comparison is order
+    // sensitive; a false positive costs an unnecessary change request, which is
+    // exactly what happened for every save before.
+    // Takes the submitted values rather than reading them from the closure, so
+    // there is no chance of comparing against a render-stale copy.
+    const approvalFieldsChanged = (values) => {
+        if (!isChange) return true;
+        const baseLimit = node.pending?.limit || node.limit || {};
+        const baseDate = node.pending?.termination_date || node.termination_date;
+        const baseUsers = node.pending?.authorized_users || node.authorized_users || [];
+        return (resources || []).some(r => (values.quota[r.id] ?? 0) !== (baseLimit[r.id] ?? 0))
+            || !baseDate || new Date(baseDate).getTime() !== values.terminationDate.getTime()
+            || JSON.stringify(baseUsers) !== JSON.stringify(values.authorizedUsers)
+            || values.reason.trim() !== (node.reason || '').trim();
+    };
+
+    const errorsInTab = (tab, errs) => {
+        if (tab === TAB_DETAILS) return ['name', 'reason', 'parentId', 'terminationDate'].some(k => errs[k]);
+        if (tab === TAB_RESOURCES) return (resources || []).some(r => errs[`quota.${r.id}`]);
+        return false;
+    };
+    const tabHasError = (tab) => errorsInTab(tab, form.errors);
+
+    const handleSearchTokens = async (query) => {
+        if (!query) { setTokenSearchResults([]); return; }
+        // A typed address is offerable as-is, ahead of the search: the
+        // directory only knows enumerable people (staff) and existing
+        // participants, while a pattern member (student) or an address new to
+        // the platform is still a valid user: token. Same normalization as
+        // TokenListEditor — and kept even when the directory is unreachable.
+        const typed = query.trim().replace(/^user:/, '');
+        const typedToken = (typed.includes('@') && !typed.includes(':') && !/\s/.test(typed))
+            ? 'user:' + typed : null;
+        setIsSearchingTokens(true);
+        try {
+            // No second filter on the query here: the API already matched, and a
+            // group found through its DESCRIPTION has a token that does not
+            // contain the search text — filtering again would drop exactly those.
+            const tokens = await api.searchPrincipals(query);
+            if (typedToken && !tokens.includes(typedToken)) tokens.unshift(typedToken);
+            setTokenSearchResults(tokens.filter(t =>
+                !authorizedUsers.some(au => au.token === t)));
+        } catch {
+            setTokenSearchResults(typedToken ? [typedToken] : []);
+        } finally {
+            setIsSearchingTokens(false);
+        }
+    };
+
+    const save = useApiMutation({
+        mutationFn: async (values) => {
+            const iso = values.terminationDate.toISOString();
+            if (!isChange) {
+                return api.createNode({
+                    parent_id: values.parentId,
+                    kind: 'project',
+                    name: values.name.trim(),
+                    reason: values.reason,
+                    limit: values.quota,
+                    termination_date: iso,
+                    authorized_users: values.authorizedUsers,
+                });
+            }
+            let result;
+            // A rename takes effect immediately and on its own — dragging a
+            // typo fix through the approval cycle would park the project in
+            // change_pending until a manager gets around to it.
+            if (values.name.trim() !== (node.name || '')) {
+                result = await api.updateNode(node.id, { name: values.name.trim() });
+            }
+            // Everything with resource consequences still needs a decision —
+            // but only when it actually differs, so renaming alone does not
+            // manufacture a change request out of unchanged numbers.
+            if (approvalFieldsChanged(values)) {
+                result = await api.requestChange(node.id, {
+                    limit: values.quota,
+                    termination_date: iso,
+                    authorized_users: values.authorizedUsers,
+                    reason: values.reason,
+                });
+            }
+            return result;
+        },
+        invalidates: [projectKeys.tree()],
+        reportErrors: 'inline',
+        onSuccess: (result) => { if (result) onDone?.(result); onClose(); },
+        // A 409 means this dialog was acting on a node that has moved on; there
+        // is nothing here to correct, so close it and let the refreshed view speak.
+        onConflict: () => { onDone?.(); onClose(); },
+    });
+
+    // Jump to the problem instead of leaving the button looking broken: the
+    // offending field is usually on a tab the user is not looking at.
+    const handleInvalid = (errs) => {
+        const bad = [TAB_DETAILS, TAB_RESOURCES, TAB_MEMBERS].find(t => errorsInTab(t, errs));
+        if (bad) setActiveTab(bad);
+    };
+
+    const detailsTab = (
+        <Stack>
+            {!isChange && (
+                <BudgetSelect
+                    myBudgets={myBudgets}
+                    eligibleBudgets={eligibleBudgets}
+                    value={parentId}
+                    onChange={selectBudget}
+                    error={form.errors.parentId}
+                />
+            )}
+
+            {/* Say why the numbers on the next tab just changed by themselves.
+                What happens beyond them — a manager, or a refusal — and a share
+                that is used up are the note under the form's business. */}
+            {!isChange && !selectedIsPool && usableHeadroomFor(parentId) && (
+                <Text size="xs" c={COLOR.positive}>
+                    {t('projects.projectForm.prefilled', { amount: resourceSummaryText(resources, selectedHeadroom) })}
+                </Text>
+            )}
+
+            <TextInput
+                label={t('projects.projectForm.name')}
+                description={t('projects.projectForm.nameHint')}
+                placeholder={t('projects.projectForm.namePlaceholder')}
+                required
+                {...form.getInputProps('name')}
+            />
+
+            <Textarea
+                label={t('projects.projectForm.purpose')}
+                description={t('projects.projectForm.purposeHint')}
+                placeholder={t('projects.projectForm.purposePlaceholder')}
+                required
+                rows={2}
+                {...form.getInputProps('reason')}
+            />
+
+            <TerminationDatePicker
+                value={terminationDate}
+                maxDate={budgetEndOf(isChange ? node.parent_id : parentId)}
+                error={form.errors.terminationDate}
+                onChange={(d) => { form.setFieldValue('terminationDate', d); form.clearFieldError('terminationDate'); }}
+            />
+        </Stack>
+    );
+
+    // Resources the project already consumes in OpenStack that the new figures
+    // would fall below. OpenStack accepts such a quota silently — the servers
+    // keep running, only new ones are refused — so nothing tells the requester
+    // afterwards. Only resources OpenStack actually measures appear in
+    // os_in_use, so an absent entry means "unknown", not "zero".
+    const overcommitted = useMemo(() => {
+        const inUse = node?.os_in_use;
+        if (!inUse) return [];
+        return (resources || [])
+            .filter(r => typeof inUse[r.id] === 'number' && (quota[r.id] ?? 0) < inUse[r.id])
+            .map(r => ({ ...r, used: inUse[r.id], requested: quota[r.id] ?? 0 }));
+    }, [node, resources, quota]);
+
+    const resourcesTab = (
+        <Stack>
+            {overcommitted.length > 0 && (
+                <Alert color={COLOR.negative} variant="light" title={t('projects.projectForm.belowInUseTitle')}>
+                    <Stack gap="4">
+                        <Text size="sm">
+                            {t('projects.projectForm.belowInUse')}
+                        </Text>
+                        {/* A table, not a sentence per resource: three headings
+                            carry what four spliced fragments used to. */}
+                        <Table withRowBorders={false} verticalSpacing={2} p={0}>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>{t('projects.changes.resource')}</Table.Th>
+                                    <Table.Th>{t('projects.projectForm.requested')}</Table.Th>
+                                    <Table.Th>{t('projects.fact.inUse')}</Table.Th>
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {overcommitted.map(r => (
+                                    <Table.Tr key={r.id}>
+                                        <Table.Td>{r.unit ? `${r.name} (${r.unit})` : r.name}</Table.Td>
+                                        <Table.Td>{r.requested}</Table.Td>
+                                        <Table.Td>{r.used}</Table.Td>
+                                    </Table.Tr>
+                                ))}
+                            </Table.Tbody>
+                        </Table>
+                    </Stack>
+                </Alert>
+            )}
+            <QuotaInputs
+                resources={offered}
+                value={quota}
+                errors={Object.fromEntries((resources || []).map(r => [r.id, form.errors[`quota.${r.id}`]]))}
+                onChange={(id, v) => { form.setFieldValue(`quota.${id}`, v); form.clearFieldError(`quota.${id}`); }}
+            />
+        </Stack>
+    );
+
+    const membersTab = (
+        <TokenRoleEditor
+            label=""
+            authorizedUsers={authorizedUsers}
+            onAddToken={(token, role) => form.setFieldValue('authorizedUsers', u => u.some(x => x.token === token) ? u : [...u, { token, openstack_role: role }])}
+            onRemoveToken={(token) => form.setFieldValue('authorizedUsers', u => u.filter(x => x.token !== token))}
+            onOpenstackRoleChange={(token, role) => form.setFieldValue('authorizedUsers', u => u.map(x => x.token === token ? { ...x, openstack_role: role || 'member' } : x))}
+            searchResults={tokenSearchResults}
+            isSearching={isSearchingTokens}
+            onSearch={handleSearchTokens}
+            roles={openstackRoles || []}
+            defaultOpenstackRole="member"
+            emptyMessage={t('projects.projectForm.membersEmpty')}
+        />
+    );
+
+    return (
+        <FormModal
+            opened={opened}
+            onClose={onClose}
+            title={isChange
+                ? t(node?.status === 'pending' ? 'projects.projectForm.titleEdit' : 'projects.projectForm.titleChange')
+                : t('projects.projectForm.titleNew')}
+            onSubmit={form.onSubmit(values => save.mutate(values), handleInvalid)}
+            submitting={save.isPending}
+            submitDisabled={outcome === 'blocked'}
+            submitError={save.error && formatError(save.error)}
+            submitLabel={isChange
+                ? (node?.status === 'pending' ? t('projects.projectForm.submitUpdateRequest')
+                    : outcome === 'instant' ? t('projects.forms.saveChanges') : t('projects.projectForm.submitChangeRequest'))
+                : (outcome === 'approval' ? t('projects.forms.submitRequest') : t('projects.projectForm.submitNew'))}
+        >
+            <FormTabs
+                value={activeTab}
+                onChange={setActiveTab}
+                tabs={[
+                    { value: TAB_DETAILS, label: t('projects.actions.details'), hasError: tabHasError(TAB_DETAILS), content: detailsTab },
+                    { value: TAB_RESOURCES, label: t('projects.fact.resources'), hasError: tabHasError(TAB_RESOURCES), content: resourcesTab },
+                    { value: TAB_MEMBERS, label: t('projects.fact.members'), content: membersTab },
+                ]}
+            />
+
+            {/* Live preview of what will change (change mode only). */}
+            {isChange && node.status !== 'pending' && (
+                <NodeChangesDiff
+                    resources={resources}
+                    limitFrom={node.limit}
+                    limitTo={quota}
+                    dateFrom={node.termination_date}
+                    dateTo={terminationDate}
+                    usersFrom={node.authorized_users}
+                    usersTo={authorizedUsers}
+                    label={t('projects.projectForm.proposedChanges')}
+                />
+            )}
+
+            <OutcomeNote
+                outcome={outcome}
+                isChange={isChange}
+                budget={outcomeBudget}
+                hasPolicy={!!outcomeBudget?.auto_approve && !managedIds.has(outcomeBudget?.id)}
+            />
+        </FormModal>
+    );
+}

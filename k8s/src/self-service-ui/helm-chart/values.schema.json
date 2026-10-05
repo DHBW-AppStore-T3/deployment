@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "self-service-ui values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["selfServiceUI", "auth", "ingress"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "description": "Injected by Helm into every subchart. Must be tolerated here, or this chart cannot be used as a dependency at all, because additionalProperties is false."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Dependency condition of the cloud-self-service umbrella chart, which passes it down into this namespace — so it has to be allowed here for the same reason global does. A standalone install ignores it."
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Pins the resource base name. The umbrella chart sets this so adopting these releases does not rename every object."
+    },
+    "bff": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": { "type": "string" },
+        "version": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "cookieName": { "type": "string" },
+        "cookieExpire": { "type": "string", "pattern": "^[0-9]+(s|m|h)$" },
+        "whitelistDomains": { "type": "array", "items": { "type": "string" } },
+        "ingress": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "className": { "type": "string" },
+            "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "selfServiceUI": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "version", "hostname"],
+      "properties": {
+        "image": { "type": "string", "minLength": 1 },
+        "imagePullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "version": { "type": "string", "description": "Image tag. Empty falls back to the chart appVersion, which is how a pinned chart version pins the image." },
+        "hostname": { "type": "string", "minLength": 1 },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "dynamicZonesBaseUrl": { "type": "string" },
+        "dynamicZonesMcpUrl": { "type": "string" },
+        "cloudResourcesBaseUrl": { "type": "string" },
+        "cloudResourcesMcpUrl": { "type": "string" },
+        "appstoreBaseUrl": { "type": "string", "description": "AppStore API base URL, normally /api/appstore; empty hides the AppStore section." },
+        "acmeServer": { "type": "string" },
+        "dynamicZonesUpstream": { "type": "string" },
+        "cloudResourcesUpstream": { "type": "string" },
+        "appstoreUpstream": { "type": "string", "description": "In-cluster host:port of the AppStore API for Caddy; empty -> appstore-api:8000." }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["oidc"],
+      "properties": {
+        "provider": { "type": "string" },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["issuerUrl", "clientId"],
+          "properties": {
+            "issuerUrl": { "type": "string", "minLength": 1 },
+            "clientId": { "type": "string", "minLength": 1 },
+            "authorizationUrl": { "type": "string" },
+            "tokenUrl": { "type": "string" },
+            "jwksUrl": { "type": "string" },
+            "endSessionUrl": { "type": "string" }
+          }
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

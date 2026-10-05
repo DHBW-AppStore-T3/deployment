@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "appstore-api values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "appstore"
+  ],
+  "properties": {
+    "global": {
+      "type": "object",
+      "description": "Injected by Helm into every subchart. Must be tolerated here, or this chart cannot be used as a dependency at all, because additionalProperties is false."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Dependency condition of the cloud-self-service umbrella chart, which passes it down into this namespace — so it has to be allowed here for the same reason global does. A standalone install ignores it."
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Pins the resource base name. The umbrella chart sets this so adopting these releases does not rename every object."
+    },
+    "appstore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "api",
+        "worker",
+        "oidc",
+        "roleProvider",
+        "smtp"
+      ],
+      "properties": {
+        "imagePullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "description": "Image tag of both components. Empty falls back to the chart appVersion."
+        },
+        "existingSecret": {
+          "type": "string",
+          "description": "Secret with database-url, credential-encryption-key and optionally role-provider-api-token, smtp-password; replaces the chart's own."
+        },
+        "databaseUrl": {
+          "type": "string",
+          "description": "PostgreSQL URL; stored in the chart's Secret."
+        },
+        "credentialEncryptionKey": {
+          "type": "string",
+          "description": "Fernet key(s), comma-separated for rotation; stored in the chart's Secret."
+        },
+        "gitAllowedHosts": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Comma-separated hosts apps may be registered from."
+        },
+        "simulate": {
+          "type": "boolean",
+          "description": "Development without a cloud (WORKER_SIMULATE, OPENSTACK_SIMULATE); the API refuses it outside api.mode=development."
+        },
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "image",
+            "replicas",
+            "mode",
+            "uiUrl"
+          ],
+          "properties": {
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "production",
+                "development"
+              ]
+            },
+            "dummyAuth": {
+              "type": "boolean",
+              "description": "X-Dummy-Auth-User instead of OIDC; development only."
+            },
+            "rootPath": {
+              "type": "string",
+              "description": "Prefix the UI's proxy strips, e.g. /api/appstore."
+            },
+            "corsOrigins": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "uiUrl": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Public URL of the self-service UI, no trailing slash."
+            },
+            "adminGroups": {
+              "type": "string",
+              "description": "Comma-separated admin tokens, e.g. group:appstore_admins."
+            },
+            "resources": {
+              "type": "object",
+              "description": "Kubernetes resource requests and limits"
+            }
+          }
+        },
+        "worker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "image",
+            "replicas",
+            "concurrency",
+            "jobTimeoutSeconds",
+            "terminationGracePeriodSeconds"
+          ],
+          "properties": {
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "concurrency": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "jobTimeoutSeconds": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "terminationGracePeriodSeconds": {
+              "type": "integer",
+              "description": "Keep above jobTimeoutSeconds so a rollout lets running jobs finish.",
+              "minimum": 30
+            },
+            "resources": {
+              "type": "object",
+              "description": "Kubernetes resource requests and limits"
+            }
+          }
+        },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "issuerUrl",
+            "clientId"
+          ],
+          "properties": {
+            "issuerUrl": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "jwksUrl": {
+              "type": "string"
+            }
+          }
+        },
+        "roleProvider": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "http",
+                "mock"
+              ]
+            },
+            "url": {
+              "type": "string"
+            },
+            "apiToken": {
+              "type": "string",
+              "description": "Read token; stored in the chart's Secret."
+            },
+            "timeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "smtp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "starttls": {
+              "type": "boolean"
+            },
+            "user": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string",
+              "description": "Stored in the chart's Secret."
+            },
+            "fromEmail": {
+              "type": "string"
+            },
+            "fromName": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

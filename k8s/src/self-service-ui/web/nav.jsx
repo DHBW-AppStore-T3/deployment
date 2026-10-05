@@ -1,0 +1,128 @@
+import { useLocation } from 'wouter';
+import { useTranslation } from 'react-i18next';
+import { apiTokensEnabled, appStoreEnabled, cloudProjectsEnabled, dnsZonesEnabled } from '/features.js';
+import { TOKEN_SCOPES, tokenScopeLabel, tokenScopePath } from '/tokens/scopes.js';
+import { useCloudStatus } from '/projects/cloud-status.jsx';
+import { useDnsPolicyStatus } from '/dyndns/use-policy.jsx';
+
+// The whole navigation as data, in one place: the header renders it two ways
+// (two bars on a wide screen, one vertical list in the burger) and the shell
+// needs to know how tall the result is. Three copies of the same link list is
+// how the old header drifted apart.
+//
+// A section is a top-level category. Its `href` is where clicking the category
+// itself goes — the first item, so a click never lands on an empty page. Items
+// are the second level.
+
+export const HEADER_HEIGHT = 60;
+// The second level is a row of the same header block, not a band of its own —
+// hence the modest number.
+export const SUBNAV_HEIGHT = 40;
+
+// Below this the navigation goes into the burger. Deliberately not Mantine's
+// `sm` (768px): the widest case — three categories plus a signed-in user with a
+// long address — needs about 900px before the row starts wrapping, and a
+// wrapped header looks broken long before it becomes unusable.
+export const NAV_BREAKPOINT = 'md';
+
+// useNav returns the sections the current user may see, plus which section and
+// item the current URL is in. Availability is decided here so no caller has to
+// repeat it: Cloud Projects only exists where the backend is configured (its
+// route is not even registered otherwise), Root Admin only for root admins.
+// An entry left out here is still reachable by URL — this decides what the
+// menu offers, not what exists.
+export function useNav() {
+    const [currentPath] = useLocation();
+    const { t } = useTranslation();
+    const { isRoot, pending, hasBudgets } = useCloudStatus();
+    const { hasPolicy } = useDnsPolicyStatus();
+
+
+
+    const sections = [
+        { id: 'home', label: t('nav.home'), href: '/', items: [] },
+        cloudProjectsEnabled && {
+            id: 'projects',
+            label: t('nav.cloudProjects'),
+            base: '/projects',
+            // A dot, not a count: the budget view can widen its scope, so a
+            // number up here would disagree with the number down there.
+            dot: pending > 0,
+            items: [
+                { label: t('nav.myProjects'), href: '/projects/projects' },
+                // Only for someone who manages a budget or may request one —
+                // for everybody else the page is a single "nothing here" box.
+                hasBudgets && { label: t('nav.myBudgets'), href: '/projects/budgets', dot: pending > 0 },
+                isRoot && { label: t('nav.rootAdmin'), href: '/projects/admin-sync' },
+                { label: t('nav.apiDocumentation'), href: '/projects/api-doc' },
+            ].filter(Boolean),
+        },
+        dnsZonesEnabled && {
+            id: 'dyndns',
+            label: t('nav.dnsZones'),
+            base: '/dyndns',
+            items: [
+                { label: t('nav.zoneManagement'), href: '/dyndns/zones' },
+                // Read-only for most users, and worth reading only if a rule
+                // actually applies to them; empty for a student. Named for
+                // what the page became: policy rules are one tab among the
+                // administrative ones (delegations, orphaned zones, zone
+                // events). Old /policy links redirect (see dyndns-routes).
+                hasPolicy && { label: t('nav.administration'), href: '/dyndns/administration' },
+                { label: t('nav.apiDocumentation'), href: '/dyndns/api-doc' },
+            ].filter(Boolean),
+        },
+        appStoreEnabled && {
+            id: 'appstore',
+            label: t('nav.appStore'),
+            base: '/appstore',
+            // Everything is listed for everyone: the pages themselves say when
+            // an action needs a role (deploying needs a course one teaches,
+            // reviewing needs admin), and the API decides. Asking the API here
+            // would put an AppStore request into every page's header.
+            items: [
+                { label: t('nav.appCatalog'), href: '/appstore/catalog' },
+                { label: t('nav.myAccess'), href: '/appstore/my-access' },
+                { label: t('nav.deployments'), href: '/appstore/deployments' },
+                { label: t('nav.openstackCredentials'), href: '/appstore/credentials' },
+                { label: t('nav.appReviews'), href: '/appstore/admin' },
+                { label: t('nav.apiDocumentation'), href: '/appstore/api-doc' },
+            ],
+        },
+        // Last, and a category of its own with nothing under it: tokens belong
+        // to the account rather than to one of the domains above — both APIs
+        // issue their own, and a credential has to be findable in one place to
+        // be revocable in a hurry. It used to sit under DNS Zones, from when
+        // that was the only API that had them.
+        apiTokensEnabled && {
+            id: 'tokens',
+            label: t('nav.apiTokens'),
+            base: '/tokens',
+            // A tab per issuing API, from the same list the page routes on. The
+            // two are not one credential — different prefixes, different
+            // databases — and a tab bar says that more plainly than two boxes
+            // stacked on one page did.
+            items: TOKEN_SCOPES.map(s => ({ label: tokenScopeLabel(s, t), href: tokenScopePath(s) })),
+        },
+    ].filter(Boolean).map(s => ({ ...s, href: s.href ?? s.items[0]?.href ?? '/' }));
+
+    const inSection = (s) => (s.base
+        ? currentPath === s.base || currentPath.startsWith(s.base + '/')
+        : currentPath === '/');
+    const activeSection = sections.find(inSection) ?? null;
+
+    // Longest match wins, so /dyndns/zones/example.org still marks "Zone
+    // Management" — sub-routes belong to the item they hang under.
+    const activeItem = (activeSection?.items || [])
+        .filter(i => currentPath === i.href || currentPath.startsWith(i.href + '/'))
+        .sort((a, b) => b.href.length - a.href.length)[0] ?? null;
+
+    return {
+        sections,
+        activeSection,
+        activeItem,
+        // Only a section WITH items gets a second bar; Home would otherwise
+        // leave an empty strip under the header.
+        subNavItems: activeSection?.items ?? [],
+    };
+}

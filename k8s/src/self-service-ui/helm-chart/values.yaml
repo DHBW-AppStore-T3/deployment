@@ -1,0 +1,112 @@
+---
+# Dependency condition of the cloud-self-service umbrella chart, which decides by
+# this key whether to install this chart at all. Set it there, not here: a
+# standalone `helm install` of this chart ignores it entirely.
+enabled: true
+
+#------------------------------------
+# Self-Service UI Configuration
+#------------------------------------
+
+selfServiceUI:
+  hostname: "self-service-ui.example.com"
+  replicas: 1
+  imagePullPolicy: "Always"
+  image: "ghcr.io/pfisterer/self-service-ui"
+  # Empty -> the chart\'s appVersion is used (see the deployment template).
+  version: ""
+  dynamicZonesBaseUrl: https://dyndnsapi.example.com
+  # Where an MCP client reaches the DNS API. Same reasoning as
+  # cloudResourcesMcpUrl below: the API's own host, never a BFF path.
+  dynamicZonesMcpUrl: ""
+  # OpenStack management API base URL. Empty disables the Cloud Projects tab
+  # (route unregistered + nav link hidden). Set it only where the backend works.
+  cloudResourcesBaseUrl: ""
+  # Where an MCP client reaches the projects API. NOT cloudResourcesBaseUrl:
+  # that may point at the BFF, which authenticates browser sessions with cookies
+  # and would answer a bearer token with a login redirect. This has to be the
+  # API's own host. Empty -> the UI shows nothing about MCP.
+  cloudResourcesMcpUrl: ""
+  # AppStore API base URL, normally the same-origin proxy path "/api/appstore".
+  # Empty hides the AppStore section (route unregistered + nav link hidden).
+  appstoreBaseUrl: ""
+  # DHBW-internal ACME server (acme2certifier) shown on the "TLS Certificates" tab.
+  acmeServer: https://certificates.dhbw.cloud
+  # In-cluster addresses Caddy forwards the SPA's same-origin /api/<svc>/ calls
+  # to. These are Service names of OTHER releases, so this chart cannot derive
+  # them — and leaving them as image defaults meant a rename over there broke
+  # this deployment with a 502 that nothing here could fix. Empty -> the image
+  # default applies.
+  dynamicZonesUpstream: ""
+  cloudResourcesUpstream: ""
+  # The AppStore API's Service (the umbrella names it appstore-api). Caddy
+  # never forwards /api/appstore/internal/ to it.
+  appstoreUpstream: ""
+
+#------------------------------------
+# OIDC/Auth Configuration
+#------------------------------------
+auth:
+  oidc:
+    issuerUrl: https://sso.example.cloud/realms/example
+    clientId: example-cloud-dns
+    # The provider's endpoints, stated rather than discovered. With all three of
+    # authorizationUrl, tokenUrl and jwksUrl set, the BFF starts without asking
+    # the provider anything — which is what keeps an identity provider that is
+    # down from taking the whole site with it: on 2026-09-25 a Keycloak outage
+    # left oauth2-proxy in CrashLoopBackOff and the self-service answered "no
+    # available server" for as long as it lasted. Leave them empty to discover
+    # them from the issuer at startup, as before.
+    #   Keycloak: <issuer>/protocol/openid-connect/{auth,token,certs,logout}
+    authorizationUrl: ""
+    tokenUrl: ""
+    jwksUrl: ""
+    # Where signing out ends the provider's session. Empty falls back to the
+    # Keycloak path below the issuer.
+    endSessionUrl: ""
+
+#------------------------------------
+# Ingress Configuration
+#------------------------------------
+ingress:
+  enabled: true
+  # Empty className -> field omitted -> cluster default IngressClass (Traefik on
+  # k3s). No cert-manager annotation: TLS = cluster wildcard default cert.
+  className: ""
+  annotations: {}
+
+# BFF (oauth2-proxy in front of the SPA). Off by default: it only makes sense
+# where this chart also owns the public ingress, and an environment that still
+# runs its own proxy alongside would end up with two owners of the same host.
+#
+# It lives in this chart rather than one level up because its upstream IS the
+# Service above — deriving that name beats writing it out and watching it go
+# stale.
+bff:
+  enabled: false
+  image: quay.io/oauth2-proxy/oauth2-proxy
+  version: v7.15.3
+  # Supplies client-id, client-secret and cookie-secret. Created out of band;
+  # keeping the cookie-secret stable across a redeploy is what keeps sessions
+  # alive.
+  existingSecret: oauth2-proxy-ui-secret
+  # Distinct from any other oauth2-proxy on a parent domain — a colliding
+  # cookie name fails the signature check and loops the login.
+  cookieName: _oauth2_proxy_selfservice
+  # How long a session survives before the user is sent back to the issuer.
+  # Set explicitly because the oauth2-proxy default is 168h, and together with
+  # the offline_access scope that means a week without the login being checked
+  # again: an offline refresh token is deliberately NOT bound to the SSO
+  # session, so neither an idle timeout nor a logout elsewhere nor "sign out
+  # all sessions" in the Keycloak admin console reaches this cookie. Eight
+  # hours does not close that gap — it bounds it to a working day. If the SSO
+  # session is still alive the re-login is a silent redirect, so the practical
+  # cost is at most one interactive login per day.
+  cookieExpire: 8h
+  # Hosts the proxy may redirect to besides the UI itself; the issuer's host
+  # belongs here, or RP-initiated logout cannot reach its end-session endpoint.
+  whitelistDomains: []
+  ingress:
+    enabled: true
+    className: traefik
+    annotations: {}

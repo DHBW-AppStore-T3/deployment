@@ -1,0 +1,11 @@
+{
+  "name": "appstore-api-client-tooling",
+  "private": true,
+  "description": "Tools that generate @dhbw-cloud/appstore-client from openapi.json (make npm-package).",
+  "type": "module",
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.99.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3"
+  }
+}

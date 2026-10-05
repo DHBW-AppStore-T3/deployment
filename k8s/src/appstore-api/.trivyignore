@@ -1,0 +1,44 @@
+# Trivy ignore file
+#
+# One CVE / misconfig ID per line, each with the reason it is suppressed, so
+# reviewers can revisit it when the upstream advisory changes. Checked against
+# a full scan of the worker image on 2026-09-28 (OpenTofu 1.12.6, Packer
+# 1.16.1); entries for the Terraform binary went with it (plan D5).
+
+# AVD-DS-0002: the worker image runs as root. On purpose: the worker drops
+# to a separate unprivileged UID per slot for every tool it runs (OpenTofu,
+# Packer, OpenStack CLI), which needs root in the parent. See the comment in
+# worker/Dockerfile and appstore_worker/job_context.py. The API image runs
+# as a non-root user.
+AVD-DS-0002
+
+# Go modules vendored into OpenTofu 1.12.6, the latest release. Fixed only
+# once OpenTofu ships a rebuild against the patched modules; bump TOFU_VERSION
+# then and drop the entries a scan with `--ignorefile /dev/null` no longer
+# shows. (Trivy reads ./.trivyignore by default, so a plain scan hides them.)
+#
+# golang.org/x/net (fixed in 0.55.0 / 0.56.0), x/text (0.39.0), x/mod (0.40.0):
+CVE-2026-25681
+CVE-2026-27136
+CVE-2026-39821
+CVE-2026-46600
+CVE-2026-56852
+CVE-2026-56864
+CVE-2026-56865
+# google.golang.org/grpc (fixed in 1.82.1 / 1.82.2 / 1.83.1): OpenTofu talks
+# gRPC only to its own provider plugins over a local socket.
+GHSA-hrxh-6v49-42gf
+CVE-2026-84304
+CVE-2026-84445
+# golang.org/x/crypto/ssh (fixed in 0.55.0): source-address restrictions from
+# authorized_keys are not enforced. A server-side check; OpenTofu uses SSH
+# only as a client (ssh provisioner).
+CVE-2026-56854
+# go.opentelemetry.io/otel/sdk (fixed in 1.43.0): only active when OpenTofu's
+# OTEL tracing is switched on, which the worker never does.
+CVE-2026-39883
+# oras.land/oras-go/v2 (fixed in 2.6.2): OCI registries as provider or module
+# sources. Apps get their providers from registry.opentofu.org; the worker
+# configures no OCI mirror.
+CVE-2026-50163
+CVE-2026-85731

@@ -1,0 +1,5 @@
+# Image tag of self-service-ui. Written by the k8s-images workflow after each push to
+# spike/** (commit "[skip ci]"); Argo CD syncs the new tag from here.
+# Do not edit by hand.
+selfServiceUI:
+  version: spike-92bb9f128287d4d94049ba3148f524af41466389

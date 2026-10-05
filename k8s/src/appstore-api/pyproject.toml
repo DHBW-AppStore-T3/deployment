@@ -1,0 +1,64 @@
+# Workspace root. Holds no code of its own: it ties the three packages to one
+# lockfile (uv.lock) so the API and the worker cannot end up on different
+# versions of a library they share, and it carries the lint/type-check settings
+# that apply to all of them.
+[project]
+name = "appstore-workspace"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["shared", "backend", "worker"]
+
+[tool.uv.sources]
+appstore-shared = { workspace = true }
+appstore-api = { workspace = true }
+appstore-worker = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "appstore-shared",
+    "appstore-api",
+    "appstore-worker",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    # Kills a single hung test; the "thread" method is set per package because
+    # the default "signal" method cannot interrupt psycopg2 or subprocess waits.
+    "pytest-timeout>=2.3",
+    "pytest-mock>=3.12",
+    "httpx>=0.26",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-pyyaml>=6.0",
+    "pip-audit>=2.7",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["backend/alembic"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
+# E501: long strings and log lines are left as written; the formatter handles code.
+# B008: FastAPI's Depends() in defaults is the framework's idiom.
+# E402: tests set env vars before importing the app on purpose.
+ignore = ["E501", "B008", "B904", "ARG001", "ARG002", "E402", "UP042"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["appstore_api", "appstore_worker", "appstore_shared"]
+
+[tool.mypy]
+# Knows that BaseSettings fields come from the environment, not from __init__.
+plugins = ["pydantic.mypy"]
+python_version = "3.12"
+warn_unused_configs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_no_return = true
+ignore_missing_imports = true

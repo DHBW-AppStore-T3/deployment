@@ -1,0 +1,175 @@
+{{- $comp := dict "context" . "component" "api" -}}
+{{- $name := include "appstore.componentName" $comp -}}
+{{- $v := .Values.appstore -}}
+{{- $image := printf "%s:%s" $v.api.image ($v.version | default .Chart.AppVersion) -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "appstore.rolloutAnnotations" . | nindent 4 }}
+    # Restarts the pods when the Secret changes (needs Stakater Reloader in
+    # the cluster; without it the annotation is inert).
+    secret.reloader.stakater.com/reload: {{ include "appstore.secretName" . }}
+  labels:
+    {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  replicas: {{ $v.api.replicas }}
+  selector:
+    matchLabels:
+      {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "appstore.rolloutAnnotations" . | nindent 8 }}
+      labels:
+        {{- include "appstore.selectorLabels" $comp | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      volumes:
+        # Sparse clones for reading an app's variables.
+        - name: tmp
+          emptyDir: {}
+      initContainers:
+        # Every pod migrates first; alembic/env.py serializes concurrent runs
+        # with an advisory lock, so replicas take turns.
+        - name: migrate
+          image: {{ $image }}
+          imagePullPolicy: {{ $v.imagePullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          securityContext:
+            {{- include "appstore.restrictedSecurityContext" . | nindent 12 }}
+          env:
+            {{- include "appstore.sharedSecretEnv" . | nindent 12 }}
+            # The settings are validated on import; migrations need no sign-in.
+            - name: API_MODE
+              value: {{ $v.api.mode | quote }}
+            - name: OIDC_ISSUER_URL
+              value: {{ $v.oidc.issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ $v.oidc.clientId | quote }}
+            - name: API_DUMMY_AUTH
+              value: {{ $v.api.dummyAuth | toString | quote }}
+            - name: ROLE_PROVIDER
+              value: {{ $v.roleProvider.type | quote }}
+            - name: ROLE_PROVIDER_URL
+              value: {{ $v.roleProvider.url | quote }}
+            - name: ROLE_PROVIDER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "appstore.secretName" . }}
+                  key: role-provider-api-token
+                  optional: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: api
+          image: {{ $image }}
+          imagePullPolicy: {{ $v.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            {{- include "appstore.restrictedSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml $v.api.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          env:
+            {{- include "appstore.sharedSecretEnv" . | nindent 12 }}
+            - name: API_MODE
+              value: {{ $v.api.mode | quote }}
+            - name: API_DUMMY_AUTH
+              value: {{ $v.api.dummyAuth | toString | quote }}
+            - name: API_ROOT_PATH
+              value: {{ $v.api.rootPath | quote }}
+            - name: CORS_ORIGINS
+              value: {{ $v.api.corsOrigins | default list | toJson | quote }}
+            - name: APPSTORE_UI_URL
+              value: {{ $v.api.uiUrl | quote }}
+            - name: APPSTORE_ADMIN_GROUPS
+              value: {{ $v.api.adminGroups | quote }}
+            - name: OPENSTACK_SIMULATE
+              value: {{ $v.simulate | toString | quote }}
+
+            - name: OIDC_ISSUER_URL
+              value: {{ $v.oidc.issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ $v.oidc.clientId | quote }}
+            {{- with $v.oidc.jwksUrl }}
+            - name: OIDC_JWKS_URL
+              value: {{ . | quote }}
+            {{- end }}
+
+            - name: ROLE_PROVIDER
+              value: {{ $v.roleProvider.type | quote }}
+            - name: ROLE_PROVIDER_URL
+              value: {{ $v.roleProvider.url | quote }}
+            - name: ROLE_PROVIDER_TIMEOUT_SECONDS
+              value: {{ $v.roleProvider.timeoutSeconds | toString | quote }}
+            - name: ROLE_PROVIDER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "appstore.secretName" . }}
+                  key: role-provider-api-token
+                  optional: true
+
+            - name: SMTP_ENABLED
+              value: {{ $v.smtp.enabled | toString | quote }}
+            - name: SMTP_HOST
+              value: {{ $v.smtp.host | quote }}
+            - name: SMTP_PORT
+              value: {{ $v.smtp.port | toString | quote }}
+            - name: SMTP_STARTTLS
+              value: {{ $v.smtp.starttls | toString | quote }}
+            - name: SMTP_USER
+              value: {{ $v.smtp.user | quote }}
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "appstore.secretName" . }}
+                  key: smtp-password
+                  optional: true
+            - name: SMTP_FROM_EMAIL
+              value: {{ $v.smtp.fromEmail | quote }}
+            - name: SMTP_FROM_NAME
+              value: {{ $v.smtp.fromName | quote }}
+
+---
+# Only in the cluster: browsers reach the API through the self-service UI's
+# proxy under /api/appstore/, which does not forward /internal/ (the worker's
+# OpenTofu state backend). There is deliberately no Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  selector:
+    {{- include "appstore.selectorLabels" $comp | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: http

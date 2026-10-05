@@ -1,0 +1,5956 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AppStore API",
+    "description": "App catalogue, deployments and teams for the DHBW cloud self-service platform",
+    "version": "0.1.0-test.1"
+  },
+  "paths": {
+    "/apps/": {
+      "get": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "List Apps",
+        "description": "List apps visible to the current user, paged with ``skip``/``limit``.\n\nAny signed-in user. Admins see every non-deleted app (full platform\nview). Everyone else, including dozents, sees their own apps plus\npublic apps with at least one approved version. Soft-deleted apps are\nnever listed. ``image`` is returned as a data URL.",
+        "operationId": "listApps",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppResponse"
+                  },
+                  "title": "Response Listapps"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Create App",
+        "description": "Register an app owned by the caller. Teachers and admins (plan E6), 403 otherwise.\n\nThe repository must be on an allowed host (422 ``git_host_not_allowed``)\nand readable anonymously (403 with the git error otherwise). With\n``submit_all_versions`` on a public app, every existing tag is\nsubmitted for admin review right away; failures there are logged, not\nreturned. A malformed ``image`` data URL is rejected before anything\nis stored.",
+        "operationId": "createApp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{app_id}": {
+      "get": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Get App",
+        "description": "Get one app with the versions (git tags) the caller may deploy.\n\nThe owner and admins see every tag, each flagged ``approved`` when an\nadmin approved the commit the tag points to now; everyone else sees\nonly approved tags. If the repository cannot be read, ``versions`` is\nempty rather than the request failing.\n\nSoft-deleted apps are still readable here so existing deployments\nthat still reference them can render their app name, git link,\netc.; their ``versions`` list is always empty. They just don't show\nup in the apps list / deploy wizard.\n\n- 403: the app is private or has no approved version, and the caller\n  is neither owner nor admin.\n- 404: no such app.",
+        "operationId": "getApp",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppWithVersions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Update App",
+        "description": "Update an app's name, description, visibility (``is_private``) or image.\n\nOnly fields sent in the body change; ``image: \"\"`` clears the image.\n``git_link`` is immutable after creation and ignored if sent.\n\nOwner or admin only (403 otherwise). An app an admin deactivated\n(``hidden_by_admin``) can be made public again only by an admin (403\n``app_hidden_by_admin`` for the owner); an admin doing so lifts the\ndeactivation. 404 if the app does not exist or is deleted.",
+        "operationId": "updateApp",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Delete App",
+        "description": "Soft-delete an app.\n\nSets ``apps.deleted_at`` instead of removing the row, so any\nhistorical or still-running deployment that points at this app keeps\nresolving. The app stops appearing in listings and the deploy wizard;\nexisting deployments live on until destroyed individually.\n\nOwner or admin only (403 otherwise). 404 if the app does not exist or\nis already deleted.",
+        "operationId": "deleteApp",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{app_id}/variables": {
+      "get": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Get App Variables",
+        "description": "List the input variables of one app version, for the deploy wizard.\n\nClones the ``version`` tag and parses ``terraform/variables.tf`` and\nevery Packer template's ``variables.pkr.hcl``. Each entry has name,\nHCL type, description, typed default and ``required``; ``source`` says\nwhether it feeds Terraform or Packer (``template_key`` names the\nPacker image). Variables with an ``@openstack`` marker carry\n``osType``/``osMode``/``osMulti``/``varScope``/``fileExtensions`` for\nvalue-help; an invalid marker does not fail the request but is\nreported per variable in ``markerError``. Platform-injected variables\n(``users``, ``image_name*``) are omitted.\n\nReads the commit the tag points to now; the result is cached per\ncommit. Same visibility as ``GET /apps/{id}`` (403 otherwise). 404 if\nthe app does not exist or is deleted or the tag is unknown, 400 if it\nhas no repository, 422 for an ambiguous Packer layout, 502 if the\nrepository cannot be read.",
+        "operationId": "getAppVariables",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppVariableResponse"
+                  },
+                  "title": "Response Getappvariables"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{app_id}/versions/{version_tag}/submit": {
+      "post": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Submit Version",
+        "description": "Submit a specific version tag for admin review.\n\nOwner or admin only (403 otherwise). The review covers the commit the\ntag points to now. A rejected version, or one whose tag has moved\nsince its review, can be submitted again; a pending or approved commit\ncannot (409).\n\n- 404: no such app, or the repository has no such tag.\n- 422: invalid ``@openstack`` markers in the version's variable files\n  (``marker_errors`` lists them), checked on the commit being submitted.\n- 502: the repository cannot be read; nothing is submitted unchecked.",
+        "operationId": "submitVersion",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Tag"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppVersionApprovalSubmit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppVersionApprovalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Withdraw Version",
+        "description": "Withdraw a PENDING version submission.\n\nOwner or admin only (403 otherwise). Deletes the approval entry so the\nversion appears as unsubmitted again. 404 if the app or submission\ndoes not exist, 409 if it is no longer PENDING.",
+        "operationId": "withdrawVersion",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Tag"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{app_id}/versions": {
+      "get": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "List Version Approvals",
+        "description": "List all version submissions of an app with their review status and reasons.\n\nOwner or admin only (403 otherwise); also works for soft-deleted apps.\n404 if the app does not exist.",
+        "operationId": "listVersionApprovals",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppVersionApprovalResponse"
+                  },
+                  "title": "Response Listversionapprovals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/versions/pending": {
+      "get": {
+        "tags": [
+          "Admin",
+          "Admin"
+        ],
+        "summary": "List Pending Versions",
+        "description": "Return all version submissions awaiting admin review, oldest first.\n\nEach entry carries its app, so the review queue can be rendered without\nfurther calls. Admins only (403 otherwise).",
+        "operationId": "listPendingVersions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AppVersionApprovalWithApp"
+                  },
+                  "type": "array",
+                  "title": "Response Listpendingversions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/versions/{version_tag}/approve": {
+      "post": {
+        "tags": [
+          "Admin",
+          "Admin"
+        ],
+        "summary": "Approve Version",
+        "description": "Approve a submitted version, making it deployable by all users.\n\nAdmins only (403 otherwise). Works on PENDING and on previously REJECTED\nsubmissions.\n\n- 404: the app or the version submission does not exist.\n- 409 ``version_moved``: the tag no longer points to the submitted commit;\n  the admin would be approving code that was not what got submitted.\n- 409: the version is already approved.\n- 422: the ``@openstack`` markers in this version's Terraform/Packer\n  variable files are invalid (``marker_errors`` lists them). Checked with\n  the same helper as ``GET /apps/{id}/variables``, on the submitted commit.\n- 502: the repository cannot be read; nothing is approved unchecked.",
+        "operationId": "approveVersion",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Tag"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppVersionApprovalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/versions/{version_tag}/reject": {
+      "post": {
+        "tags": [
+          "Admin",
+          "Admin"
+        ],
+        "summary": "Reject Version",
+        "description": "Reject a PENDING version with a mandatory reason shown to the app owner.\n\nAdmins only (403 otherwise). 404 if the app or submission does not exist,\n409 if the version is not PENDING (use ``/revoke`` for approved ones).",
+        "operationId": "rejectVersion",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Tag"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppVersionApprovalDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppVersionApprovalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/versions/{version_tag}/revoke": {
+      "post": {
+        "tags": [
+          "Admin",
+          "Admin"
+        ],
+        "summary": "Revoke Version",
+        "description": "Revoke a previously APPROVED version with a mandatory reason (sets status to REJECTED).\n\nA public app can no longer be deployed with this version. Admins only (403 otherwise). 404 if the app or submission\ndoes not exist, 409 if the version is not APPROVED.",
+        "operationId": "revokeVersion",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Tag"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppVersionApprovalDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppVersionApprovalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}": {
+      "put": {
+        "tags": [
+          "Admin",
+          "Admin"
+        ],
+        "summary": "Deactivate App",
+        "description": "Emergency deactivation: set the app to private so it disappears from the store.\n\nTakes no body. Does not delete the app, its versions or its deployments.\nMarks it ``hidden_by_admin``: the owner can no longer make it public,\nonly an admin can (``PUT /apps/{id}`` with ``is_private: false``).\nAdmins only (403 otherwise), 404 if the app does not exist (soft-deleted\napps included).",
+        "operationId": "deactivateApp",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "List Deployments",
+        "description": "List the deployments the caller owns, is a team member of, or shares a project with.\n\nPaged with ``skip``/``limit``, optionally filtered by ``app_id`` and\nderived status (``status_filter``). Uploaded file contents are stripped\nfrom ``userInputVar``; only their metadata is returned.\nThe same for everyone: teachers see another teacher's deployments only\nin projects they have a credential for themselves (plan E2), and admins\nopen other people's by link rather than getting the whole platform in\none list.",
+        "operationId": "listDeployments",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "app_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "status_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeploymentResponse"
+                  },
+                  "title": "Response Listdeployments"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Create Deployment",
+        "description": "Create a deployment of an app version for a course and queue its deploy job (201).\n\nOnly a dozent of ``course`` may call it, with one of their own\ncredentials (``credentialId``); the deployment lives in that\ncredential's project. A public app deploys only approved versions; a\nprivate app only by its owner. Team members are given by e-mail and\nmust be students of the course. Uploaded files (``files``) are\nvalidated and folded into ``userInputVar.terraform``.\n\nNotable errors: 403 (not a dozent of the course, app not visible,\n``version_not_approved``), 404 ``app_not_found_or_deleted``, 412\n``openstack_credentials_missing``, 413 file too large, 422 invalid\nuploads or scoped variables, 409 when a task is already active, 502\nwhen the app repository cannot be read to check the variables.\n\nAtomicity: a per-user advisory lock serializes credential mutation\nwith deployment dispatch. The deployment row, teams, user mappings,\nand the initial PENDING task row are all inserted in a single\ntransaction, so the user can never end up with a deployment row\nthat has no matching task — and committing the task row is what\nqueues it for the worker.",
+        "operationId": "createDeployment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Get Deployment",
+        "description": "Get one deployment with owner, app, teams, latest task and outputs.\n\nCallers with the member view (team members) get only their own team(s)\nand no outputs or logs. Callers with the owner view (owner, project\npeers, admins) get every team, the non-sensitive OpenTofu outputs and,\nwith ``include_logs=true``, the latest task's logs; students' own\ncredentials come from ``/my-access`` instead. ``permissions`` tells the\nUI which view applies and whether the caller may operate it.\n404 when the deployment does not exist, 403 without the member view.",
+        "operationId": "getDeployment",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "name": "include_logs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Logs"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Delete Deployment",
+        "description": "Delete a deployment, destroying its OpenStack resources first if needed.\n\nTakes the operate right (owner or project peer, with their own\ncredential). Members can read the deployment but never tear it down.\n202 with ``{task_id, status: \"destroying\"}`` when a destroy job was\nqueued (the row is soft-deleted once it succeeds); 204 when there was\nnothing to destroy; 409 while another task is active; 403\n``openstack_credentials_missing_for_project`` without an own credential\nfor the deployment's project.",
+        "operationId": "deleteDeployment",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleActionResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "A cancelled deployment, removed at once"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/resources": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "List Deployment Resources",
+        "description": "List the deployment's OpenStack resources for the Infrastructure tab.\n\nParsed from the OpenTofu state; with ``refresh=true`` (default) compute\ninstances are overlaid with live OpenStack status, fetched with the\ncaller's own credential for the project (skipped without one).\nRequires the owner view (owner, project peers, admins); 404/403\notherwise. ``refresh=false`` skips the live OpenStack join — use\nthat when polling rapidly to avoid hammering Keystone, or when\nOpenStack is known unavailable and the cached state is good enough.",
+        "operationId": "listDeploymentResources",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentResourceListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/resources/{address}": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Get Deployment Resource Detail",
+        "description": "Get the live detail (ports, security groups, volumes, metadata) of one compute instance.\n\nRequires the owner view. ``address`` is the OpenTofu state address, e.g.\n``openstack_compute_instance_v2.team_ide[\"Team-A\"]``; 422\n``invalid_resource_address`` for a malformed one, 404\n``resource_not_in_state`` when the state has no such instance.\n\nUses a ``path``-converter on the address so the for_each-key\nquoting (``team_ide[\"Team-A\"]``) survives URL routing without\naggressive encoding gymnastics on the client side. The address\nMUST exist in the cached state and MUST be a compute instance.",
+        "operationId": "getDeploymentResourceDetail",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentResourceSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/resources/{address}/redeploy": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Redeploy Deployment Resource",
+        "description": "Replace one compute instance via ``terraform apply -replace=…`` (202 ``redeploying``).\n\nRequires the operate right (owner or project peer) and an own\ncredential for the project (403 otherwise). 404\n``resource_not_in_state`` for an unknown address, 422 for a malformed\none or a non-instance resource, 409 unless the deployment is\n``success`` or ``redeploy_failed`` (``services/lifecycle``).\n\nAddress-whitelisted: we re-parse the cached TF state and only\naccept addresses that resolve to a compute instance. Anything else\nfails with 422 — the redeploy of a network resource would tear\ndown all the team VMs, which is not what a one-VM \"fix it\" action\nshould do.\n\nConcurrency: like pause/resume, the per-deployment advisory lock is\nheld across the status check and the task insert, so a parallel\npause or destroy cannot slip in between.",
+        "operationId": "redeployDeploymentResource",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Address"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/pause": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Pause Deployment",
+        "description": "Pause a running deployment by stopping its compute instances.\n\nOperate right (owner or project peer, with an own credential for the\nproject) — same gate as Destroy; team members may not, because pausing\na teammate's deployment is in practice a denial-of-service against the\nteam. 409 unless the deployment is in ``success``, ``pause_failed`` or\n``resume_failed`` (``services/lifecycle``).\n\nReturns ``202 + {task_id, status: \"pausing\"}`` on dispatch. The\nfrontend reads ``status`` to switch to the live SSE view; the\ndeployment's effective status is recomputed from the new task\nrow by ``crud_deployments.get_deployment_status``.",
+        "operationId": "pauseDeployment",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/resume": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Resume Deployment",
+        "description": "Resume a paused deployment by starting its compute instances.\n\nSame gate and response as pause (202 ``{task_id, status: \"resuming\"}``);\n409 unless the deployment is ``paused``, ``pause_failed`` or\n``resume_failed``.",
+        "operationId": "resumeDeployment",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/files/{var_name}/{slot_key}": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Download Deployment File",
+        "description": "Download one file uploaded in the deploy wizard, as ``application/octet-stream``.\n\nRequires the owner view (owner, project peers, admins); plain team\nmembers only see the file's metadata in the detail response.\n\nPath components mirror how the upload was indexed:\n  * ``var_name`` — the ``@openstack:file:*`` variable name\n  * ``slot_key`` — the inner-map key (``\"all\"`` for scope=all,\n    team name for scope=team, ``Team-User`` composite for scope=user)\n\nReturns 404 if any layer of the lookup misses; the frontend can\ntherefore probe a slot's existence via this endpoint without\nneeding a separate metadata response.",
+        "operationId": "downloadDeploymentFile",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "name": "var_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Var Name"
+            }
+          },
+          {
+            "name": "slot_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slot Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/my-access": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Get My Deployment Access",
+        "description": "Return the calling member's OWN access credentials for a deployment.\n\nThe full terraform ``outputs`` are owner-view-only (they carry every\nteammate's credentials in one object). This endpoint is the member\ncounterpart: a team member — typically a student — retrieves only\nTHEIR OWN account, extracted server-side from the latest successful\ndeploy. Teammates' credentials are never included in the response.\n\nAuthorisation reuses :func:`ensure_resend_access` with the target set\nto the caller themself, which collapses to the member-view gate\n(owner view or team member). A caller with no access to the\ndeployment gets 403, an unknown deployment 404; the resend endpoint uses the same\ngate for the self-resend button, so the two stay consistent.\n\nReturns 200 with empty maps when there's no successful deploy yet or\nthe app issued no per-user credential for this user — the UI renders\na \"no credentials yet\" state rather than treating it as an error.",
+        "operationId": "getMyDeploymentAccess",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyAccessResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/teams/{team_id}/users/{user_id}/resend-access": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Resend Access Mail",
+        "description": "Send the \"Ihr Zugang ist bereit\" mail to one team member again.\n\nThe mail carries no credentials (plan E5), only the link to \"Meine\nZugänge\". Members may resend their own; the owner view (owner, project\npeers, admins) may resend for anyone in the deployment. No rate limit\nat the API level; the relay is the backstop.\n\nStatus codes:\n  * 202 ``{\"status\": \"sent\"}``\n  * 403 — not a member, or a member resending someone else's mail\n  * 404 — deployment unknown, ``team_not_in_deployment`` / ``user_not_in_team``\n  * 409 — a task is in flight, or ``no_successful_deploy`` (nothing is ready yet)\n  * 502 ``smtp_send_failed`` — the mail relay rejected the mail\n  * 503 ``smtp_disabled`` — mail sending is switched off by the operator",
+        "operationId": "resendAccessMail",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Resendaccessmail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/stream": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Stream Deployment Events",
+        "description": "Live progress + log stream for one deployment as Server-Sent Events.\n\nStreams the events of the deployment's latest task, from the start\n(or from ``Last-Event-ID`` on a reconnect), then follows new ones by\npolling until the task's terminal event. Starts with a ``snapshot``\nevent; with no task yet the stream ends right after it. Requires the\nowner view (owner, project peers, admins); 404/403 otherwise.",
+        "operationId": "streamDeploymentEvents",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/deployment/{deployment_id}": {
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "List Deployment Tasks",
+        "description": "List all tasks (jobs) of a deployment with their status and logs.\n\nRequires the owner view of the deployment (owner, project peers,\nadmins); team members get 403. 404 if the deployment does not exist.",
+        "operationId": "listDeploymentTasks",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskResponse"
+                  },
+                  "title": "Response Listdeploymenttasks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Get Task",
+        "description": "Get a single task (job) with its status and log.\n\nRequires the owner view of the task's deployment (403 otherwise). 404\nif the task or its deployment does not exist.",
+        "operationId": "getTask",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/teams/": {
+      "get": {
+        "tags": [
+          "Teams"
+        ],
+        "summary": "List Teams",
+        "description": "List the teams of one deployment, paged with ``skip``/``limit``.\n\nRequires the member view of the deployment (owner, project peers,\nadmins, team members); 403 otherwise, 404 if the deployment does not\nexist.",
+        "operationId": "listTeams",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TeamResponse"
+                  },
+                  "title": "Response Listteams"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "summary": "Create Team",
+        "description": "Add a team with its members to a deployment the caller operates.\n\nOwner or project peer of the deployment only (403 otherwise; admins\ncannot). Members are given by address and must be students of the\ndeployment's course and in no other team of it; team names must be\nunique (422 otherwise). Unknown addresses get a user row created.\n404 if the deployment does not exist, 503 if the role provider cannot\nlist the course's students.",
+        "operationId": "createTeam",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/teams/{team_id}": {
+      "get": {
+        "tags": [
+          "Teams"
+        ],
+        "summary": "Get Team",
+        "description": "Get a team with its members.\n\nRequires the member view of the team's deployment (403 otherwise);\n404 if the team does not exist.",
+        "operationId": "getTeam",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamWithMembers"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Teams"
+        ],
+        "summary": "Update Team",
+        "description": "Rename a team.\n\nOwner or project peer of the deployment only (403 otherwise). 404 if\nthe team does not exist, 422 if the new name is taken by another team\nof the deployment.",
+        "operationId": "updateTeam",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Teams"
+        ],
+        "summary": "Delete Team",
+        "description": "Delete a team; its infrastructure is removed on the next deploy, not now.\n\nOwner or project peer of the deployment only (403 otherwise). 404 if\nthe team does not exist.",
+        "operationId": "deleteTeam",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/teams/{team_id}/members": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "summary": "Add Team Member",
+        "description": "Add a student of the deployment's course to the team, by address.\n\nOwner or project peer of the deployment only (403 otherwise). 400 if\nthe user is already in this team, 422 if the address is not a student\nof the course or already in another team of the deployment. 404 if\nthe team does not exist, 503 if the role provider cannot be reached.",
+        "operationId": "addTeamMember",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamMemberAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/teams/{team_id}/members/{email}": {
+      "delete": {
+        "tags": [
+          "Teams"
+        ],
+        "summary": "Remove Team Member",
+        "description": "Remove a member, given by address, from the team.\n\nOwner or project peer of the deployment only (403 otherwise). 404 if\nthe team does not exist or the address is not a member of it.",
+        "operationId": "removeTeamMember",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          },
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Email"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": [
+          "Courses"
+        ],
+        "summary": "Get Me",
+        "description": "Return who is calling and which kinds of action the UI should offer them.\n\nAny signed-in user. ``is_admin``/``is_dozent`` and the ``can_*`` flags\nare derived from the caller's tokens on this request; they only steer\nthe UI, every endpoint checks rights again.",
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/courses": {
+      "get": {
+        "tags": [
+          "Courses"
+        ],
+        "summary": "List My Courses",
+        "description": "List the courses the caller teaches (``group:<id>#dozent``), with display names.\n\nAny signed-in user; empty for callers who teach nothing. Used by the\ndeploy wizard to pick a course.",
+        "operationId": "listMyCourses",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourseResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Listmycourses"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/courses/{course}/students": {
+      "get": {
+        "tags": [
+          "Courses"
+        ],
+        "summary": "List Course Students",
+        "description": "List the addresses of the course's ``studierende``, for building teams.\n\nOnly for callers who teach the course (403 ``course_not_taught``\notherwise). 503 if the role provider cannot be reached.",
+        "operationId": "listCourseStudents",
+        "parameters": [
+          {
+            "name": "course",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^group:[^#\\s]+$",
+              "title": "Course"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Listcoursestudents"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/access": {
+      "get": {
+        "tags": [
+          "Courses"
+        ],
+        "summary": "List My Access",
+        "description": "List every deployment the caller is a team member of, with their own access.\n\nOnly the caller's own account and their team's VM are included; the\nmaps are empty until a deploy has succeeded or when the app issues no\nper-user account.",
+        "operationId": "listMyAccess",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyAccessEntry"
+                  },
+                  "type": "array",
+                  "title": "Response Listmyaccess"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/quota": {
+      "get": {
+        "tags": [
+          "OpenStack Credentials"
+        ],
+        "summary": "Get Project Quota",
+        "description": "Quota and usage (compute, storage, network) of the credential's project.\n\nAsked with the caller's own credential; 404 for anyone else's, 502 when\nOpenStack does not answer. Declared sync on purpose: the SDK does\nblocking network I/O, and a sync def runs in Starlette's threadpool\ninstead of stalling the event loop.",
+        "operationId": "getProjectQuota",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotaOverviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials": {
+      "get": {
+        "tags": [
+          "OpenStack Credentials"
+        ],
+        "summary": "List My Credentials",
+        "description": "List the caller's OpenStack credentials, one per project, without secrets.\n\nEach entry reports the result of the last Keystone check and the number of\nthe caller's live deployments in that project.",
+        "operationId": "listMyCredentials",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OpenStackCredentialResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Listmycredentials"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "OpenStack Credentials"
+        ],
+        "summary": "Save My Credential",
+        "description": "Check against Keystone, then store (201) or replace the one for the same project (200).\n\n422 ``openstack_credentials_invalid`` with a ``cause`` when Keystone\ndoes not accept it; nothing is stored then.",
+        "operationId": "saveMyCredential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenStackCredentialUpsert"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenStackCredentialResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replaced the credential for the same project"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/from-yaml": {
+      "post": {
+        "tags": [
+          "OpenStack Credentials"
+        ],
+        "summary": "Save My Credential From Yaml",
+        "description": "Same as the plain POST, from a pasted `clouds.yaml`.\n\n``cloud_name`` picks the entry when the file holds several clouds. Parse\nerrors answer 422; otherwise status codes as for the plain POST.",
+        "operationId": "saveMyCredentialFromYaml",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenStackCredentialFromYaml"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenStackCredentialResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replaced the credential for the same project"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/test": {
+      "post": {
+        "tags": [
+          "OpenStack Credentials"
+        ],
+        "summary": "Test My Credential",
+        "description": "Ask Keystone again and record the outcome (e.g. a revoked application credential).\n\nAlways answers 200 with the updated credential; a failure shows up in its\nvalidation fields (``project_changed`` when the credential now scopes to a\ndifferent project). 404 for a credential that is not the caller's.",
+        "operationId": "testMyCredential",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenStackCredentialResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}": {
+      "delete": {
+        "tags": [
+          "OpenStack Credentials"
+        ],
+        "summary": "Delete My Credential",
+        "description": "Delete one of the caller's credentials (204).\n\n404 when it is not the caller's; 409 ``openstack_credentials_locked`` with\n``active_deployments`` while the caller still owns live deployments in the\ncredential's project.",
+        "operationId": "deleteMyCredential",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/refresh": {
+      "post": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "Refresh Resource Cache",
+        "description": "Drop the cached resource lists of this credential (204).\n\nTriggered by the refresh button next to a wizard picker — the user has\njust created a resource in Horizon and wants to see it. With ``kind``\nonly that kind is dropped (the ``@openstack:<kind>`` marker names, e.g.\n``network``, ``security_group``, ``availability_zone``); 422 for an\nunknown one. 404 for a credential that is not the caller's.",
+        "operationId": "refreshResourceCache",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only invalidate this kind: a marker kind such as network or security_group",
+              "title": "Kind"
+            },
+            "description": "Only invalidate this kind: a marker kind such as network or security_group"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/networks": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Networks",
+        "description": "List all networks visible to the credential's project.\n\n``shared`` and ``external`` are included so the frontend can render\n\"External Network\" hints. Like every endpoint here: 404 for a credential\nthat is not the caller's, 502 when OpenStack fails.",
+        "operationId": "listNetworks",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NetworkItem"
+                  },
+                  "title": "Response Listnetworks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/subnets": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Subnets",
+        "description": "List subnets, optionally only those of ``network_id``.\n\nThe filter is passed to the OpenStack API, and each filter value is\ncached under its own key next to the unfiltered list.",
+        "operationId": "listSubnets",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          },
+          {
+            "name": "network_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only subnets of this network",
+              "title": "Network Id"
+            },
+            "description": "Only subnets of this network"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubnetItem"
+                  },
+                  "title": "Response Listsubnets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/flavors": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Flavors",
+        "description": "List compute flavors with vCPUs, RAM (MB) and disk (GB).\n\nPrivate flavors (``is_public=false``) are included; the frontend can\nrender a note.",
+        "operationId": "listFlavors",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FlavorItem"
+                  },
+                  "title": "Response Listflavors"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/images": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Images",
+        "description": "List Glance images visible to the project, by default only ``active`` ones.\n\nDefault ``status=active`` keeps \"queued\" or \"deleted\" images out of the\npicker; ``status=all`` returns every image. ``size`` is in bytes.",
+        "operationId": "listImages",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Image status to list (default: active); 'all' for every status",
+              "default": "active",
+              "title": "Status"
+            },
+            "description": "Image status to list (default: active); 'all' for every status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ImageItem"
+                  },
+                  "title": "Response Listimages"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/keypairs": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Keypairs",
+        "description": "List the SSH keypairs of the credential's OpenStack user.\n\nNova keypairs belong to the user, not the project, and Terraform modules\nreference them by ``name``; ``id`` therefore repeats the name.",
+        "operationId": "listKeypairs",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KeypairItem"
+                  },
+                  "title": "Response Listkeypairs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/security-groups": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Security Groups",
+        "description": "List the security groups visible to the credential's project.",
+        "operationId": "listSecurityGroups",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DescribedItem"
+                  },
+                  "title": "Response Listsecuritygroups"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/floating-ip-pools": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Floating Ip Pools",
+        "description": "List the floating IP pools, i.e. the external networks.\n\nThere is no dedicated ``Pool`` resource in OpenStack — pools are\nnetworks with ``router:external = true``. Terraform modules usually\nexpect the **name** of the external network.",
+        "operationId": "listFloatingIpPools",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DescribedItem"
+                  },
+                  "title": "Response Listfloatingippools"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/volumes": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Volumes",
+        "description": "List the project's Cinder volumes in every status (``size`` in GB).\n\nThe frontend filters ``status`` itself if needed; ``in-use`` volumes are\nincluded because a multi-attach volume can take a second instance.",
+        "operationId": "listVolumes",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VolumeItem"
+                  },
+                  "title": "Response Listvolumes"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/routers": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Routers",
+        "description": "List the routers visible to the project, with their external gateway info.",
+        "operationId": "listRouters",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RouterItem"
+                  },
+                  "title": "Response Listrouters"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/openstack-credentials/{credential_id}/resources/availability-zones": {
+      "get": {
+        "tags": [
+          "OpenStack Resources"
+        ],
+        "summary": "List Availability Zones",
+        "description": "List the availability zones of one service; the zone name doubles as ``id``.\n\nAZs differ per service. Default: compute (Nova), the common case (VM\nplacement). 400 for a ``service`` other than compute, network or volume.",
+        "operationId": "listAvailabilityZones",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Credential Id"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "OpenStack service: compute (Nova), network (Neutron) or volume (Cinder)",
+              "default": "compute",
+              "title": "Service"
+            },
+            "description": "OpenStack service: compute (Nova), network (Neutron) or volume (Cinder)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AvailabilityZoneItem"
+                  },
+                  "title": "Response Listavailabilityzones"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config.json": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Get Config",
+        "description": "Version and sign-in settings, without authentication.\n\nSame shape as openstack-management-api's. Public on purpose: an\nauthenticated endpoint would fail exactly when ``sign_in_available`` is\nfalse and the UI needs to know.",
+        "operationId": "getConfig",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Get Health",
+        "description": "Liveness probe: always ``healthy`` while the process answers; checks no dependencies.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "git_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Link"
+          },
+          "is_private": {
+            "type": "boolean",
+            "title": "Is Private",
+            "default": false
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "submit_all_versions": {
+            "type": "boolean",
+            "title": "Submit All Versions",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "AppCreate",
+        "description": "Body of ``POST /apps``: register an app from a Git repository."
+      },
+      "AppResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "git_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Link"
+          },
+          "is_private": {
+            "type": "boolean",
+            "title": "Is Private"
+          },
+          "appId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Appid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "hidden_by_admin": {
+            "type": "boolean",
+            "title": "Hidden By Admin",
+            "default": false
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "is_private",
+          "appId",
+          "userId",
+          "created_at"
+        ],
+        "title": "AppResponse",
+        "description": "An app of the catalogue."
+      },
+      "AppUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_private": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Private"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "title": "AppUpdate",
+        "description": "Body of ``PUT /apps/{id}``: partial update; omitted fields stay unchanged."
+      },
+      "AppVariableResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "default": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "osType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ostype"
+          },
+          "osMode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Osmode"
+          },
+          "osMulti": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Osmulti"
+          },
+          "osScope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Osscope"
+          },
+          "varScope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Varscope"
+          },
+          "fileExtensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fileextensions"
+          },
+          "markerError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/_MarkerErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "required",
+          "source"
+        ],
+        "title": "AppVariableResponse",
+        "description": "Shape of one entry in ``GET /apps/{id}/variables``.\n\nKeys match what ``_parse_one_variable`` writes to the dict exactly —\nthe frontend reads ``osType``/``osMode``/``osMulti``/``osScope``/\n``varScope``/``fileExtensions`` in camelCase and the rest in\nsnake/lowercase. Keys are kept verbatim (no auto-aliasing)."
+      },
+      "AppVersionApprovalDecision": {
+        "properties": {
+          "rejection_reason": {
+            "type": "string",
+            "title": "Rejection Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rejection_reason"
+        ],
+        "title": "AppVersionApprovalDecision",
+        "description": "Body of reject and revoke: the reason, shown to the app owner."
+      },
+      "AppVersionApprovalResponse": {
+        "properties": {
+          "approvalId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Approvalid"
+          },
+          "appId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Appid"
+          },
+          "version_tag": {
+            "type": "string",
+            "title": "Version Tag"
+          },
+          "commit_sha": {
+            "type": "string",
+            "title": "Commit Sha"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppVersionApprovalStatus"
+          },
+          "diff_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff Url"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approvalId",
+          "appId",
+          "version_tag",
+          "commit_sha",
+          "status",
+          "created_at"
+        ],
+        "title": "AppVersionApprovalResponse",
+        "description": "The review state of one version tag of an app, bound to the reviewed commit."
+      },
+      "AppVersionApprovalStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "title": "AppVersionApprovalStatus",
+        "description": "Review state of an app version; a public app deploys only APPROVED versions (plan E6)."
+      },
+      "AppVersionApprovalSubmit": {
+        "properties": {
+          "diff_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff Url"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "AppVersionApprovalSubmit",
+        "description": "Body of a version submission: optional hints for the reviewing admin."
+      },
+      "AppVersionApprovalWithApp": {
+        "properties": {
+          "approvalId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Approvalid"
+          },
+          "appId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Appid"
+          },
+          "version_tag": {
+            "type": "string",
+            "title": "Version Tag"
+          },
+          "commit_sha": {
+            "type": "string",
+            "title": "Commit Sha"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppVersionApprovalStatus"
+          },
+          "diff_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff Url"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "app": {
+            "$ref": "#/components/schemas/AppResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approvalId",
+          "appId",
+          "version_tag",
+          "commit_sha",
+          "status",
+          "created_at",
+          "app"
+        ],
+        "title": "AppVersionApprovalWithApp",
+        "description": "A version review with its app, for the admins' review queue."
+      },
+      "AppWithVersions": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "git_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Link"
+          },
+          "is_private": {
+            "type": "boolean",
+            "title": "Is Private"
+          },
+          "appId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Appid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "hidden_by_admin": {
+            "type": "boolean",
+            "title": "Hidden By Admin",
+            "default": false
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponse"
+          },
+          "versions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Versions",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "is_private",
+          "appId",
+          "userId",
+          "created_at",
+          "user"
+        ],
+        "title": "AppWithVersions",
+        "description": "An app with its owner and its Git tags, each marked with its approval state."
+      },
+      "AvailabilityZoneItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            ],
+            "title": "State",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "AvailabilityZoneItem",
+        "description": "A compute availability zone."
+      },
+      "ComputeQuotas": {
+        "properties": {
+          "instances": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "vcpus": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "ram": {
+            "$ref": "#/components/schemas/QuotaItem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instances",
+          "vcpus",
+          "ram"
+        ],
+        "title": "ComputeQuotas",
+        "description": "Nova quotas; ``ram`` is in MB."
+      },
+      "CourseResponse": {
+        "properties": {
+          "course": {
+            "type": "string",
+            "title": "Course"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "course",
+          "display_name"
+        ],
+        "title": "CourseResponse",
+        "description": "A course the caller teaches (a ``#dozent`` relation in role-provider-service)."
+      },
+      "DeploymentCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "appId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Appid"
+          },
+          "releaseTag": {
+            "type": "string",
+            "title": "Releasetag"
+          },
+          "course": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^group:[^#\\s]+$",
+            "title": "Course"
+          },
+          "credentialId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Credentialid"
+          },
+          "userInputVar": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userinputvar"
+          },
+          "files": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/DeploymentFileUpload"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/Team"
+            },
+            "type": "array",
+            "title": "Teams",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "appId",
+          "releaseTag",
+          "course",
+          "credentialId"
+        ],
+        "title": "DeploymentCreate",
+        "description": "Body of ``POST /deployments``: deploy an app version for a course, in teams."
+      },
+      "DeploymentDetail": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "appId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Appid"
+          },
+          "deploymentId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deploymentid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "releaseTag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Releasetag"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha"
+          },
+          "course": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course"
+          },
+          "os_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Os Project Id"
+          },
+          "userInputVar": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userinputvar"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponse"
+          },
+          "app": {
+            "$ref": "#/components/schemas/AppResponse"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/DeploymentPermissions"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentTeamResponse"
+            },
+            "type": "array",
+            "title": "Teams",
+            "default": []
+          },
+          "latest_task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeploymentOutputs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "logs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "appId",
+          "deploymentId",
+          "userId",
+          "user",
+          "app",
+          "permissions"
+        ],
+        "title": "DeploymentDetail",
+        "description": "A deployment with the caller's permissions, teams, latest task and outputs.\n\nOutputs and logs are only present for callers with the owner view."
+      },
+      "DeploymentFileUpload": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "content_b64": {
+            "type": "string",
+            "title": "Content B64"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "content_b64",
+          "size"
+        ],
+        "title": "DeploymentFileUpload",
+        "description": "Single file uploaded by the lecturer in the deploy wizard.\n\nPersisted verbatim into ``userInputVar.terraform`` keyed by the\nvariable name (and recipient key for team/user scope) so the worker\npasses it to terraform and cloud-init decodes it into ``write_files``.\n\n``content_b64`` MUST be standard (RFC 4648) base64. The value sent\nto Terraform stays base64 for cloud-init's ``encoding: b64``."
+      },
+      "DeploymentOutputs": {
+        "properties": {
+          "raw": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw"
+          }
+        },
+        "type": "object",
+        "title": "DeploymentOutputs",
+        "description": "The deployment's OpenTofu outputs; their structure depends on the app."
+      },
+      "DeploymentPermissions": {
+        "properties": {
+          "owner_view": {
+            "type": "boolean",
+            "title": "Owner View"
+          },
+          "operate": {
+            "type": "boolean",
+            "title": "Operate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "owner_view",
+          "operate"
+        ],
+        "title": "DeploymentPermissions",
+        "description": "What the caller may do with this deployment, as capabilities.py decides.\n\nFor the UI to offer the right things; every action is checked again."
+      },
+      "DeploymentResourceListResponse": {
+        "properties": {
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentResourceSchema"
+            },
+            "type": "array",
+            "title": "Resources"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resources",
+          "live"
+        ],
+        "title": "DeploymentResourceListResponse",
+        "description": "The resources of a deployment's OpenTofu state, optionally joined with live OpenStack data.\n\nAn object rather than a bare list so metadata can be added later without a breaking change."
+      },
+      "DeploymentResourceSchema": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "provider_id": {
+            "type": "string",
+            "title": "Provider Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "drift": {
+            "type": "string",
+            "enum": [
+              "in_sync",
+              "stale",
+              "missing"
+            ],
+            "title": "Drift",
+            "default": "in_sync"
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LifecycleStatesSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hardware": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HardwareSpecSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "addresses": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkAddressSchema"
+            },
+            "type": "array",
+            "title": "Addresses",
+            "default": []
+          },
+          "ports": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NetworkPortSchema"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ports"
+          },
+          "security_groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SecurityGroupSummarySchema"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Groups"
+          },
+          "volumes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/VolumeAttachmentSchema"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volumes"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address",
+          "type",
+          "category",
+          "provider_id",
+          "display_name"
+        ],
+        "title": "DeploymentResourceSchema",
+        "description": "One row in the resource list (stage 1) or the response of the\ndetail endpoint (stage 2 — same shape, more fields populated).\n\nNon-instance categories (network, subnet, etc.) only populate\n``address``, ``type``, ``category``, ``provider_id``,\n``display_name``; the instance-only fields stay ``None`` /\nempty list."
+      },
+      "DeploymentResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "appId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Appid"
+          },
+          "deploymentId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deploymentid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "releaseTag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Releasetag"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha"
+          },
+          "course": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course"
+          },
+          "os_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Os Project Id"
+          },
+          "userInputVar": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userinputvar"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "appId",
+          "deploymentId",
+          "userId"
+        ],
+        "title": "DeploymentResponse",
+        "description": "A deployment; ``status`` is taken from its latest task."
+      },
+      "DeploymentTeamMember": {
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "email",
+          "username"
+        ],
+        "title": "DeploymentTeamMember",
+        "description": "A member of a deployment's team."
+      },
+      "DeploymentTeamResponse": {
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Teamid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentTeamMember"
+            },
+            "type": "array",
+            "title": "Members",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "teamId",
+          "name"
+        ],
+        "title": "DeploymentTeamResponse",
+        "description": "A team of a deployment with its members, as stored."
+      },
+      "DescribedItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "DescribedItem",
+        "description": "A resource with a description (security groups, floating IP pools)."
+      },
+      "FlavorItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "vcpus": {
+            "type": "integer",
+            "title": "Vcpus",
+            "default": 0
+          },
+          "ram": {
+            "type": "integer",
+            "title": "Ram",
+            "description": "MB",
+            "default": 0
+          },
+          "disk": {
+            "type": "integer",
+            "title": "Disk",
+            "description": "GB",
+            "default": 0
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "FlavorItem",
+        "description": "A Nova flavor."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HardwareSpecSchema": {
+        "properties": {
+          "flavor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flavor Name"
+          },
+          "ram_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ram Mb"
+          },
+          "vcpus": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vcpus"
+          },
+          "disk_gb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disk Gb"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id"
+          },
+          "image_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Name"
+          },
+          "availability_zone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability Zone"
+          },
+          "launched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launched At"
+          }
+        },
+        "type": "object",
+        "title": "HardwareSpecSchema",
+        "description": "Flavor, image and placement of a server."
+      },
+      "ImageItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility",
+            "default": ""
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "bytes",
+            "default": 0
+          },
+          "disk_format": {
+            "type": "string",
+            "title": "Disk Format",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "ImageItem",
+        "description": "A Glance image."
+      },
+      "KeypairItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint",
+            "default": ""
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "ssh"
+          }
+        },
+        "type": "object",
+        "title": "KeypairItem",
+        "description": "A Nova key pair of the credential's user."
+      },
+      "LifecycleActionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "deployment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "LifecycleActionResponse",
+        "description": "202 answer of pause/resume/destroy/redeploy: the queued task.\n\n``status`` is the deployment's status right after queueing, so the UI\ncan switch to the live view without another request."
+      },
+      "LifecycleStatesSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "task_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task State"
+          },
+          "vm_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vm State"
+          },
+          "power_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power State"
+          },
+          "fault_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fault Message"
+          }
+        },
+        "type": "object",
+        "title": "LifecycleStatesSchema",
+        "description": "Server lifecycle quad + optional fault message.\n\nFields are pass-through from OpenStack's Nova response (stable\nstrings like ``\"ACTIVE\"`` / ``\"BUILD\"`` / ``\"ERROR\"``). The frontend\nrenders a pill from ``status`` + ``task_state`` and shows\n``fault_message`` as a banner when ``status == \"ERROR\"``."
+      },
+      "MeResponse": {
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin"
+          },
+          "is_dozent": {
+            "type": "boolean",
+            "title": "Is Dozent"
+          },
+          "can_register_apps": {
+            "type": "boolean",
+            "title": "Can Register Apps"
+          },
+          "can_deploy": {
+            "type": "boolean",
+            "title": "Can Deploy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "email",
+          "is_admin",
+          "is_dozent",
+          "can_register_apps",
+          "can_deploy"
+        ],
+        "title": "MeResponse",
+        "description": "The caller and what they may do here, for the UI to offer the right actions.\n\nDerived from this request's tokens; the API checks every action itself,\nso this only decides what the UI shows."
+      },
+      "MyAccessEntry": {
+        "properties": {
+          "deploymentId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deploymentid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "app_name": {
+            "type": "string",
+            "title": "App Name"
+          },
+          "course": {
+            "type": "string",
+            "title": "Course"
+          },
+          "team_name": {
+            "type": "string",
+            "title": "Team Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "user_accounts": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "User Accounts",
+            "default": {}
+          },
+          "team_vms": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Team Vms",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "deploymentId",
+          "name",
+          "app_name",
+          "course",
+          "team_name"
+        ],
+        "title": "MyAccessEntry",
+        "description": "One deployment on \"Meine Zugänge\": where the caller is a team member."
+      },
+      "MyAccessResponse": {
+        "properties": {
+          "user_accounts": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "User Accounts",
+            "default": {}
+          },
+          "team_vms": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Team Vms",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "title": "MyAccessResponse",
+        "description": "A single team member's own access credentials.\n\nReturned by ``GET /deployments/{id}/my-access`` so a member (student)\ncan see their OWN credentials without the owner-view that gates the\nfull outputs. Only the caller's own account is ever present.\n\nBoth maps mirror the raw terraform ``user_accounts`` / ``team_vms``\noutput shape (one key each: the member's account and their team's VM)\nso the frontend's existing account-matching pipeline consumes this\nunchanged. Empty maps mean \"no credentials yet\" (no successful deploy,\nor the app issued no per-user account) — a valid 200, not an error."
+      },
+      "NetworkAddressSchema": {
+        "properties": {
+          "network": {
+            "type": "string",
+            "title": "Network"
+          },
+          "fixed_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Ip"
+          },
+          "floating_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floating Ip"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          }
+        },
+        "type": "object",
+        "required": [
+          "network"
+        ],
+        "title": "NetworkAddressSchema",
+        "description": "One address of a server on one network."
+      },
+      "NetworkItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared",
+            "default": false
+          },
+          "external": {
+            "type": "boolean",
+            "title": "External",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "NetworkItem",
+        "description": "A Neutron network."
+      },
+      "NetworkPortSchema": {
+        "properties": {
+          "port_id": {
+            "type": "string",
+            "title": "Port Id"
+          },
+          "network_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
+          "fixed_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Ip"
+          },
+          "security_group_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Security Group Ids",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "port_id"
+        ],
+        "title": "NetworkPortSchema",
+        "description": "A Neutron port of a server (detail endpoint only)."
+      },
+      "NetworkQuotas": {
+        "properties": {
+          "floating_ips": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "security_groups": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "security_group_rules": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "networks": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "ports": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "routers": {
+            "$ref": "#/components/schemas/QuotaItem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "floating_ips",
+          "security_groups",
+          "security_group_rules",
+          "networks",
+          "ports",
+          "routers"
+        ],
+        "title": "NetworkQuotas",
+        "description": "Neutron quotas, counting only resources owned by the project."
+      },
+      "OpenStackAuthType": {
+        "type": "string",
+        "enum": [
+          "v3applicationcredential",
+          "password"
+        ],
+        "title": "OpenStackAuthType",
+        "description": "How a stored credential authenticates; values are Keystone's ``auth_type`` names."
+      },
+      "OpenStackCredentialFromYaml": {
+        "properties": {
+          "clouds_yaml": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Clouds Yaml",
+            "description": "raw clouds.yaml file contents"
+          },
+          "cloud_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud Name",
+            "description": "Pick a specific cloud from the YAML; required when there is more than one"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clouds_yaml"
+        ],
+        "title": "OpenStackCredentialFromYaml",
+        "description": "Convenience body: paste/upload a `clouds.yaml` and let the server pick it apart."
+      },
+      "OpenStackCredentialResponse": {
+        "properties": {
+          "credentialId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Credentialid"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/OpenStackAuthType"
+          },
+          "auth_url": {
+            "type": "string",
+            "title": "Auth Url"
+          },
+          "region_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Name"
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface"
+          },
+          "identity_api_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Api Version"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "user_domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Domain Name"
+          },
+          "project_domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Domain Name"
+          },
+          "last_validated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Validated At"
+          },
+          "last_validation_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Validation Error"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "active_deployments": {
+            "type": "integer",
+            "title": "Active Deployments",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "credentialId",
+          "auth_type",
+          "auth_url",
+          "project_id"
+        ],
+        "title": "OpenStackCredentialResponse",
+        "description": "A stored credential, masked — never identifier or secret material.\n\n``project_id``/``project_name`` are the project Keystone scoped the\ncredential to. ``active_deployments`` counts the caller's live\ndeployments in that project; deleting the credential is refused while\nthere are any, so they cannot be orphaned."
+      },
+      "OpenStackCredentialUpsert": {
+        "properties": {
+          "auth_type": {
+            "$ref": "#/components/schemas/OpenStackAuthType"
+          },
+          "auth_url": {
+            "type": "string",
+            "title": "Auth Url"
+          },
+          "region_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Name"
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface",
+            "default": "public"
+          },
+          "identity_api_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Api Version",
+            "default": "3"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "user_domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Domain Name"
+          },
+          "project_domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Domain Name"
+          },
+          "identifier": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Identifier",
+            "description": "username OR application-credential ID"
+          },
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Secret",
+            "description": "password OR application-credential secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_type",
+          "auth_url",
+          "identifier",
+          "secret"
+        ],
+        "title": "OpenStackCredentialUpsert",
+        "description": "Body of POST /me/openstack-credentials.\n\n`identifier` is either a username (password auth) or an\napplication-credential ID (preferred: revocable, bound to one project).\n`secret` is the corresponding password or application-credential\nsecret. Both are stored encrypted at rest. For password auth,\n`project_id`/`project_name` say which project to scope to; what is\nstored is the project Keystone actually scoped the token to."
+      },
+      "QuotaItem": {
+        "properties": {
+          "used": {
+            "type": "integer",
+            "title": "Used"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "used",
+          "limit",
+          "available"
+        ],
+        "title": "QuotaItem",
+        "description": "One quota: current usage, the project's limit (-1: unlimited) and what is\nleft (may be negative when over quota; null when unlimited)."
+      },
+      "QuotaOverviewResponse": {
+        "properties": {
+          "compute": {
+            "$ref": "#/components/schemas/ComputeQuotas"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/StorageQuotas"
+          },
+          "network": {
+            "$ref": "#/components/schemas/NetworkQuotas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "compute",
+          "storage",
+          "network"
+        ],
+        "title": "QuotaOverviewResponse",
+        "description": "Quota and usage of one OpenStack project, grouped by service."
+      },
+      "RouterItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "external_gateway_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Gateway Info"
+          }
+        },
+        "type": "object",
+        "title": "RouterItem",
+        "description": "A Neutron router."
+      },
+      "SecurityGroupSummarySchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "ingress_rules": {
+            "type": "integer",
+            "title": "Ingress Rules"
+          },
+          "egress_rules": {
+            "type": "integer",
+            "title": "Egress Rules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "ingress_rules",
+          "egress_rules"
+        ],
+        "title": "SecurityGroupSummarySchema",
+        "description": "A security group of a server with its rule counts (detail endpoint only)."
+      },
+      "StorageQuotas": {
+        "properties": {
+          "volumes": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "snapshots": {
+            "$ref": "#/components/schemas/QuotaItem"
+          },
+          "gigabytes": {
+            "$ref": "#/components/schemas/QuotaItem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "volumes",
+          "snapshots",
+          "gigabytes"
+        ],
+        "title": "StorageQuotas",
+        "description": "Cinder quotas; ``gigabytes`` sums the size of all volumes."
+      },
+      "SubnetItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "cidr": {
+            "type": "string",
+            "title": "Cidr",
+            "default": ""
+          },
+          "ip_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Version",
+            "default": 4
+          },
+          "network_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Id"
+          },
+          "gateway_ip": {
+            "type": "string",
+            "title": "Gateway Ip",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "SubnetItem",
+        "description": "A Neutron subnet."
+      },
+      "TaskResponse": {
+        "properties": {
+          "deploymentId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deploymentid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TaskType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "logs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logs"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "progress_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Pct"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Taskid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deploymentId",
+          "type",
+          "status",
+          "taskId",
+          "created_at"
+        ],
+        "title": "TaskResponse",
+        "description": "A task of a deployment, including its log."
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "success",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "description": "Queue state of a task: PENDING -> RUNNING -> SUCCESS | FAILED; CANCELLED is also terminal."
+      },
+      "TaskSummary": {
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Taskid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TaskType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "progress_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taskId",
+          "type",
+          "status",
+          "created_at"
+        ],
+        "title": "TaskSummary",
+        "description": "The latest task of a deployment: type, status and progress."
+      },
+      "TaskType": {
+        "type": "string",
+        "enum": [
+          "deploy",
+          "update",
+          "destroy",
+          "pause",
+          "resume",
+          "redeploy"
+        ],
+        "title": "TaskType",
+        "description": "What a task does; each type except UPDATE has a job in ``appstore_worker.runner.JOBS``."
+      },
+      "Team": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emails",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "Team",
+        "description": "A team in a deployment request: a name and its members' e-mail addresses."
+      },
+      "TeamCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "deploymentId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deploymentid"
+          },
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emails",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "deploymentId"
+        ],
+        "title": "TeamCreate",
+        "description": "Body of ``POST /teams``: a new team of a deployment with its members."
+      },
+      "TeamMemberAdd": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "TeamMemberAdd",
+        "description": "Body for adding one member to a team, by e-mail address."
+      },
+      "TeamResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "deploymentId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deploymentid"
+          },
+          "teamId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Teamid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "deploymentId",
+          "teamId"
+        ],
+        "title": "TeamResponse",
+        "description": "A team of a deployment."
+      },
+      "TeamUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "title": "TeamUpdate",
+        "description": "Body of ``PUT /teams/{id}``: rename a team."
+      },
+      "TeamWithMembers": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "deploymentId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deploymentid"
+          },
+          "teamId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Teamid"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/UserResponse"
+            },
+            "type": "array",
+            "title": "Users",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "deploymentId",
+          "teamId"
+        ],
+        "title": "TeamWithMembers",
+        "description": "A team with its members."
+      },
+      "UserResponse": {
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "firstName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firstname"
+          },
+          "lastName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastname"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "email",
+          "username",
+          "created_at"
+        ],
+        "title": "UserResponse",
+        "description": "A person as other resources reference them. Rights are not part of it:\nthey come from the caller's tokens and are never stored."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VolumeAttachmentSchema": {
+        "properties": {
+          "volume_id": {
+            "type": "string",
+            "title": "Volume Id"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "size_gb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Gb"
+          },
+          "bootable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootable"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "volume_id"
+        ],
+        "title": "VolumeAttachmentSchema",
+        "description": "A volume attached to a server (detail endpoint only)."
+      },
+      "VolumeItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "GB",
+            "default": 0
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "volume_type": {
+            "type": "string",
+            "title": "Volume Type",
+            "default": ""
+          },
+          "bootable": {
+            "type": "boolean",
+            "title": "Bootable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "VolumeItem",
+        "description": "A Cinder volume."
+      },
+      "_MarkerErrorPayload": {
+        "properties": {
+          "variable": {
+            "type": "string",
+            "title": "Variable"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "location": {
+            "type": "string",
+            "title": "Location"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variable",
+          "message",
+          "location"
+        ],
+        "title": "_MarkerErrorPayload",
+        "description": "An invalid ``@openstack`` marker on one variable, with a stable ``code`` and ``file:line`` location."
+      }
+    }
+  }
+}

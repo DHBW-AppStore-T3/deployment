@@ -1,0 +1,7 @@
+apiVersion: v2
+name: appstore-api
+description: AppStore API and worker for the DHBW cloud self-service platform
+type: application
+# Kept equal to VERSION by `make bump`; `make version-check` fails CI otherwise.
+version: 0.1.0-test.1
+appVersion: "0.1.0-test.1"
