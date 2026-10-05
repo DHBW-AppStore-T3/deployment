@@ -27,11 +27,13 @@ spike/dev  push ─► k8s-images.yml builds 3 images ─► ghcr.io/dhbw-appsto
                                         │ Argo CD (staging-root, tracks spike/dev)
                                         ▼
                                     STAGING  (appstore-staging.<zone>)
-        PR  spike/dev ─► spike/main  (carries the tag files: same images, no rebuild)
+        k8s/promote.sh: PR spike/main <- k8s/ of spike/dev (same images, no rebuild)
                                         │ Argo CD (prod-root, tracks spike/main)
                                         ▼
                                     PROD     (appstore.<zone>)
 ```
+
+**Promotion** is `k8s/promote.sh`: it opens a PR that changes only `k8s/` on `spike/main`; a human merges it. (A plain merge of `spike/dev` would also drag the other differences between `dev` and `main` along, e.g. the reverts that exist on `main` on purpose.)
 
 Keep the branches on top of the real stack: merge `dev` into `spike/dev` and
 `main` into `spike/main` regularly. Taking a technology over into the real
@@ -42,7 +44,7 @@ branches is then a normal merge/cherry-pick of `k8s/`.
 - `argocd/apps-chart`: Helm chart that renders every Argo Application of one environment from `environments/<env>.yaml`. `argocd/roots/<env>.yaml`: the environment's root Application.
 - `manifests/platform` (Postgres + Keycloak) and `manifests/seed` (demo roles): charts, parametrised by host.
 - `env/`: image tags written by CI. `environments/`: per-environment values (the only difference between staging and prod).
-- `bootstrap.sh <env>`: creates namespace + all Secrets (none in git) and applies the root app. Run once per environment. `show-credentials.sh <env>` prints the logins.
+- `promote.sh`: staging -> prod PR. `bootstrap.sh <env>`: creates namespace + all Secrets (none in git) and applies the root app. Run once per environment. `show-credentials.sh <env>` prints the logins.
 
 ## Operating notes
 - Real OpenStack (`appstore.simulate: false`, `api.mode: production`). Add an application credential in the UI (Credentials) as the Dozent. **Use a separate credential for staging** so staging tests do not touch prod VMs; both deploy into the same OpenStack project.

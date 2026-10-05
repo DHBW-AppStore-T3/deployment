@@ -5,8 +5,8 @@ name: K8s - build images (spike)
 #
 #   spike/dev   -> builds, tags the images, STAGING picks the tag up.
 #   spike/main  -> never builds. Production runs exactly the images that were
-#                  built on spike/dev: promote by merging spike/dev into
-#                  spike/main (PR), which carries the tag files along.
+#                  built on spike/dev: k8s/promote.sh opens a PR that brings
+#                  the k8s/ tree (incl. the tag files) over.
 #
 # It must NOT run for main or dev: production.yml / staging.yml keep deploying
 # the compose stack exactly as before.
