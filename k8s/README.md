@@ -35,4 +35,7 @@ Real OpenStack: set `simulate: false`, `api.mode: production` and add a credenti
 
 ## Not done yet / known limits
 - No Trivy scan in `k8s-images.yml` (Pfisterer's CI has one).
-- Pods reach `sso.<zone>` via public DNS; if the node cannot reach its own IPv6 address from pods, add `hostAliases` or a CoreDNS rewrite.
+- Pods reach `sso.<zone>` via public DNS (verified, no hairpin workaround needed).
+- The cluster is IPv6-primary: every server in a container must bind `::`, not `0.0.0.0`.
+- `platform` shows OutOfSync because of defaulted fields on the CNPG Cluster (cosmetic).
+- Argo admin password change and removal of `argocd-initial-admin-secret` are still manual.
