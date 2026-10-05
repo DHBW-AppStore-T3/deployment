@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: role-provider-service
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "2" }
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/pfisterer/charts      # OCI registry (public)
+    chart: role-provider-service
+    targetRevision: 0.8.0
+    helm:
+      values: |
+        fullnameOverride: role-provider-service
+        roleProviderService:
+          hostname: role-provider.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+          # In-memory store with the chart's mock seed (faculty@cs.example is
+          # #dozent of wwi23seb, cs-student@cs.com #studierende, root.admin@uni.example
+          # in group root_uni). State is lost on a pod restart.
+          db: { type: memory }
+          existingSecret: role-provider-secret   # keys: db-connection-string, api-tokens
+          groupRelations: [dozent, studierende]
+        # Only appstore-api talks to it, in-cluster.
+        ingress: { enabled: false }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: appstore
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]

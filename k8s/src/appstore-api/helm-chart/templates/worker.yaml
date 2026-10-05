@@ -1,0 +1,82 @@
+{{- $comp := dict "context" . "component" "worker" -}}
+{{- $name := include "appstore.componentName" $comp -}}
+{{- $v := .Values.appstore -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "appstore.rolloutAnnotations" . | nindent 4 }}
+    # Restarts the pods when the Secret changes (needs Stakater Reloader in
+    # the cluster; without it the annotation is inert).
+    secret.reloader.stakater.com/reload: {{ include "appstore.secretName" . }}
+  labels:
+    {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  replicas: {{ $v.worker.replicas }}
+  # A rollout must not stop jobs mid-apply: the old pod finishes what it
+  # runs (it stops claiming on SIGTERM) while the new one starts claiming.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "appstore.rolloutAnnotations" . | nindent 8 }}
+      labels:
+        {{- include "appstore.selectorLabels" $comp | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      # Long enough for the longest job; beyond it the job's deadline has
+      # killed the tools anyway and the API's reaper fails the task.
+      terminationGracePeriodSeconds: {{ $v.worker.terminationGracePeriodSeconds }}
+      # The root filesystem is read-only: /tmp holds the app clones
+      # (TEMP_REPO_BASE_PATH), job-homes the per-slot home directories
+      # (WORKER_JOB_HOME_BASE) with the OpenTofu/Packer plugin caches.
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: job-homes
+          emptyDir: {}
+      containers:
+        - name: worker
+          image: {{ $v.worker.image }}:{{ $v.version | default .Chart.AppVersion }}
+          imagePullPolicy: {{ $v.imagePullPolicy }}
+          # Root only to hand each job's tools to an unprivileged user per
+          # slot (WORKER_JOB_UID_BASE in the image, job_context.py): app code
+          # is untrusted and must not read the worker's environment. These
+          # are the capabilities that takes; everything else is dropped.
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml $v.worker.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: job-homes
+              mountPath: /var/lib/appstore-worker
+          env:
+            {{- include "appstore.sharedSecretEnv" . | nindent 12 }}
+            - name: APPSTORE_API_URL
+              value: {{ include "appstore.apiUrl" . | quote }}
+            - name: WORKER_CONCURRENCY
+              value: {{ $v.worker.concurrency | toString | quote }}
+            - name: WORKER_JOB_TIMEOUT_SECONDS
+              value: {{ $v.worker.jobTimeoutSeconds | toString | quote }}
+            - name: WORKER_SIMULATE
+              value: {{ $v.simulate | toString | quote }}

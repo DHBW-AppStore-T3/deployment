@@ -1,0 +1,65 @@
+[project]
+name = "appstore-api"
+version = "0.0.0"
+description = "AppStore API: app catalogue, deployments and teams for the DHBW cloud self-service platform"
+license = "Apache-2.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "appstore-shared",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sqlalchemy>=2.0.25",
+    "alembic>=1.13.1",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "python-multipart>=0.0.18",
+    "gitpython>=3.1.41",
+    "email-validator>=2.0.0",
+    "openstacksdk>=3.3.0",
+    "PyYAML>=6.0",
+    "jinja2>=3.1.0",
+    # Transitive via pbr (openstacksdk). Floor closes PYSEC-2026-3447
+    # (CVE-2026-59890): MANIFEST.in exclusions bypassed on macOS APFS/HFS+.
+    "setuptools>=83.0.0",
+    "pyjwt[crypto]>=2.10",
+    "httpx>=0.28",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["appstore_api"]
+# Written by `make bundle` and gitignored, which hatch would otherwise honour.
+artifacts = ["appstore_api/VERSION"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    # No single test may freeze the run (a psycopg2 lock wait, an SSE stream
+    # that never closes). "thread" because the default "signal" method cannot
+    # interrupt C-extension calls such as psycopg2.recv().
+    "--timeout=60",
+    "--timeout-method=thread",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "unit: fast tests with no external dependencies",
+    "integration: tests requiring a database",
+    "api: end-to-end API tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["appstore_api"]

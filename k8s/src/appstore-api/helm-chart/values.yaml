@@ -1,0 +1,108 @@
+---
+# Dependency condition of the cloud-self-service umbrella chart, which decides by
+# this key whether to install this chart at all. Set it there, not here: a
+# standalone `helm install` of this chart ignores it entirely.
+enabled: true
+
+appstore:
+  imagePullPolicy: Always
+  # Image tag of both components. Empty -> the chart's appVersion, which is how
+  # a pinned chart version pins the images.
+  version: ""
+
+  # Name of an existing Secret with the keys `database-url`,
+  # `credential-encryption-key` and (optional) `role-provider-api-token`,
+  # `smtp-password`. When set, the chart creates no Secret and ignores
+  # databaseUrl, credentialEncryptionKey, roleProvider.apiToken and
+  # smtp.password below.
+  existingSecret: ""
+  # PostgreSQL URL (postgresql://user:password@host:5432/appstore). One
+  # database: it holds the catalogue, the job queue and the OpenTofu state.
+  databaseUrl: ""
+  # Fernet key(s), comma-separated for rotation (the first encrypts, all
+  # decrypt). Encrypts OpenStack credentials, job payloads, state and outputs.
+  # Generate: python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+  credentialEncryptionKey: ""
+
+  # Hosts apps may be registered from (comma-separated); gitlab.dhbw.cloud
+  # is the DHBW Cloud's GitLab.
+  gitAllowedHosts: "github.com,gitlab.dhbw.cloud"
+
+  # Development without a cloud: jobs are played through and OpenStack is
+  # faked (WORKER_SIMULATE, OPENSTACK_SIMULATE). The API refuses it unless
+  # api.mode is "development".
+  simulate: false
+
+  api:
+    image: ghcr.io/pfisterer/appstore-api
+    # Several replicas are fine: the job queue and the live stream go
+    # through the database (plan D4).
+    replicas: 1
+    # "production" or "development"
+    mode: "production"
+    # X-Dummy-Auth-User instead of OIDC; development only.
+    dummyAuth: false
+    # The prefix the UI's proxy strips (links on the docs page).
+    rootPath: "/api/appstore"
+    # Browser origins allowed to call the API directly. Empty is right when
+    # the UI reaches it same-origin through its proxy.
+    corsOrigins: []
+    # Public URL of the self-service UI; mails link to its AppStore pages.
+    uiUrl: "https://selfservice.example.cloud"
+    # Comma-separated tokens whose holders are AppStore admins,
+    # e.g. "group:appstore_admins".
+    adminGroups: ""
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "192Mi"
+      limits:
+        cpu: "1000m"
+        memory: "768Mi"
+
+  worker:
+    image: ghcr.io/pfisterer/appstore-worker
+    # Several replicas are fine: tasks are claimed with SKIP LOCKED.
+    replicas: 1
+    # Jobs in parallel per pod (threads; each mostly waits on OpenTofu,
+    # Packer or OpenStack).
+    concurrency: 4
+    # A job running longer is stopped and its task fails.
+    jobTimeoutSeconds: 7200
+    # A rollout lets running jobs finish; keep above jobTimeoutSeconds.
+    terminationGracePeriodSeconds: 7500
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+
+  oidc:
+    issuerUrl: "https://sso.example.cloud/realms/example"
+    # The audience the UI's tokens are issued for.
+    clientId: "example-self-service"
+    # Set it and the API never needs the provider's discovery document.
+    jwksUrl: ""
+
+  roleProvider:
+    # "http" (role-provider-service) or "mock" (development only).
+    type: "http"
+    url: "http://role-provider-service:8085"
+    # Read token for role-provider-service. Stored in the Secret.
+    apiToken: ""
+    timeoutSeconds: 5
+
+  # Notification mails; they never carry credentials.
+  smtp:
+    enabled: false
+    host: ""
+    port: 587
+    starttls: true
+    # Only if the relay needs a login.
+    user: ""
+    # Stored in the Secret.
+    password: ""
+    fromEmail: ""
+    fromName: "DHBW AppStore"

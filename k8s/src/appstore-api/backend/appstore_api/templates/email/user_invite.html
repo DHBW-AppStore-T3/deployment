@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{# No secrets in here (plan E5): the access data is shown on "Meine Zugänge"
+   after sign-in, a mail only says where to look.
+   Context (deployment_notifier._send_member_mail, shared with user_invite.txt):
+   deployment.{name, app_name, git_url, release_tag}, team_name,
+   teammates (other members' e-mails), my_access_url. #}
+{% block title %}Ihr Zugang für {{ deployment.name }} ist bereit{% endblock %}
+{% block content %}
+<h1>Ihr Zugang ist bereit</h1>
+
+<p>Guten Tag,</p>
+
+<p>
+  die Umgebung <strong>{{ deployment.name }}</strong> ({{ deployment.app_name }})
+  steht für Sie bereit. Ihre persönlichen Zugangsdaten finden Sie nach der
+  Anmeldung unter „Meine Zugänge“.
+</p>
+
+<p>
+  <a class="button" href="{{ my_access_url }}">Meine Zugänge öffnen</a>
+</p>
+
+{% if teammates %}
+<h2>Ihr Team: {{ team_name }}</h2>
+<p>Sie teilen sich diese Umgebung mit:</p>
+<ul>
+  {% for mate in teammates %}
+  <li><a href="mailto:{{ mate }}">{{ mate }}</a></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<p class="muted">
+  Falls der Knopf nicht funktioniert, kopieren Sie diese Adresse in Ihren Browser:
+  {{ my_access_url }}
+</p>
+{% endblock %}

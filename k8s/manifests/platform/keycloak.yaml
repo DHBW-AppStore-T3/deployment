@@ -1,0 +1,75 @@
+# Keycloak as the OIDC issuer of this cluster (realm "appstore").
+# Env substitution in the realm file (${DEMO_PASSWORD}, ${BFF_CLIENT_SECRET})
+# is done by Keycloak from the keycloak-secret Secret, so no secret is in git.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  annotations: { argocd.argoproj.io/sync-wave: "2" }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: keycloak } }
+  template:
+    metadata: { labels: { app: keycloak } }
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.4
+          args: [start, --import-realm]
+          env:
+            - { name: KC_DB, value: postgres }
+            - { name: KC_DB_URL_HOST, value: postgres-cluster-rw }
+            - { name: KC_DB_URL_DATABASE, value: keycloak }
+            - { name: KC_DB_USERNAME, value: keycloak }
+            - name: KC_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: password } }
+            - { name: KC_HOSTNAME, value: "https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site" }
+            - { name: KC_HTTP_ENABLED, value: "true" }       # TLS ends at Traefik
+            - { name: KC_PROXY_HEADERS, value: xforwarded }
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+            - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-secret, key: admin-password } }
+            - name: DEMO_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-secret, key: demo-password } }
+            - name: BFF_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: keycloak-secret, key: bff-client-secret } }
+          ports: [{ name: http, containerPort: 8080 }, { name: mgmt, containerPort: 9000 }]
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 9000 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 200m, memory: 768Mi }
+            limits: { memory: 1536Mi }
+          volumeMounts:
+            - { name: realm, mountPath: /opt/keycloak/data/import, readOnly: true }
+      volumes:
+        - name: realm
+          configMap: { name: keycloak-realm }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  annotations: { argocd.argoproj.io/sync-wave: "2" }
+spec:
+  selector: { app: keycloak }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  annotations: { argocd.argoproj.io/sync-wave: "2" }
+spec:
+  rules:
+    - host: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+  tls:
+    - hosts: [sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site]

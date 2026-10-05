@@ -1,0 +1,5 @@
+# Image tag of appstore-api. Written by the k8s-images workflow after each push to
+# spike/** (commit "[skip ci]"); Argo CD syncs the new tag from here.
+# Do not edit by hand.
+appstore:
+  version: spike-bootstrap

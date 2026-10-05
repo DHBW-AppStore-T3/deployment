@@ -1,0 +1,35 @@
+# One CloudNativePG cluster, two databases: appstore (API, queue, tf state) and
+# keycloak. The login secrets (appstore-db, keycloak-db) are created by
+# bootstrap.sh, never committed.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-cluster
+  annotations: { argocd.argoproj.io/sync-wave: "0" }
+spec:
+  instances: 1
+  storage: { size: 5Gi }
+  managed:
+    roles:
+      - { name: appstore, login: true, passwordSecret: { name: appstore-db } }
+      - { name: keycloak, login: true, passwordSecret: { name: keycloak-db } }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: appstore
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+spec:
+  cluster: { name: postgres-cluster }
+  name: appstore
+  owner: appstore
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: keycloak
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+spec:
+  cluster: { name: postgres-cluster }
+  name: keycloak
+  owner: keycloak

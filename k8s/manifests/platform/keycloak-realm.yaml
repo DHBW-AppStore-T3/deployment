@@ -1,0 +1,106 @@
+apiVersion: v1
+data:
+  appstore-realm.json: |-
+    {
+      "realm": "appstore",
+      "enabled": true,
+      "sslRequired": "external",
+      "registrationAllowed": false,
+      "accessTokenLifespan": 900,
+      "ssoSessionIdleTimeout": 28800,
+      "offlineSessionIdleTimeout": 2592000,
+      "clients": [
+        {
+          "clientId": "appstore",
+          "name": "AppStore (BFF)",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "${BFF_CLIENT_SECRET}",
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": false,
+          "redirectUris": [
+            "https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/oauth2/callback"
+          ],
+          "webOrigins": [
+            "https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
+          ],
+          "attributes": {
+            "post.logout.redirect.uris": "https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/*"
+          },
+          "defaultClientScopes": [
+            "web-origins",
+            "profile",
+            "roles",
+            "email"
+          ],
+          "optionalClientScopes": [
+            "offline_access"
+          ],
+          "protocolMappers": [
+            {
+              "name": "audience",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "config": {
+                "included.client.audience": "appstore",
+                "id.token.claim": "false",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "users": [
+        {
+          "username": "faculty@cs.example",
+          "email": "faculty@cs.example",
+          "firstName": "faculty",
+          "lastName": "Demo",
+          "enabled": true,
+          "emailVerified": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "${DEMO_PASSWORD}",
+              "temporary": false
+            }
+          ]
+        },
+        {
+          "username": "cs-student@cs.com",
+          "email": "cs-student@cs.com",
+          "firstName": "cs-student",
+          "lastName": "Demo",
+          "enabled": true,
+          "emailVerified": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "${DEMO_PASSWORD}",
+              "temporary": false
+            }
+          ]
+        },
+        {
+          "username": "root.admin@uni.example",
+          "email": "root.admin@uni.example",
+          "firstName": "root.admin",
+          "lastName": "Demo",
+          "enabled": true,
+          "emailVerified": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "${DEMO_PASSWORD}",
+              "temporary": false
+            }
+          ]
+        }
+      ]
+    }
+kind: ConfigMap
+metadata:
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+  name: keycloak-realm

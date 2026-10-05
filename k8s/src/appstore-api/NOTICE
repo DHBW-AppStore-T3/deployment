@@ -1,0 +1,11 @@
+DHBW AppStore
+Copyright 2026 Duale Hochschule Baden-Württemberg (DHBW)
+
+This product is a rebuild of the "Click-n-Deploy" AppStore developed as a
+student project at DHBW (github.com/DHBW-AppStore): the backend, the
+worker, the frontend and the example apps. Its code is the starting point of this repository
+and is used under the Apache License, Version 2.0.
+
+Authors of the original project, as recorded in its Git history:
+  Leon Priemer, Luca Bäck, Max Meinel, Monika Pjano, Okan Sönmez,
+  Paulina, Petko Rutesic, Tom Weber
