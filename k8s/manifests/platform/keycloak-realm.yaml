@@ -21,13 +21,13 @@ data:
           "directAccessGrantsEnabled": false,
           "serviceAccountsEnabled": false,
           "redirectUris": [
-            "https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/oauth2/callback"
+            "https://pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/oauth2/callback"
           ],
           "webOrigins": [
-            "https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
+            "https://pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
           ],
           "attributes": {
-            "post.logout.redirect.uris": "https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/*"
+            "post.logout.redirect.uris": "https://pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/*"
           },
           "defaultClientScopes": [
             "web-origins",

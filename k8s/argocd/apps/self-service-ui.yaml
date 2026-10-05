@@ -15,7 +15,7 @@ spec:
       values: |
         fullnameOverride: self-service-ui
         selfServiceUI:
-          hostname: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+          hostname: pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
           image: ghcr.io/dhbw-appstore-t3/k8s-self-service-ui
           imagePullPolicy: IfNotPresent
           # Only the AppStore section is wired up; DNS and projects tabs stay hidden.
@@ -25,17 +25,17 @@ spec:
           appstoreUpstream: appstore-api:8000
         auth:
           oidc:
-            issuerUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore
+            issuerUrl: https://sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore
             clientId: appstore
-            authorizationUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/auth
-            tokenUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/token
-            jwksUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/certs
-            endSessionUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/logout
+            authorizationUrl: https://sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/auth
+            tokenUrl: https://sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/token
+            jwksUrl: https://sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/certs
+            endSessionUrl: https://sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/logout
         ingress: { enabled: false }       # the BFF owns the public host
         bff:
           enabled: true
           existingSecret: oauth2-proxy-ui-secret   # client-id, client-secret, cookie-secret
-          whitelistDomains: [sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site]
+          whitelistDomains: [sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site]
   destination:
     server: https://kubernetes.default.svc
     namespace: appstore

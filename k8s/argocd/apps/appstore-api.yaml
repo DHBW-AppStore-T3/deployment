@@ -21,14 +21,14 @@ spec:
           api:
             image: ghcr.io/dhbw-appstore-t3/k8s-appstore-api
             mode: production
-            uiUrl: https://appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+            uiUrl: https://pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
             adminGroups: "group:root_uni"
           worker:
             image: ghcr.io/dhbw-appstore-t3/k8s-appstore-worker
           oidc:
-            issuerUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore
+            issuerUrl: https://sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore
             clientId: appstore
-            jwksUrl: https://sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/certs
+            jwksUrl: https://sso-pfisterer.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/realms/appstore/protocol/openid-connect/certs
           roleProvider:
             type: http
             url: http://role-provider-service:8085

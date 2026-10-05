@@ -16,8 +16,8 @@ Argo CD (root app, tracks spike/k8s) ◄───┘  syncs:
 
 | URL (zone `t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site`) | What |
 | --- | --- |
-| `appstore.<zone>` | UI (oauth2-proxy BFF in front) |
-| `sso.<zone>` | Keycloak, realm `appstore` |
+| `pfisterer.<zone>` | UI (oauth2-proxy BFF in front) |
+| `sso-pfisterer.<zone>` | Keycloak, realm `appstore` |
 | `argocd.<zone>` | Argo CD |
 
 ## Layout
@@ -35,7 +35,7 @@ Add an OpenStack application credential in the UI (Credentials) as the Dozent.
 
 ## Not done yet / known limits
 - No Trivy scan in `k8s-images.yml` (Pfisterer's CI has one).
-- Pods reach `sso.<zone>` via public DNS (verified, no hairpin workaround needed).
+- Pods reach `sso-pfisterer.<zone>` via public DNS (verified, no hairpin workaround needed).
 - The cluster is IPv6-primary: every server in a container must bind `::`, not `0.0.0.0`.
 - `platform` shows OutOfSync because of defaulted fields on the CNPG Cluster (cosmetic).
 - Argo admin password change and removal of `argocd-initial-admin-secret` are still manual.
