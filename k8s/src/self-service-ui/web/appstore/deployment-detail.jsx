@@ -159,7 +159,7 @@ function Actions({ deployment: dep }) {
                     onClick={async () => {
                         if (await confirm({
                             title: destroys ? t('appstore.detail.destroyTitle') : t('appstore.detail.deleteTitle'),
-                            message: destroys ? t('appstore.detail.destroyMessage', { name: dep.name }) : t('appstore.detail.deleteMessage', { name: dep.name }),
+                            message: destroys ? t(dep.runtime === 'kubernetes' ? 'appstore.detail.destroyMessagePods' : 'appstore.detail.destroyMessage', { name: dep.name }) : t('appstore.detail.deleteMessage', { name: dep.name }),
                             confirmLabel: destroys ? t('appstore.detail.destroy') : t('appstore.detail.delete'),
                         })) remove.mutate();
                     }}>

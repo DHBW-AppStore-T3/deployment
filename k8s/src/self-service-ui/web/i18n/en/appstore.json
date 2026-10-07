@@ -302,7 +302,8 @@
         "resetMessage": "“{{name}}” is started again from scratch. Its data is deleted.",
         "cancel": "Cancel",
         "cancelTitle": "Cancel deployment?",
-        "cancelMessage": "“{{name}}” is not finished yet. Cancelling removes everything it created so far."
+        "cancelMessage": "“{{name}}” is not finished yet. Cancelling removes everything it created so far.",
+        "destroyMessagePods": "Everything “{{name}}” created in the cluster (pods, data, links) is deleted. This cannot be undone."
     },
     "wizard": {
         "title": "Deploy {{app}}",

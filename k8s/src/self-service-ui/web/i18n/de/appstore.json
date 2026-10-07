@@ -302,7 +302,8 @@
         "resetMessage": "„{{name}}“ wird von vorn gestartet. Die Daten werden gelöscht.",
         "cancel": "Abbrechen",
         "cancelTitle": "Deployment abbrechen?",
-        "cancelMessage": "„{{name}}“ ist noch nicht fertig. Beim Abbrechen wird alles entfernt, was bisher angelegt wurde."
+        "cancelMessage": "„{{name}}“ ist noch nicht fertig. Beim Abbrechen wird alles entfernt, was bisher angelegt wurde.",
+        "destroyMessagePods": "Alles, was „{{name}}“ im Cluster angelegt hat (Pods, Daten, Links), wird gelöscht. Das lässt sich nicht rückgängig machen."
     },
     "wizard": {
         "title": "{{app}} bereitstellen",
