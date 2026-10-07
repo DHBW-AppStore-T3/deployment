@@ -66,7 +66,8 @@ export function DeploymentDetail({ params }) {
                     <Stack gap={4}>
                         <Group gap="sm"><Title order={2}>{dep.name}</Title><StatusBadge status={shownStatus} /></Group>
                         <Text size="sm" c="dimmed">
-                            <Anchor component={Link} href={`/apps/${dep.appId}`}>{dep.app?.name}</Anchor>
+                            {/* The catalogue entry of a private app is the owner's; members would land on an error page. */}
+                            {perms.owner_view ? <Anchor component={Link} href={`/apps/${dep.appId}`}>{dep.app?.name}</Anchor> : dep.app?.name}
                             {' · '}{dep.releaseTag} <Code>{String(dep.commit_sha ?? '').slice(0, 8)}</Code>
                             {' · '}{String(dep.course ?? '').replace(/^group:/, '')}
                         </Text>
