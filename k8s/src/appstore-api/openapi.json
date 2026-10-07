@@ -292,6 +292,59 @@
         }
       }
     },
+    "/apps/{app_id}/runtime": {
+      "get": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Get App Runtime",
+        "description": "Whether ``version`` runs as pods (``kubernetes``) or VMs (``openstack-vm``).\n\nThe wizard skips the OpenStack steps for pods. Same visibility as the\nvariables; 422 (``errors`` with field paths) for an invalid appstore.yaml.",
+        "operationId": "getAppRuntime",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/apps/{app_id}/versions/{version_tag}/submit": {
       "post": {
         "tags": [
@@ -917,6 +970,50 @@
           },
           "204": {
             "description": "A cancelled deployment, removed at once"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment_id}/cancel": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Cancel Deployment",
+        "description": "Cancel a pod deployment that is still being deployed, and remove what it created.\n\nOperate right; only deployments that run as pods (409 otherwise) and only\nwhile the deploy task is pending or running (409). The deploy task ends\nCANCELLED, a destroy task for the namespace is queued in the same\ntransaction (idempotent if nothing was created yet), and the destroy's\nsuccess soft-deletes the deployment.",
+        "operationId": "cancelDeployment",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleActionResponse"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -2926,6 +3023,51 @@
         "title": "AppResponse",
         "description": "An app of the catalogue."
       },
+      "AppRuntimeResponse": {
+        "properties": {
+          "runtime": {
+            "type": "string",
+            "title": "Runtime"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "egress": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egress"
+          },
+          "access": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Access",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "runtime"
+        ],
+        "title": "AppRuntimeResponse",
+        "description": "How one version runs, for the deploy wizard."
+      },
       "AppUpdate": {
         "properties": {
           "name": {
@@ -3151,6 +3293,36 @@
             "type": "string",
             "title": "Commit Sha"
           },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
+          },
+          "spec_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Sha256"
+          },
+          "image_digests": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digests"
+          },
           "status": {
             "$ref": "#/components/schemas/AppVersionApprovalStatus"
           },
@@ -3287,6 +3459,36 @@
           "commit_sha": {
             "type": "string",
             "title": "Commit Sha"
+          },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
+          },
+          "spec_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Sha256"
+          },
+          "image_digests": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digests"
           },
           "status": {
             "$ref": "#/components/schemas/AppVersionApprovalStatus"
@@ -3561,8 +3763,15 @@
             "title": "Course"
           },
           "credentialId": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Credentialid"
           },
           "userInputVar": {
@@ -3608,8 +3817,7 @@
           "name",
           "appId",
           "releaseTag",
-          "course",
-          "credentialId"
+          "course"
         ],
         "title": "DeploymentCreate",
         "description": "Body of ``POST /deployments``: deploy an app version for a course, in teams."
@@ -3678,6 +3886,11 @@
               }
             ],
             "title": "Os Project Id"
+          },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
           },
           "userInputVar": {
             "anyOf": [
@@ -3857,6 +4070,19 @@
             },
             "type": "array",
             "title": "Resources"
+          },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
+          },
+          "workloads": {
+            "items": {
+              "$ref": "#/components/schemas/PodWorkloadSchema"
+            },
+            "type": "array",
+            "title": "Workloads",
+            "default": []
           },
           "live": {
             "type": "boolean",
@@ -4074,6 +4300,11 @@
               }
             ],
             "title": "Os Project Id"
+          },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
           },
           "userInputVar": {
             "anyOf": [
@@ -5144,6 +5375,79 @@
         ],
         "title": "OpenStackCredentialUpsert",
         "description": "Body of POST /me/openstack-credentials.\n\n`identifier` is either a username (password auth) or an\napplication-credential ID (preferred: revocable, bound to one project).\n`secret` is the corresponding password or application-credential\nsecret. Both are stored encrypted at rest. For password auth,\n`project_id`/`project_name` say which project to scope to; what is\nstored is the project Keystone actually scoped the token to."
+      },
+      "PodWorkloadSchema": {
+        "properties": {
+          "workload": {
+            "type": "string",
+            "title": "Workload"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "restarts": {
+            "type": "integer",
+            "title": "Restarts",
+            "default": 0
+          },
+          "phase": {
+            "type": "string",
+            "title": "Phase"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "lastEvent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastevent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workload",
+          "ready",
+          "phase"
+        ],
+        "title": "PodWorkloadSchema",
+        "description": "One pod workload (a team's or a person's) of a Kubernetes deployment."
       },
       "QuotaItem": {
         "properties": {

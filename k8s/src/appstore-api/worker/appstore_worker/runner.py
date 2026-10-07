@@ -20,7 +20,7 @@ from typing import Any
 from appstore_shared.jobs import FAILURE_KIND_JOB, JobPayload
 from appstore_shared.models import Task, TaskStatus, TaskType
 
-from . import job_context, job_queue, simulate, tasks
+from . import job_context, job_queue, k8s_runtime, simulate, tasks
 from .config import settings
 from .db import SessionLocal
 from .services.terraform_executor import StateBackend
@@ -34,6 +34,16 @@ JOBS: dict[TaskType, Callable[..., Any]] = {
     TaskType.PAUSE: tasks.pause_deployment,
     TaskType.RESUME: tasks.resume_deployment,
     TaskType.REDEPLOY: tasks.redeploy_resource,
+}
+
+
+# Jobs for apps that run as pods (payload ``runtime: kubernetes``), same signatures.
+K8S_JOBS: dict[TaskType, Callable[..., Any]] = {
+    TaskType.DEPLOY: k8s_runtime.deploy_application,
+    TaskType.DESTROY: k8s_runtime.destroy_deployment,
+    TaskType.PAUSE: k8s_runtime.pause_deployment,
+    TaskType.RESUME: k8s_runtime.resume_deployment,
+    TaskType.REDEPLOY: k8s_runtime.redeploy_resource,
 }
 
 
@@ -55,7 +65,9 @@ def run_job(task: Task, payload: JobPayload, events: tasks.JobEvents) -> Any:
     Raises ValueError for a task type without a job; whatever the job
     raises (usually ``tasks.Failure``) propagates to ``process_next``.
     """
-    job = (SIMULATED_JOBS if settings.WORKER_SIMULATE else JOBS).get(task.type)
+    is_k8s = payload.get("runtime") == "kubernetes"
+    table = SIMULATED_JOBS if settings.WORKER_SIMULATE else K8S_JOBS if is_k8s else JOBS
+    job = table.get(task.type)
     if job is None:
         raise ValueError(f"no job for task type {task.type.value}")
     kwargs: dict[str, Any] = {
@@ -68,6 +80,8 @@ def run_job(task: Task, payload: JobPayload, events: tasks.JobEvents) -> Any:
         "teams": payload["teams"],
         "openstack_envelope": payload["openstack_envelope"],
     }
+    if is_k8s and not settings.WORKER_SIMULATE:
+        kwargs.update(spec=payload.get("spec"), course=payload.get("course", ""), owner=payload.get("owner", ""))
     if task.type == TaskType.REDEPLOY:
         kwargs["resource_address"] = payload.get("resource_address")
     token = payload.get("state_token")

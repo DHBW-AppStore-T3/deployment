@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    buildDeployment, dedupe, distribute, effectiveValues, formKey, initialValues, isMultiImage, missingRequired,
+    buildDeployment, dedupe, distribute, effectiveValues, formKey, hasPicker, initialValues, isEnumVar, isMultiImage, missingRequired,
     scopeOf, slotKeys, teamProblems, teamsOfSize, userSlotKey,
 } from './wizard-logic.js';
 
@@ -142,5 +142,20 @@ describe('teams', () => {
             { kind: 'duplicateMember', emails: ['x'] },
         ]);
         expect(teamProblems(TEAMS)).toEqual([]);
+    });
+});
+
+describe('apps that run as pods', () => {
+    it('treats a fixed choice as a select, not as an OpenStack picker', () => {
+        const v = tf('cpu_class', { osType: 'enum', values: ['small', 'medium'], default: 'small' });
+        expect(isEnumVar(v)).toBe(true);
+        expect(hasPicker(v)).toBe(false);
+        expect(hasPicker(tf('flavor', { osType: 'flavor' }))).toBe(true);
+    });
+
+    it('sends no credential for a pod deployment', () => {
+        const base = { name: 'd', appId: 'a', releaseTag: 'v1', course: 'group:c', teams: [], variables: [], values: {} };
+        expect('credentialId' in buildDeployment({ ...base, credentialId: null })).toBe(false);
+        expect(buildDeployment({ ...base, credentialId: 'cred-1' }).credentialId).toBe('cred-1');
     });
 });

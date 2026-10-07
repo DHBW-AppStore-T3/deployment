@@ -55,8 +55,16 @@ class JobPayload(TypedDict):
     # task runs (plan E3); the task row keeps only its hash. Added when the
     # task is queued, not by the caller.
     state_token: NotRequired[str]
-    # Only for REDEPLOY: the resource address to replace.
+    # Only for REDEPLOY: the resource address to replace. For pod
+    # deployments: the name of the workload to restart.
     resource_address: NotRequired[str]
+    # "kubernetes" for apps that run as pods; absent means OpenStack VMs.
+    runtime: NotRequired[str]
+    # Pod deploy only: the validated appstore.yaml (as the API read it at the
+    # pinned commit; the worker never clones pod apps), and what the labels need.
+    spec: NotRequired[dict[str, Any]]
+    course: NotRequired[str]
+    owner: NotRequired[str]
 
 
 def state_token_hash(token: str) -> str:

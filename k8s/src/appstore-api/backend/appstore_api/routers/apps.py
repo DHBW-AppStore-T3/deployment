@@ -38,6 +38,7 @@ from appstore_api.schemas import (
     AppVersionApprovalSubmit,
     AppWithVersions,
 )
+from appstore_api.services import app_spec
 from appstore_api.services.git_service import CommitNotServed, git_service
 from appstore_api.utils.app_image import build_image_data_url, parse_image_data_url
 from appstore_api.utils.capabilities import (
@@ -1355,7 +1356,7 @@ def get_app(
 # Parsed variables per (repository, commit). A commit never changes, so the
 # result never goes stale (plan E7); bounded so a busy catalogue cannot grow
 # it without limit. Per process, which is enough: a miss only costs a clone.
-_VARIABLES_CACHE: OrderedDict[tuple[str, str], list[dict[str, Any]]] = OrderedDict()
+_VARIABLES_CACHE: OrderedDict[tuple[str, str], tuple[list[dict[str, Any]], Any]] = OrderedDict()
 _VARIABLES_CACHE_MAX = 256
 _variables_cache_lock = threading.Lock()
 
@@ -1367,7 +1368,24 @@ def clear_variable_cache() -> None:
 
 
 def load_variable_definitions(app, version: str, commit_sha: str | None = None) -> list[dict[str, Any]]:
-    """Parse all Terraform/Packer variables of one app version into the shape
+    """The variables of one app version; see :func:`load_version`."""
+    return load_version(app, version, commit_sha)[0]
+
+
+def load_version_spec(app, version: str, commit_sha: str | None = None):
+    """The validated ``appstore.yaml`` of one app version, or None for a VM app.
+
+    422 (``errors`` with field paths) when the spec is invalid; otherwise the
+    same errors as :func:`load_version`.
+    """
+    return load_version(app, version, commit_sha)[1]
+
+
+def load_version(app, version: str, commit_sha: str | None = None):
+    """Variables and spec of one app version, as ``(variables, LoadedSpec | None)``.
+
+    A version with an ``appstore.yaml`` runs as pods: its variables come from
+    the spec and Terraform/Packer files are not looked at. Otherwise: parse all Terraform/Packer variables of one app version into the shape
     ``GET /apps/{id}/variables`` returns.
 
     Reads ``commit_sha`` — the commit a submission, approval or deployment
@@ -1394,14 +1412,17 @@ def load_variable_definitions(app, version: str, commit_sha: str | None = None) 
         cached = _VARIABLES_CACHE.get(cache_key)
         if cached is not None:
             _VARIABLES_CACHE.move_to_end(cache_key)
-            return copy.deepcopy(cached)
+            return copy.deepcopy(cached[0]), cached[1]
 
     repo_path = None
     try:
         repo_path = git_service.clone_release_vars(app.git_link, version, sha)
         variables: list[dict[str, Any]] = []
+        loaded_spec = app_spec.read_spec_from_repo(repo_path)
+        if loaded_spec is not None:
+            variables = app_spec.spec_variables(loaded_spec.spec)
         tf_vars_path = os.path.join(repo_path, "terraform", "variables.tf")
-        if os.path.exists(tf_vars_path):
+        if loaded_spec is None and os.path.exists(tf_vars_path):
             variables.extend(_parse_terraform_variables(tf_vars_path))
         # Discover all Packer templates (legacy single-file layout OR
         # per-key subdirectories) and parse each one's variables. The
@@ -1411,7 +1432,7 @@ def load_variable_definitions(app, version: str, commit_sha: str | None = None) 
         # HTTP 422 so the app author can fix the repo before any
         # deploy attempt.
         try:
-            templates = _discover_packer_templates(repo_path)
+            templates = [] if loaded_spec is not None else _discover_packer_templates(repo_path)
         except PackerTemplateDiscoveryError as exc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1454,11 +1475,11 @@ def load_variable_definitions(app, version: str, commit_sha: str | None = None) 
                 )
 
     with _variables_cache_lock:
-        _VARIABLES_CACHE[cache_key] = copy.deepcopy(variables)
+        _VARIABLES_CACHE[cache_key] = (copy.deepcopy(variables), loaded_spec)
         _VARIABLES_CACHE.move_to_end(cache_key)
         while len(_VARIABLES_CACHE) > _VARIABLES_CACHE_MAX:
             _VARIABLES_CACHE.popitem(last=False)
-    return variables
+    return variables, loaded_spec
 
 
 @router.get("/{app_id}/variables", response_model=list[AppVariableResponse])
@@ -1513,6 +1534,42 @@ def get_app_variables(
         )
 
     return variables
+
+
+class AppRuntimeResponse(BaseModel):
+    """How one version runs, for the deploy wizard."""
+
+    runtime: str
+    scope: str | None = None
+    egress: str | None = None
+    access: list[dict[str, Any]] = []
+
+
+@router.get("/{app_id}/runtime", response_model=AppRuntimeResponse)
+def get_app_runtime(
+    app_id: UUID,
+    version: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Whether ``version`` runs as pods (``kubernetes``) or VMs (``openstack-vm``).
+
+    The wizard skips the OpenStack steps for pods. Same visibility as the
+    variables; 422 (``errors`` with field paths) for an invalid appstore.yaml.
+    """
+    app = crud_apps.get_app(db, app_id)
+    if not app:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="App not found")
+    ensure_view_app(current_user, app, db=db)
+    loaded = load_version_spec(app, version)
+    if loaded is None:
+        return AppRuntimeResponse(runtime=app_spec.RUNTIME_VM)
+    return AppRuntimeResponse(
+        runtime=loaded.runtime,
+        scope=loaded.spec.scope,
+        egress=loaded.spec.egress,
+        access=[a.model_dump(by_alias=True, exclude_none=True) for a in loaded.spec.access],
+    )
 
 
 # ----------------------------------------------------------------
@@ -1669,6 +1726,8 @@ def submit_version(
             },
         )
 
+    # Both calls read the same commit; the second is served from the cache.
+    loaded_spec = load_version_spec(app, version_tag, commit_sha)
     return crud_approvals.submit_version(
         db,
         app_id=app_id,
@@ -1676,6 +1735,9 @@ def submit_version(
         commit_sha=commit_sha,
         diff_url=body.diff_url,
         notes=body.notes,
+        runtime=loaded_spec.runtime if loaded_spec else app_spec.RUNTIME_VM,
+        spec_sha256=loaded_spec.sha256 if loaded_spec else None,
+        image_digests=list(loaded_spec.image_digests) if loaded_spec else None,
     )
 
 

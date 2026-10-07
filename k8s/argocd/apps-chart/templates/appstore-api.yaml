@@ -24,6 +24,13 @@ spec:
             adminGroups: "group:root_uni"
           worker:
             image: ghcr.io/dhbw-appstore-t3/k8s-appstore-worker
+          podApps:
+            enabled: {{ .Values.podApps.enabled }}
+            zone: {{ .Values.podApps.zone | quote }}
+            appDomain: {{ .Values.podApps.appDomain | quote }}
+            imageRegistryAllowlist: {{ .Values.podApps.imageRegistryAllowlist | quote }}
+            clusterIssuer: {{ .Values.podApps.clusterIssuer | quote }}
+            extraEgressExcept: {{ .Values.podApps.extraEgressExcept | toJson }}
           oidc:
             issuerUrl: https://{{ .Values.env.ssoHost }}/realms/appstore
             clientId: appstore
