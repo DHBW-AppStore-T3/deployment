@@ -2,4 +2,4 @@
 # spike/** (commit "[skip ci]"); Argo CD syncs the new tag from here.
 # Do not edit by hand.
 appstore:
-  version: spike-ec4b7d1ff380259e515f9f64f7da359267a2049f
+  version: spike-b04b19552668af4095778c338514fed71590cb9f
