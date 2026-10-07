@@ -984,6 +984,50 @@
         }
       }
     },
+    "/deployments/{deployment_id}/cancel": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Cancel Deployment",
+        "description": "Cancel a pod deployment that is still being deployed, and remove what it created.\n\nOperate right; only deployments that run as pods (409 otherwise) and only\nwhile the deploy task is pending or running (409). The deploy task ends\nCANCELLED, a destroy task for the namespace is queued in the same\ntransaction (idempotent if nothing was created yet), and the destroy's\nsuccess soft-deletes the deployment.",
+        "operationId": "cancelDeployment",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/deployments/{deployment_id}/resources": {
       "get": {
         "tags": [

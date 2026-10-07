@@ -1098,7 +1098,11 @@ def delete_deployment(
     # be hidden. ``pause_failed`` / ``resume_failed`` likewise still
     # have running OpenStack resources behind them — the deployment
     # itself didn't break, only the lifecycle pass.
-    if current_status in ("success", "failed", "paused", "pause_failed", "resume_failed", "redeploy_failed"):
+    # A cancelled pod deployment may have created its namespace before the cancel arrived.
+    pod_leftovers = current_status == "cancelled" and deployment.runtime == app_spec.RUNTIME_K8S
+    if pod_leftovers or current_status in (
+        "success", "failed", "paused", "pause_failed", "resume_failed", "redeploy_failed",
+    ):
         return _dispatch_destroy(db, deployment, current_user)
 
     # No resources to clean up (cancelled, or anything else terminal):
@@ -1280,6 +1284,48 @@ def _dispatch_lifecycle_task(
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
         content={"task_id": str(task.taskId), "status": response_status},
+    )
+
+
+@router.post(
+    "/{deployment_id}/cancel",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=LifecycleActionResponse,
+)
+def cancel_deployment(
+    deployment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pod deployment that is still being deployed, and remove what it created.
+
+    Operate right; only deployments that run as pods (409 otherwise) and only
+    while the deploy task is pending or running (409). The deploy task ends
+    CANCELLED, a destroy task for the namespace is queued in the same
+    transaction (idempotent if nothing was created yet), and the destroy's
+    success soft-deletes the deployment.
+    """
+    deployment = crud_deployments.get_deployment_with_details(db, deployment_id)
+    if not deployment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found")
+    ensure_operate_deployment(current_user, deployment, db)
+    crud_locks.acquire_deployment_xact_lock(db, deployment_id)
+    if deployment.runtime != app_spec.RUNTIME_K8S:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only deployments that run as pods can be cancelled",
+        )
+    if task_service_module.cancel_active_task(db, deployment_id, TaskType.DEPLOY) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only a deployment that is still being deployed can be cancelled",
+        )
+    return _dispatch_lifecycle_task(
+        db,
+        deployment,
+        current_user,
+        task_type=TaskType.DESTROY,
+        response_status="cancelling",
     )
 
 

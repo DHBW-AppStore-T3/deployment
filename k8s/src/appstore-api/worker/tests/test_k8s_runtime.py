@@ -219,3 +219,25 @@ def test_runner_routes_pod_payloads_to_the_pod_jobs(monkeypatch):
     }
     runner.run_job(task, payload, Events())
     assert called["spec"] == SPEC and called["course"] == "c"
+
+
+def test_cancel_while_deploying_removes_the_namespace_again(cluster):
+    class CancelledAfterNamespace(Events):
+        def is_cancelled(self):
+            return NS in cluster.namespace_labels  # cancelled the moment something exists
+
+    with pytest.raises(Failure, match="cancelled"):
+        deploy(events=CancelledAfterNamespace())
+    cluster.snapshot(NS)
+    cluster.snapshot(NS)
+    assert NS not in cluster.namespace_labels
+
+
+def test_cancel_before_anything_is_created_creates_nothing(cluster):
+    class AlreadyCancelled(Events):
+        def is_cancelled(self):
+            return True
+
+    with pytest.raises(Failure, match="cancelled"):
+        deploy(events=AlreadyCancelled())
+    assert cluster.objects == {}

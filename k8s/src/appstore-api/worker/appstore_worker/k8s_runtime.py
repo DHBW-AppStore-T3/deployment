@@ -150,6 +150,16 @@ def explain(snap: Snapshot) -> str | None:
     return None
 
 
+class Cancelled(RuntimeError):
+    """The deployment was cancelled while the job ran."""
+
+
+def _check_cancelled(job: JobEvents) -> None:
+    is_cancelled = getattr(job, "is_cancelled", None)
+    if is_cancelled is not None and is_cancelled():
+        raise Cancelled("the deployment was cancelled")
+
+
 def wait_until(
     kube: Kube,
     namespace: str,
@@ -158,10 +168,13 @@ def wait_until(
     what: str,
     check_failure: bool = True,
     sleep: Callable[[float], None] = time.sleep,
+    stop: Callable[[], None] | None = None,
 ) -> Snapshot:
     """Poll the namespace until ``done``; raise with a readable reason on a fatal state or timeout."""
     deadline = time.monotonic() + timeout
     while True:
+        if stop is not None:
+            stop()
         snap = kube.snapshot(namespace)
         if check_failure and (not snap.exists or snap.terminating):
             raise RuntimeError("the namespace disappeared while waiting (the deployment was cancelled or destroyed)")
@@ -301,6 +314,7 @@ def deploy_application(
         )
         kube = _kube_factory()
 
+        _check_cancelled(job)
         tracker.mark(PHASE_NAMESPACE, f"Creating namespace {dep.namespace}")
         kube.apply(objects[0])
         for o in _bootstrap_objects(dep):
@@ -309,12 +323,18 @@ def deploy_application(
         policy_kinds = {"ResourceQuota", "LimitRange", "NetworkPolicy"}
         for o in (o for o in objects if o["kind"] in policy_kinds):
             kube.apply(o)
+        _check_cancelled(job)
         tracker.mark(PHASE_APPLY, f"Applying {len(refs)} workload(s)")
         for o in (o for o in objects[1:] if o["kind"] not in policy_kinds):
             kube.apply(o)
         tracker.mark(PHASE_WAIT_READY, "Waiting for the pods to become ready")
         wait_until(
-            kube, dep.namespace, _all_ready({r.name for r in refs}), settings.K8S_READY_TIMEOUT_SECONDS, "the pods"
+            kube,
+            dep.namespace,
+            _all_ready({r.name for r in refs}),
+            settings.K8S_READY_TIMEOUT_SECONDS,
+            "the pods",
+            stop=lambda: _check_cancelled(job),
         )
         tracker.mark(PHASE_OUTPUTS, "Collecting access data")
         outputs = build_outputs(app, dep, team_list, passwords)

@@ -297,3 +297,31 @@ def test_redeploy_can_reset_a_workload(client, db, pod_deployment):
 def test_redeploy_refuses_unknown_or_malformed_workloads(client, pod_deployment, address):
     deployment_id, _kube = pod_deployment
     assert client.post(f"/deployments/{deployment_id}/resources/{address}/redeploy").status_code in (404, 422)
+
+
+def test_cancel_ends_the_deploy_and_queues_the_cleanup(client, db, mock_user, repo):
+    from appstore_api.models import Task, TaskStatus, TaskType
+
+    app = _app(db, mock_user)
+    client.post(f"/apps/{app.appId}/versions/v1.0/submit", json={})
+    _approve_in_db(db, app)
+    deployment_id = uuid.UUID(_deploy(client, app).json()["deploymentId"])
+
+    response = client.post(f"/deployments/{deployment_id}/cancel")
+
+    assert response.status_code == 202, response.text
+    db.expire_all()
+    tasks = {t.type: t for t in db.query(Task).filter(Task.deploymentId == deployment_id)}
+    assert tasks[TaskType.DEPLOY].status == TaskStatus.CANCELLED
+    assert tasks[TaskType.DESTROY].status == TaskStatus.PENDING
+    _task, payload = queued_task(db, deployment_id)
+    assert payload["runtime"] == "kubernetes"
+    # cancelling again: nothing is being deployed any more
+    assert client.post(f"/deployments/{deployment_id}/cancel").status_code == 409
+
+
+def test_cancel_of_a_vm_deployment_is_refused(client, db, mock_user, empty_app_checkout):
+    app = _app(db, mock_user)
+    approve_version(db, app, "v1.0")
+    deployment_id = _deploy(client, app, credential=add_credential(db, mock_user)).json()["deploymentId"]
+    assert client.post(f"/deployments/{deployment_id}/cancel").status_code == 409

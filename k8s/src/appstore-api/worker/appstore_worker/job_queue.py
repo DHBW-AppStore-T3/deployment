@@ -98,6 +98,18 @@ class TaskEventSink:
         # Tool output arrives from reader threads; one writer at a time.
         self._lock = threading.Lock()
 
+    def is_cancelled(self) -> bool:
+        """Whether the API cancelled this task while it runs (pod deployments)."""
+        session = self._session_factory()
+        try:
+            status = session.execute(select(Task.status).where(Task.taskId == self._task_id)).scalar_one_or_none()
+            return status == TaskStatus.CANCELLED
+        except Exception:
+            logger.warning("could not read the status of task %s", self._task_id, exc_info=True)
+            return False
+        finally:
+            session.close()
+
     def send_event(self, event_type: str, **payload: Any) -> None:
         """Append one event row; progress events also update the task's phase and percent."""
         body = {"type": event_type, **payload}
