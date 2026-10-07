@@ -141,6 +141,50 @@ example identities role-provider-service seeds (`faculty@cs.example` teaches
 `wwi23seb`, `cs-student@cs.com` studies in it, `root.admin@uni.example` is in
 `group:root_uni`).
 
+## Apps that run as pods (`appstore.yaml`)
+
+An app version with an `appstore.yaml` at its commit runs as **pods in the platform's cluster**
+instead of OpenStack VMs: no Terraform, no Packer, no OpenStack credential. The platform renders
+every Kubernetes object itself from this small spec, so app code never runs in the worker and
+the app cannot set anything security-relevant (unknown fields are rejected).
+
+```yaml
+apiVersion: appstore/v2
+name: online-ide
+runtime: kubernetes              # or openstack-vm: then terraform/ + packer/ apply as before
+scope: user                      # team | user: one workload per team or per person
+workload:
+  containers:                    # at most 3, exactly one with `expose`
+    - name: ide
+      image: ghcr.io/dhbw-appstore-t3/apps/online-ide@sha256:<64 hex>   # digest, from the allowlist
+      expose: { port: 8080, path: / }                                  # port >= 1024
+      resources: { cpu: "500m", memory: "1Gi" }                        # <= APP_MAX_*
+      env:
+        - { name: PASSWORD, from: generated-password }                 # or team-name, user-name, or value: "..."
+      writablePaths: [/tmp]      # emptyDir; everything else is read-only
+  storage: { size: 5Gi, mountPath: /home/coder }   # one volume per workload, survives pause/restart
+egress: internet                 # none | internet (never the cluster, the metadata service or private ranges)
+variables:                       # shown in the deploy wizard
+  - { name: starter, type: file, scope: team, ext: [zip], maxSize: 512Ki, mountPath: /data/starter.zip }
+  - { name: cpu_class, type: enum, values: [small, medium], default: small }   # reaches the containers as APPSTORE_VAR_CPU_CLASS
+access:
+  - { type: url, template: "https://{workload}-{deployment}.{domain}" }     # must lead to the workload's ingress
+  - { type: password, from: generated-password, username: "{user}" }
+```
+
+What the platform enforces (the spec cannot change it): a namespace `dep-<id>` per deployment with Pod
+Security `restricted`, non-root, no capabilities, `seccomp: RuntimeDefault`, no service account token; a
+default-deny NetworkPolicy (IPv4 and IPv6) that allows DNS, the ingress controller and, with
+`egress: internet`, public addresses only; a ResourceQuota; one HTTPS ingress per workload. The
+approval covers **commit + hash of `appstore.yaml` + image digests**. Images are built in the app's own
+CI; the AppStore builds nothing. Files uploaded in the wizard are limited to 1 MiB (a Kubernetes Secret).
+
+Lifecycle: deploy creates the namespace and waits until all pods are ready; pause scales to zero (volumes
+stay); resume scales back; "restart" deletes one workload's pod, "reset" also its volume; destroy and cancel
+delete the namespace. Access data keeps the shape of the VM apps (`user_accounts`, `team_vms`, now with a
+`url`), so "Meine Zugänge" works unchanged. The `appstore-deployer` rights are confined to `dep-*`
+namespaces by a ValidatingAdmissionPolicy (chart: `podApps.rbac.create`).
+
 ## Sign-in and rights
 
 Callers present an OIDC bearer token, checked like openstack-management-api
@@ -257,6 +301,10 @@ Environment only. The API reads `.env` in its working directory as well.
 | `SMTP_USER` / `SMTP_PASSWORD` | *(empty)* | Relay login, only if the relay needs one |
 | `SMTP_FROM_EMAIL` / `SMTP_FROM_NAME` | *(empty, falls back to `SMTP_USER`)* / `DHBW AppStore` | Sender |
 | `APPSTORE_UI_URL` | `http://localhost:5173` | Self-service UI base URL, no trailing slash; mails link to `/appstore/my-access` and `/appstore/deployments/<id>` |
+| `K8S_ZONE` / `K8S_APP_DOMAIN` | *(empty)* | Pod apps: the DNS zone, and the domain of the app hosts `<workload>-<deployment>.<domain>` (empty: `apps.<zone>`); the live view builds the links from them |
+| `K8S_STATUS_ENABLED` | `false` | Read the pods of pod deployments from the cluster (service account of the chart) for the Infrastructure tab |
+| `APP_IMAGE_REGISTRY_ALLOWLIST` | `ghcr.io/dhbw-appstore-t3/` | Pod apps: comma-separated registry prefixes an `appstore.yaml` image must start with (images must be pinned by digest) |
+| `APP_MAX_CPU` / `APP_MAX_MEMORY` / `APP_MAX_STORAGE` | `2` / `4Gi` / `20Gi` | Pod apps: ceilings per container and per volume, checked on submit, approval and deploy |
 | `DISABLE_BACKGROUND_TASKS` | *(unset)* | Tests only: don't start the task finalizer loop |
 
 ### Worker (`appstore_worker`)
@@ -278,6 +326,15 @@ Environment only. The API reads `.env` in its working directory as well.
 | `WORKER_TF_LOG` | *(empty)* | Passed to OpenTofu as `TF_LOG` when set |
 | `WORKER_SIMULATE` | `false` | Development only: play jobs through without Git or OpenStack (`simulate.py`) |
 | `WORKER_SIMULATE_STEP_SECONDS` | `1.5` | Duration of each simulated phase |
+| `APP_IMAGE_REGISTRY_ALLOWLIST` / `APP_MAX_CPU` / `APP_MAX_MEMORY` / `APP_MAX_STORAGE` | as the API | Pod apps: the spec is validated again before anything is created |
+| `K8S_ZONE` / `K8S_APP_DOMAIN` | *(empty)* | Pod apps: hosts are `<workload>-<deployment>.<K8S_APP_DOMAIN or apps.K8S_ZONE>` |
+| `K8S_INGRESS_CLASS` / `K8S_INGRESS_NAMESPACE` | `traefik` / `kube-system` | Ingress class of the app ingresses, and the namespace of the controller (the only one allowed to reach the pods) |
+| `K8S_TLS_SECRET` / `K8S_CLUSTER_ISSUER` | *(empty)* | Certificate of the app hosts: a ready (wildcard) Secret, or a cert-manager ClusterIssuer; with neither, the ingress controller's default certificate |
+| `K8S_STORAGE_CLASS` | *(empty: cluster default)* | StorageClass of the volumes |
+| `K8S_STUDENT_NODE_SELECTOR` / `K8S_STUDENT_TOLERATIONS` | *(empty)* | JSON: schedule student pods only on dedicated nodes |
+| `K8S_EXTRA_EGRESS_EXCEPT` | *(empty)* | Comma-separated pod/service/node CIDRs (IPv4 and IPv6) that "internet" egress must never reach, on top of the private ranges |
+| `K8S_WORKER_SERVICE_ACCOUNT` / `K8S_WORKER_NAMESPACE` / `K8S_DEPLOYER_CLUSTER_ROLE` | `appstore-worker` / — / `appstore-deployer-ns` | The worker's identity and the ClusterRole it binds inside each `dep-*` namespace (set by the chart) |
+| `K8S_READY_TIMEOUT_SECONDS` / `K8S_DELETE_TIMEOUT_SECONDS` / `K8S_POLL_INTERVAL_SECONDS` | `300` / `300` / `2` | How long a job waits for pods to become ready / a namespace to disappear |
 | `WORKER_LOG_CONSOLE` | `1` | `0` silences job output on the worker's console |
 
 ## Releases
