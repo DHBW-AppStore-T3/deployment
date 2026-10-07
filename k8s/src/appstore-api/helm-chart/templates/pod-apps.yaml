@@ -82,7 +82,7 @@ metadata:
   name: appstore-{{ $ns }}-api-status
 rules:
   - apiGroups: [""]
-    resources: ["namespaces", "pods", "events"]
+    resources: ["namespaces", "pods", "events", "persistentvolumeclaims"]
     verbs: ["get", "list"]
   - apiGroups: ["apps"]
     resources: ["statefulsets"]
