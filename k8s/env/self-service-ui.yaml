@@ -2,4 +2,4 @@
 # spike/** (commit "[skip ci]"); Argo CD syncs the new tag from here.
 # Do not edit by hand.
 selfServiceUI:
-  version: spike-4520aec18dc2e686d4ae401e0e9f9ada78428a75
+  version: spike-dbae75d36ba543542e6853f2dd7b87c2f957ef94
