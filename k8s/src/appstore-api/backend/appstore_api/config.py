@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # gitlab.dhbw.cloud is the DHBW Cloud's own GitLab.
     APP_GIT_ALLOWED_HOSTS: str = "github.com,gitlab.dhbw.cloud"
 
+    # Kubernetes apps (appstore.yaml): images must come from one of these
+    # comma-separated registry prefixes and be pinned by digest. Resource
+    # ceilings apply per container / per workload volume.
+    APP_IMAGE_REGISTRY_ALLOWLIST: str = "ghcr.io/dhbw-appstore-t3/"
+    APP_MAX_CPU: str = "2"
+    APP_MAX_MEMORY: str = "4Gi"
+    APP_MAX_STORAGE: str = "20Gi"
+
     # "development" unlocks API_DUMMY_AUTH; anything else is production.
     API_MODE: str = "production"
     # Development only: trust the X-Dummy-Auth-User header as the caller's

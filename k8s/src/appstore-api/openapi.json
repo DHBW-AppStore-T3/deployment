@@ -292,6 +292,59 @@
         }
       }
     },
+    "/apps/{app_id}/runtime": {
+      "get": {
+        "tags": [
+          "Apps"
+        ],
+        "summary": "Get App Runtime",
+        "description": "Whether ``version`` runs as pods (``kubernetes``) or VMs (``openstack-vm``).\n\nThe wizard skips the OpenStack steps for pods. Same visibility as the\nvariables; 422 (``errors`` with field paths) for an invalid appstore.yaml.",
+        "operationId": "getAppRuntime",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRuntimeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/apps/{app_id}/versions/{version_tag}/submit": {
       "post": {
         "tags": [
@@ -2926,6 +2979,51 @@
         "title": "AppResponse",
         "description": "An app of the catalogue."
       },
+      "AppRuntimeResponse": {
+        "properties": {
+          "runtime": {
+            "type": "string",
+            "title": "Runtime"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "egress": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egress"
+          },
+          "access": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Access",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "runtime"
+        ],
+        "title": "AppRuntimeResponse",
+        "description": "How one version runs, for the deploy wizard."
+      },
       "AppUpdate": {
         "properties": {
           "name": {
@@ -3151,6 +3249,36 @@
             "type": "string",
             "title": "Commit Sha"
           },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
+          },
+          "spec_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Sha256"
+          },
+          "image_digests": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digests"
+          },
           "status": {
             "$ref": "#/components/schemas/AppVersionApprovalStatus"
           },
@@ -3287,6 +3415,36 @@
           "commit_sha": {
             "type": "string",
             "title": "Commit Sha"
+          },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
+          },
+          "spec_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Sha256"
+          },
+          "image_digests": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digests"
           },
           "status": {
             "$ref": "#/components/schemas/AppVersionApprovalStatus"
@@ -3561,8 +3719,15 @@
             "title": "Course"
           },
           "credentialId": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Credentialid"
           },
           "userInputVar": {
@@ -3608,8 +3773,7 @@
           "name",
           "appId",
           "releaseTag",
-          "course",
-          "credentialId"
+          "course"
         ],
         "title": "DeploymentCreate",
         "description": "Body of ``POST /deployments``: deploy an app version for a course, in teams."

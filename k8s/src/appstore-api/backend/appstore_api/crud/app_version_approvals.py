@@ -5,6 +5,7 @@ submission. When the tag is moved later, the old review no longer applies —
 the version is unapproved and can be submitted again.
 """
 
+import json
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -21,8 +22,14 @@ def submit_version(
     commit_sha: str,
     diff_url: str | None = None,
     notes: str | None = None,
+    runtime: str = "openstack-vm",
+    spec_sha256: str | None = None,
+    image_digests: list[str] | None = None,
 ) -> AppVersionApproval:
     """Submit ``version_tag`` at ``commit_sha`` for admin review.
+
+    ``runtime``, ``spec_sha256`` and ``image_digests`` record what the review
+    covers besides the commit (Kubernetes apps: the appstore.yaml and its images).
 
     Raises 409 if this commit is already pending or approved. A rejected
     version, or one whose review was for a commit the tag no longer points
@@ -57,6 +64,9 @@ def submit_version(
         appId=app_id,
         version_tag=version_tag,
         commit_sha=commit_sha,
+        runtime=runtime,
+        spec_sha256=spec_sha256,
+        image_digests=json.dumps(image_digests) if image_digests is not None else None,
         diff_url=diff_url,
         notes=notes,
         status=AppVersionApprovalStatus.PENDING,
