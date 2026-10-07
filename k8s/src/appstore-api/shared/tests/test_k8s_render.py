@@ -162,3 +162,31 @@ def test_missing_password_and_vm_runtime_rejected():
     vm = parse_spec({"apiVersion": "appstore/v2", "name": "win", "runtime": "openstack-vm"})
     with pytest.raises(ValueError, match="kubernetes"):
         render(vm, DEP, TEAMS, SETTINGS, {})
+
+
+def test_file_variables_become_a_secret_mounted_as_a_single_file():
+    spec = parse_spec(VALID)
+    refs = workload_refs(spec, TEAMS)
+    pw = {r.name: "x" for r in refs}
+    objs = render(spec, DEP, TEAMS, SETTINGS, pw, files={"assignment_zip": {"team-a": b"PK\x03"}})
+    secrets = [o for o in of_kind(objs, "Secret") if o["metadata"]["name"].endswith("-files")]
+    assert {s["metadata"]["labels"]["appstore.dhbw/workload"] for s in secrets} == {"team-a-alice", "team-a-bob"}
+    sts = next(o for o in of_kind(objs, "StatefulSet") if o["metadata"]["name"] == "team-a-alice")
+    mount = next(m for m in sts["spec"]["template"]["spec"]["containers"][0]["volumeMounts"] if m["name"] == "files")
+    assert mount["mountPath"] == "/data/assignment.zip" and mount["readOnly"] is True
+    others = [o for o in of_kind(objs, "StatefulSet") if o["metadata"]["name"].startswith("team-b")]
+    assert all(
+        "files" not in [m["name"] for m in s["spec"]["template"]["spec"]["containers"][0]["volumeMounts"]] for s in others
+    )
+
+
+def test_enum_variables_reach_containers_as_env():
+    spec = parse_spec(VALID)
+    pw = {r.name: "x" for r in workload_refs(spec, TEAMS)}
+    objs = render(spec, DEP, TEAMS, SETTINGS, pw, variable_values={"cpu_class": {"team-a": "medium"}})
+    envs = {
+        s["metadata"]["name"]: {e["name"]: e.get("value") for e in s["spec"]["template"]["spec"]["containers"][0]["env"]}
+        for s in of_kind(objs, "StatefulSet")
+    }
+    assert envs["team-a-alice"]["APPSTORE_VAR_CPU_CLASS"] == "medium"
+    assert envs["team-b-carol"]["APPSTORE_VAR_CPU_CLASS"] == "small"  # the declared default

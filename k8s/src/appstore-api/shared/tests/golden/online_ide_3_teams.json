@@ -298,6 +298,10 @@
                 {
                   "name": "TEAM",
                   "value": "team-a"
+                },
+                {
+                  "name": "APPSTORE_VAR_CPU_CLASS",
+                  "value": "small"
                 }
               ],
               "image": "ghcr.io/dhbw-appstore-t3/apps/code-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -548,6 +552,10 @@
                 {
                   "name": "TEAM",
                   "value": "team-a"
+                },
+                {
+                  "name": "APPSTORE_VAR_CPU_CLASS",
+                  "value": "small"
                 }
               ],
               "image": "ghcr.io/dhbw-appstore-t3/apps/code-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -798,6 +806,10 @@
                 {
                   "name": "TEAM",
                   "value": "team-b"
+                },
+                {
+                  "name": "APPSTORE_VAR_CPU_CLASS",
+                  "value": "small"
                 }
               ],
               "image": "ghcr.io/dhbw-appstore-t3/apps/code-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -1048,6 +1060,10 @@
                 {
                   "name": "TEAM",
                   "value": "team-b"
+                },
+                {
+                  "name": "APPSTORE_VAR_CPU_CLASS",
+                  "value": "small"
                 }
               ],
               "image": "ghcr.io/dhbw-appstore-t3/apps/code-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -1298,6 +1314,10 @@
                 {
                   "name": "TEAM",
                   "value": "team-c"
+                },
+                {
+                  "name": "APPSTORE_VAR_CPU_CLASS",
+                  "value": "small"
                 }
               ],
               "image": "ghcr.io/dhbw-appstore-t3/apps/code-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -1548,6 +1568,10 @@
                 {
                   "name": "TEAM",
                   "value": "team-c"
+                },
+                {
+                  "name": "APPSTORE_VAR_CPU_CLASS",
+                  "value": "small"
                 }
               ],
               "image": "ghcr.io/dhbw-appstore-t3/apps/code-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

@@ -12,6 +12,7 @@ default-deny NetworkPolicy (IPv4 *and* IPv6) and a ResourceQuota.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -301,10 +302,60 @@ def _env_entries(c: Container, ref: WorkloadRef) -> list[dict[str, Any]]:
     return out
 
 
+def _slot(values: Mapping[str, Any] | None, ref: WorkloadRef) -> Any:
+    """The entry of a per-scope value map that belongs to ``ref``.
+
+    Wizard maps are keyed ``all`` (whole deployment), by team name, or
+    ``<team>-<user>`` (per person).
+    """
+    if not values:
+        return None
+    for key in ("all", f"{ref.team}-{ref.user}" if ref.user else None, ref.team):
+        if key is not None and key in values:
+            return values[key]
+    return None
+
+
+def _file_contents(spec: AppSpec, ref: WorkloadRef, files: Mapping[str, Mapping[str, bytes]] | None):
+    """``[(variable, mountPath, bytes)]`` of the file variables ``ref`` got a file for."""
+    out = []
+    for v in spec.variables:
+        if v.type != "file" or v.mount_path is None:
+            continue
+        content = _slot((files or {}).get(v.name), ref)
+        if content is not None:
+            out.append((v.name, v.mount_path, content))
+    return out
+
+
+def _variable_env(spec: AppSpec, ref: WorkloadRef, values: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Enum/string variables reach every container as ``APPSTORE_VAR_<NAME>``."""
+    out = []
+    for v in spec.variables:
+        if v.type == "file":
+            continue
+        raw = (values or {}).get(v.name, v.default)
+        if isinstance(raw, dict):
+            raw = _slot(raw, ref)
+            if raw is None:
+                raw = v.default
+        if raw is not None:
+            out.append({"name": f"APPSTORE_VAR_{re.sub(r'[^A-Za-z0-9]', '_', v.name).upper()}", "value": str(raw)})
+    return out
+
+
 def _workload_objects(
-    spec: AppSpec, dep: DeploymentCtx, ref: WorkloadRef, password: str, settings: RenderSettings
+    spec: AppSpec,
+    dep: DeploymentCtx,
+    ref: WorkloadRef,
+    password: str,
+    settings: RenderSettings,
+    files: Mapping[str, Mapping[str, bytes]] | None = None,
+    variable_values: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     assert spec.workload is not None
+    file_items = _file_contents(spec, ref, files)
+    var_env = _variable_env(spec, ref, variable_values)
     sel = {WORKLOAD_LABEL: ref.name, DEPLOYMENT_LABEL: dep.id}
     storage = spec.workload.storage
     exposed = next(c for c in spec.workload.containers if c.expose)
@@ -320,10 +371,14 @@ def _workload_objects(
             mounts.append({"name": vol, "mountPath": path})
         if storage:
             mounts.append({"name": "data", "mountPath": storage.mount_path})
+        if c.expose and file_items:
+            mounts.extend(
+                {"name": "files", "mountPath": path, "subPath": key, "readOnly": True} for key, path, _ in file_items
+            )
         item: dict[str, Any] = {
             "name": c.name,
             "image": c.image,
-            "env": _env_entries(c, ref),
+            "env": _env_entries(c, ref) + var_env,
             "resources": {
                 "requests": {"cpu": c.resources.cpu, "memory": c.resources.memory},
                 "limits": {"cpu": c.resources.cpu, "memory": c.resources.memory},
@@ -340,6 +395,9 @@ def _workload_objects(
         if c.expose:
             item["ports"] = [{"name": "http", "containerPort": c.expose.port, "protocol": "TCP"}]
         containers.append(item)
+
+    if file_items:
+        volumes.append({"name": "files", "secret": {"secretName": f"{ref.name}-files", "defaultMode": 0o444}})
 
     pod_spec: dict[str, Any] = {
         "automountServiceAccountToken": False,
@@ -429,7 +487,18 @@ def _workload_objects(
         "metadata": ingress_meta,
         "spec": ingress_spec,
     }
-    return [secret, statefulset, service, ingress]
+    objects = [secret]
+    if file_items:
+        objects.append(
+            {
+                "apiVersion": "v1",
+                "kind": "Secret",
+                "metadata": _meta(f"{ref.name}-files", dep, ref.name),
+                "type": "Opaque",
+                "data": {key: base64.b64encode(content).decode() for key, _, content in file_items},
+            }
+        )
+    return [*objects, statefulset, service, ingress]
 
 
 def render(
@@ -438,10 +507,14 @@ def render(
     teams: list[Team],
     settings: RenderSettings,
     passwords: Mapping[str, str],
+    files: Mapping[str, Mapping[str, bytes]] | None = None,
+    variable_values: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Return all objects of a deployment in apply order.
 
     ``passwords`` maps workload name (see :func:`workload_refs`) to its generated password.
+    ``files`` maps a file variable to ``{slot: content}`` (slot: ``all``, a team name or
+    ``<team>-<user>``); ``variable_values`` maps enum/string variables to a value or such a slot map.
     """
     if spec.runtime != "kubernetes" or spec.workload is None:
         raise ValueError("render() only supports runtime 'kubernetes'")
@@ -454,7 +527,7 @@ def render(
 
     objects = [_namespace(dep), *_quota_and_limits(spec, dep, len(refs)), *_network_policies(spec, dep, settings)]
     for ref in refs:
-        objects.extend(_workload_objects(spec, dep, ref, passwords[ref.name], settings))
+        objects.extend(_workload_objects(spec, dep, ref, passwords[ref.name], settings, files, variable_values))
     return objects
 
 

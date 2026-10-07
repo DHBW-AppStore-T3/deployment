@@ -864,6 +864,7 @@ def create_deployment(
         loaded_spec = None
     is_k8s = loaded_spec is not None and loaded_spec.runtime == app_spec.RUNTIME_K8S
     if is_k8s:
+        credential = None  # pods never use an OpenStack credential, even a supplied one
         # Approval = commit + spec hash + image digests: the spec read just
         # now must be the reviewed one.
         if not target_app.is_private and (
@@ -929,7 +930,7 @@ def create_deployment(
         deployment,
         current_user.userId,
         commit_sha,
-        app_spec.K8S_PROJECT if is_k8s else credential.project_id,
+        credential.project_id if credential is not None else app_spec.K8S_PROJECT,
         runtime=app_spec.RUNTIME_K8S if is_k8s else app_spec.RUNTIME_VM,
     )
 
@@ -965,7 +966,7 @@ def create_deployment(
 
     # The envelope carries ciphertext only — the worker decrypts in-process.
     # Pod deployments have no OpenStack credential.
-    openstack_envelope = {} if is_k8s else crud_openstack_credentials.dispatch_envelope(credential)
+    openstack_envelope = crud_openstack_credentials.dispatch_envelope(credential) if credential is not None else {}
     job_payload: JobPayload = {
         "app_id": str(db_deployment.appId),
         "app_git_link": db_deployment.app.git_link or "",
