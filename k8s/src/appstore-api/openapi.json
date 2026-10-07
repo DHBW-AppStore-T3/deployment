@@ -4022,6 +4022,19 @@
             "type": "array",
             "title": "Resources"
           },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
+          },
+          "workloads": {
+            "items": {
+              "$ref": "#/components/schemas/PodWorkloadSchema"
+            },
+            "type": "array",
+            "title": "Workloads",
+            "default": []
+          },
           "live": {
             "type": "boolean",
             "title": "Live"
@@ -5308,6 +5321,79 @@
         ],
         "title": "OpenStackCredentialUpsert",
         "description": "Body of POST /me/openstack-credentials.\n\n`identifier` is either a username (password auth) or an\napplication-credential ID (preferred: revocable, bound to one project).\n`secret` is the corresponding password or application-credential\nsecret. Both are stored encrypted at rest. For password auth,\n`project_id`/`project_name` say which project to scope to; what is\nstored is the project Keystone actually scoped the token to."
+      },
+      "PodWorkloadSchema": {
+        "properties": {
+          "workload": {
+            "type": "string",
+            "title": "Workload"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "restarts": {
+            "type": "integer",
+            "title": "Restarts",
+            "default": 0
+          },
+          "phase": {
+            "type": "string",
+            "title": "Phase"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "lastEvent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastevent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workload",
+          "ready",
+          "phase"
+        ],
+        "title": "PodWorkloadSchema",
+        "description": "One pod workload (a team's or a person's) of a Kubernetes deployment."
       },
       "QuotaItem": {
         "properties": {

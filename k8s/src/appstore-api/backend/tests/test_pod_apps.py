@@ -220,3 +220,80 @@ def test_vm_app_still_needs_a_credential(client, db, mock_user, empty_app_checko
     _task, payload = queued_task(db, uuid.UUID(response.json()["deploymentId"]))
     assert "runtime" not in payload and payload["openstack_envelope"]
     assert payload["commit_sha"] == TEST_SHA
+
+
+# --- live view and per-workload restart ---------------------------------------
+
+
+@pytest.fixture
+def pod_deployment(client, db, mock_user, repo):
+    from appstore_api.models import Task, TaskStatus
+    from appstore_shared.k8s.fake import FakeKube
+    from appstore_shared.k8s.render import DeploymentCtx, RenderSettings, Team, render
+    from appstore_shared.k8s.spec import parse_spec
+
+    app = _app(db, mock_user)
+    client.post(f"/apps/{app.appId}/versions/v1.0/submit", json={})
+    _approve_in_db(db, app)
+    deployment_id = uuid.UUID(_deploy(client, app).json()["deploymentId"])
+    db.query(Task).update({"status": TaskStatus.SUCCESS})
+    db.commit()
+
+    kube = FakeKube(ready_after_polls=0)
+    spec = parse_spec(SPEC)
+    teams = [Team("Team-1", ("anna", "ben"))]
+    dep = DeploymentCtx(id=str(deployment_id))
+    from appstore_shared.k8s.render import workload_refs
+
+    passwords = {r.name: "x" for r in workload_refs(spec, teams)}
+    for obj in render(spec, dep, teams, RenderSettings(zone="z.example.org"), passwords):
+        kube.apply(obj)
+    k8s_status.set_kube_factory(lambda: kube)
+    yield deployment_id, kube
+    k8s_status.set_kube_factory(None)
+
+
+from appstore_api.services import k8s_status  # noqa: E402
+
+
+def test_resources_of_a_pod_deployment_list_workloads(client, pod_deployment, monkeypatch):
+    deployment_id, _kube = pod_deployment
+    monkeypatch.setattr("appstore_api.config.settings.K8S_ZONE", "z.example.org")
+
+    body = client.get(f"/deployments/{deployment_id}/resources").json()
+
+    assert body["runtime"] == "kubernetes" and body["live"] is True and body["resources"] == []
+    rows = {w["workload"]: w for w in body["workloads"]}
+    assert set(rows) == {"team-1-anna", "team-1-ben"}
+    assert rows["team-1-anna"]["ready"] is True and rows["team-1-anna"]["phase"] == "Running"
+    assert rows["team-1-anna"]["team"] == "Team-1" and rows["team-1-anna"]["user"] == "anna"
+    assert rows["team-1-anna"]["url"] == f"https://team-1-anna-{deployment_id.hex[:8]}.apps.z.example.org"
+
+
+def test_resources_show_why_a_workload_does_not_start(client, pod_deployment):
+    deployment_id, kube = pod_deployment
+    kube.ready_after_polls = 10
+    kube.fail_reason = "ImagePullBackOff"
+    rows = client.get(f"/deployments/{deployment_id}/resources").json()["workloads"]
+    assert {w["phase"] for w in rows} == {"ImagePullBackOff"} and not any(w["ready"] for w in rows)
+
+
+def test_redeploy_of_a_workload_queues_a_pod_restart(client, db, pod_deployment):
+    deployment_id, _kube = pod_deployment
+    response = client.post(f"/deployments/{deployment_id}/resources/team-1-ben/redeploy")
+    assert response.status_code == 202, response.text
+    _task, payload = queued_task(db, deployment_id)
+    assert payload["resource_address"] == "team-1-ben" and payload["runtime"] == "kubernetes"
+
+
+def test_redeploy_can_reset_a_workload(client, db, pod_deployment):
+    deployment_id, _kube = pod_deployment
+    assert client.post(f"/deployments/{deployment_id}/resources/reset:team-1-ben/redeploy").status_code == 202
+    _task, payload = queued_task(db, deployment_id)
+    assert payload["resource_address"] == "reset:team-1-ben"
+
+
+@pytest.mark.parametrize("address", ["unknown-workload", "Team_1", "a;b", "reset:nope"])
+def test_redeploy_refuses_unknown_or_malformed_workloads(client, pod_deployment, address):
+    deployment_id, _kube = pod_deployment
+    assert client.post(f"/deployments/{deployment_id}/resources/{address}/redeploy").status_code in (404, 422)

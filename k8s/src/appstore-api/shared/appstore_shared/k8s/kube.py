@@ -14,7 +14,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from appstore_shared.k8s.render import DEPLOYMENT_LABEL, FIELD_MANAGER, WORKLOAD_LABEL
+from appstore_shared.k8s.render import (
+    DEPLOYMENT_LABEL,
+    FIELD_MANAGER,
+    TEAM_LABEL,
+    USER_LABEL,
+    WORKLOAD_LABEL,
+)
 
 
 @dataclass
@@ -37,6 +43,8 @@ class StatefulSetInfo:
     name: str
     replicas: int
     ready_replicas: int
+    team: str = ""
+    user: str = ""
 
 
 @dataclass
@@ -121,8 +129,15 @@ class KubeApi:
         if snap.terminating:
             return snap
         for s in self._apps.list_namespaced_stateful_set(namespace).items:
+            labels = s.metadata.labels or {}
             snap.statefulsets.append(
-                StatefulSetInfo(s.metadata.name, s.spec.replicas or 0, s.status.ready_replicas or 0)
+                StatefulSetInfo(
+                    s.metadata.name,
+                    s.spec.replicas or 0,
+                    s.status.ready_replicas or 0,
+                    labels.get(TEAM_LABEL, ""),
+                    labels.get(USER_LABEL, ""),
+                )
             )
         for p in self._core.list_namespaced_pod(namespace).items:
             snap.pods.append(_pod_info(p))

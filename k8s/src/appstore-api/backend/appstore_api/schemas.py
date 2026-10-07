@@ -471,12 +471,29 @@ class DeploymentResourceSchema(BaseModel):
     metadata: dict[str, str] | None = None
 
 
+class PodWorkloadSchema(BaseModel):
+    """One pod workload (a team's or a person's) of a Kubernetes deployment."""
+
+    workload: str
+    team: str | None = None
+    user: str | None = None
+    ready: bool
+    restarts: int = 0
+    # Pending, Running, Stopped (paused), or the reason it does not start.
+    phase: str
+    url: str | None = None
+    lastEvent: str | None = None
+
+
 class DeploymentResourceListResponse(BaseModel):
     """The resources of a deployment's OpenTofu state, optionally joined with live OpenStack data.
 
     An object rather than a bare list so metadata can be added later without a breaking change.
     """
     resources: list[DeploymentResourceSchema]
+    # Kubernetes deployments: the pods instead of OpenStack resources.
+    runtime: str = "openstack-vm"
+    workloads: list[PodWorkloadSchema] = []
     # True when the response was fetched with live OpenStack join.
     # False means the caller passed ``?refresh=false`` and the
     # response reflects only cached TF state.

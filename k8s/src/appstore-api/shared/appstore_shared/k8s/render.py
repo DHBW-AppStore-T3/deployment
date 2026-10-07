@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 LABEL_PREFIX = "appstore.dhbw"
 DEPLOYMENT_LABEL = f"{LABEL_PREFIX}/deployment-id"
 WORKLOAD_LABEL = f"{LABEL_PREFIX}/workload"
+TEAM_LABEL = f"{LABEL_PREFIX}/team"
+USER_LABEL = f"{LABEL_PREFIX}/user"
 FIELD_MANAGER = "appstore"
 PASSWORD_KEY = "password"
 
@@ -442,10 +444,15 @@ def _workload_objects(
         "type": "Opaque",
         "stringData": {PASSWORD_KEY: password},
     }
+    sts_meta = _meta(ref.name, dep, ref.name)
+    # For the live view: whose workload this is.
+    sts_meta["labels"][TEAM_LABEL] = label_value(ref.team)
+    if ref.user:
+        sts_meta["labels"][USER_LABEL] = label_value(ref.user)
     statefulset = {
         "apiVersion": "apps/v1",
         "kind": "StatefulSet",
-        "metadata": _meta(ref.name, dep, ref.name),
+        "metadata": sts_meta,
         "spec": sts_spec,
     }
     service = {

@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     APP_MAX_MEMORY: str = "4Gi"
     APP_MAX_STORAGE: str = "20Gi"
 
+    # Pod apps are served at https://<workload>-<deployment>.apps.<K8S_ZONE>;
+    # the live view reads their pods from the cluster (empty: no cluster access).
+    K8S_ZONE: str = ""
+    K8S_STATUS_ENABLED: bool = False
+
     # "development" unlocks API_DUMMY_AUTH; anything else is production.
     API_MODE: str = "production"
     # Development only: trust the X-Dummy-Auth-User header as the caller's

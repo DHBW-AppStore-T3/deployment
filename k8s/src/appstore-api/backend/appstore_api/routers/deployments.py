@@ -44,6 +44,7 @@ from appstore_api.schemas import (
     DeploymentTeamResponse,
     LifecycleActionResponse,
     MyAccessResponse,
+    PodWorkloadSchema,
     TaskSummary,
     UserResponse,
 )
@@ -52,6 +53,7 @@ from appstore_api.services import (
     courses,
     deployment_notifier,
     email_service,
+    k8s_status,
     openstack_client,
     tf_state_store,
 )
@@ -1332,6 +1334,10 @@ _TF_ADDRESS_RE = re.compile(
 )
 
 
+# A workload name, optionally prefixed ``reset:`` (also delete its volume).
+_WORKLOAD_ADDRESS_RE = re.compile(r"^(reset:)?[a-z0-9][a-z0-9-]{0,62}$")
+
+
 def _latest_tf_state_for(deployment_id: UUID, db: Session) -> str | None:
     """The deployment's OpenTofu state as JSON, or None before the first apply.
 
@@ -1369,6 +1375,15 @@ def list_deployment_resources(
         )
     # Inspect-only view (owner view); this endpoint is read-only.
     ensure_view_deployment_owner(current_user, deployment, db)
+
+    if deployment.runtime == app_spec.RUNTIME_K8S:
+        rows = k8s_status.workload_views(deployment_id, deployment.k8s_namespace or "")
+        return DeploymentResourceListResponse(
+            resources=[],
+            runtime=app_spec.RUNTIME_K8S,
+            workloads=[PodWorkloadSchema.model_validate(r) for r in rows or []],
+            live=rows is not None,
+        )
 
     state_json = _latest_tf_state_for(deployment_id, db)
     # Live data is fetched with the caller's own credential for the project
@@ -1488,6 +1503,28 @@ def redeploy_deployment_resource(
     lifecycle_service.ensure_action_allowed(
         db, deployment, lifecycle_service.DeploymentAction.REDEPLOY,
     )
+
+    if deployment.runtime == app_spec.RUNTIME_K8S:
+        # Pods: the address is a workload name; ``reset:<name>`` also drops its volume.
+        if not _WORKLOAD_ADDRESS_RE.match(address):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"reason": "invalid_resource_address"},
+            )
+        known = k8s_status.workload_views(deployment_id, deployment.k8s_namespace or "")
+        if known is not None and address.removeprefix("reset:") not in {r["workload"] for r in known}:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"reason": "resource_not_in_state", "address": address},
+            )
+        return _dispatch_lifecycle_task(
+            db=db,
+            deployment=deployment,
+            current_user=current_user,
+            task_type=TaskType.REDEPLOY,
+            response_status="redeploying",
+            resource_address=address,
+        )
 
     if not _TF_ADDRESS_RE.match(address):
         raise HTTPException(

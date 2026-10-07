@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from appstore_shared.k8s.kube import EventInfo, PodInfo, Snapshot, StatefulSetInfo
-from appstore_shared.k8s.render import DEPLOYMENT_LABEL, WORKLOAD_LABEL
+from appstore_shared.k8s.render import DEPLOYMENT_LABEL, TEAM_LABEL, USER_LABEL, WORKLOAD_LABEL
 
 
 class FakeKube:
@@ -84,7 +84,12 @@ class FakeKube:
                 continue
             up = replicas >= 1
             ready = up and polls > self.ready_after_polls and not self.fail_reason
-            snap.statefulsets.append(StatefulSetInfo(name, replicas, 1 if ready else 0))
+            labels = self.objects[("StatefulSet", name, ns, "apps/v1")]["metadata"]["labels"]
+            snap.statefulsets.append(
+                StatefulSetInfo(
+                    name, replicas, 1 if ready else 0, labels.get(TEAM_LABEL, ""), labels.get(USER_LABEL, "")
+                )
+            )
             if up:
                 pod = PodInfo(
                     name=f"{name}-0",

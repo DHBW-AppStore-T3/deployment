@@ -257,6 +257,8 @@
         "appstore.dhbw/course": "WWI24_SEA",
         "appstore.dhbw/deployment-id": "123e4567-e89b-12d3-a456-426614174000",
         "appstore.dhbw/owner": "dozent_dhbw.de",
+        "appstore.dhbw/team": "team-a",
+        "appstore.dhbw/user": "alice",
         "appstore.dhbw/workload": "team-a-alice"
       },
       "name": "team-a-alice",
@@ -511,6 +513,8 @@
         "appstore.dhbw/course": "WWI24_SEA",
         "appstore.dhbw/deployment-id": "123e4567-e89b-12d3-a456-426614174000",
         "appstore.dhbw/owner": "dozent_dhbw.de",
+        "appstore.dhbw/team": "team-a",
+        "appstore.dhbw/user": "bob",
         "appstore.dhbw/workload": "team-a-bob"
       },
       "name": "team-a-bob",
@@ -765,6 +769,8 @@
         "appstore.dhbw/course": "WWI24_SEA",
         "appstore.dhbw/deployment-id": "123e4567-e89b-12d3-a456-426614174000",
         "appstore.dhbw/owner": "dozent_dhbw.de",
+        "appstore.dhbw/team": "team-b",
+        "appstore.dhbw/user": "carol",
         "appstore.dhbw/workload": "team-b-carol"
       },
       "name": "team-b-carol",
@@ -1019,6 +1025,8 @@
         "appstore.dhbw/course": "WWI24_SEA",
         "appstore.dhbw/deployment-id": "123e4567-e89b-12d3-a456-426614174000",
         "appstore.dhbw/owner": "dozent_dhbw.de",
+        "appstore.dhbw/team": "team-b",
+        "appstore.dhbw/user": "dave",
         "appstore.dhbw/workload": "team-b-dave"
       },
       "name": "team-b-dave",
@@ -1273,6 +1281,8 @@
         "appstore.dhbw/course": "WWI24_SEA",
         "appstore.dhbw/deployment-id": "123e4567-e89b-12d3-a456-426614174000",
         "appstore.dhbw/owner": "dozent_dhbw.de",
+        "appstore.dhbw/team": "team-c",
+        "appstore.dhbw/user": "erin",
         "appstore.dhbw/workload": "team-c-erin"
       },
       "name": "team-c-erin",
@@ -1527,6 +1537,8 @@
         "appstore.dhbw/course": "WWI24_SEA",
         "appstore.dhbw/deployment-id": "123e4567-e89b-12d3-a456-426614174000",
         "appstore.dhbw/owner": "dozent_dhbw.de",
+        "appstore.dhbw/team": "team-c",
+        "appstore.dhbw/user": "frank",
         "appstore.dhbw/workload": "team-c-frank"
       },
       "name": "team-c-frank",
