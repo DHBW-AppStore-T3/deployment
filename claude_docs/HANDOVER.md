@@ -20,6 +20,16 @@ Jede Session liest dieses Dokument zu Beginn und aktualisiert es vor dem Abschlu
 
 ## 2. In Arbeit & Nächste Schritte
 
+- [ ] **Epic [.github#4](https://github.com/DHBW-AppStore-T3/.github/issues/4) — Apps als Pods statt VMs (Stand 2026-10-07, auf `spike/dev`/Staging umgesetzt und getestet; Details: Historie unten, ADR `claude_docs/decisions/2026-pods-instead-of-vms.md`, README `k8s/src/appstore-api` „Apps that run as pods“).** Noch zu tun:
+  - **K7 / Windows-VM:** echten Windows-Desktop-Deploy (`runtime: openstack-vm`) gegen OpenStack testen (braucht ein OpenStack-Credential). Bisher nur durch die bestehenden Unit-Tests abgesichert.
+  - **Öffentliche Pod-Apps:** Einreichen, Freigabe (Commit + Spec-Hash + Digests) und Katalogansicht als Student in der UI durchspielen (getestet wurde eine private App; Freigabe nur per API/Test).
+  - **Katalogansicht:** zeigt noch nicht, dass eine Version als Pods läuft (Hinweis/Badge pro Version).
+  - **Weitere Apps migrieren:** `pgAdmin` (2 Container), `Jupyter-Notebook`, `Web-LaTeX`; `Ubuntu-App` fachlich klären (Web-Terminal statt SSH). Fertig: `Online-IDE` und `template-app` (Branch `feat/pod-runtime`, Tag `v2.0.0`, noch nicht auf `main` der App-Repos).
+  - **Entscheidungen (Prof. Pfisterer):** eigener Workload-Cluster/Magnum oder Nodes mit Taint (`podApps.studentNodeSelector/Tolerations` vorbereitet); StorageClass + Backup (k3s `local-path` ist knotengebunden); Passwort (MVP) oder SSO vor den Ingresses; Egress „Internet“ je App (IPv6-Internet aus Pods ungeprüft).
+  - **Kapazität:** ein 4-vCPU-Node trägt ca. 24 Online-IDEs (Requests 100m/256Mi). Für Kurse mit 30+ Personen Nodes ergänzen. Lasttest: 20 Workloads in 41 s bereit.
+  - **Offen im Spec/MVP:** Datei-Variablen > 1 MiB (Init-Container in die PVC), Image-Builds im Cluster (BuildKit), cosign-Prüfung, Operator/CRD, KubeVirt.
+  - **Prod:** Promotion per PR `spike/dev` → `spike/main` (`k8s/promote.sh`), Merge ist menschlich. Beim Merge laufen Migration `0002` auf der Prod-DB und neue ClusterRoles + ValidatingAdmissionPolicy im Cluster.
+  - **Aufräumen:** Staging-Test-Deployment „UI-Test Online-IDE Pods“ (`dep-cdab2d43`) per UI (Dozent → Tear down) löschen; temporäre Demo-Passwörter in Keycloak ändern; Keycloak-Admin- und Argo-Passwort ändern.
 - [x] Reengineering auf 2 Flows im Deployment-Repo: `staging.yml` auf `dev`-Trigger umgestellt.
 - [x] Staging Health-Check & Discord-Notification (`notify_staging_health.py`) implementiert.
 - [ ] **GitHub MCP & OpenStack MCP aktivieren:** Liegen vorkonfiguriert in `agent/config.yaml`, warten auf Read-Only-PAT bzw. `clouds.yaml`.
