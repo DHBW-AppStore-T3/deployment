@@ -325,3 +325,14 @@ def test_cancel_of_a_vm_deployment_is_refused(client, db, mock_user, empty_app_c
     approve_version(db, app, "v1.0")
     deployment_id = _deploy(client, app, credential=add_credential(db, mock_user)).json()["deploymentId"]
     assert client.post(f"/deployments/{deployment_id}/cancel").status_code == 409
+
+
+def test_deployment_responses_carry_the_runtime(client, db, mock_user, repo):
+    app = _app(db, mock_user)
+    client.post(f"/apps/{app.appId}/versions/v1.0/submit", json={})
+    _approve_in_db(db, app)
+    created = _deploy(client, app).json()
+    assert created["runtime"] == "kubernetes"
+    detail = client.get(f"/deployments/{created['deploymentId']}").json()
+    assert detail["runtime"] == "kubernetes"
+    assert [d["runtime"] for d in client.get("/deployments/").json()] == ["kubernetes"]

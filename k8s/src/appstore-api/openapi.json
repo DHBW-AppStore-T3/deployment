@@ -3887,6 +3887,11 @@
             ],
             "title": "Os Project Id"
           },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
+          },
           "userInputVar": {
             "anyOf": [
               {
@@ -4295,6 +4300,11 @@
               }
             ],
             "title": "Os Project Id"
+          },
+          "runtime": {
+            "type": "string",
+            "title": "Runtime",
+            "default": "openstack-vm"
           },
           "userInputVar": {
             "anyOf": [

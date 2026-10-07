@@ -287,7 +287,22 @@
         "noTasks": "No actions yet.",
         "noLog": "No log.",
         "destroyedTitle": "Torn down",
-        "destroyedMessage": "All OpenStack resources were deleted; the deployment disappears from the list."
+        "destroyedMessage": "All OpenStack resources were deleted; the deployment disappears from the list.",
+        "ownerAndPods": "Owner {{owner}} · runs as pods in the cluster",
+        "podsIntro": "One row per team or person, read from the cluster.",
+        "podsNotLive": "The cluster cannot be asked right now.",
+        "noWorkloads": "No workloads (yet).",
+        "workload": "Workload",
+        "restarts": "Restarts",
+        "restart": "Restart",
+        "restartTitle": "Restart workload?",
+        "restartMessage": "“{{name}}” is stopped and started again. Its data stays.",
+        "reset": "Reset",
+        "resetTitle": "Reset workload?",
+        "resetMessage": "“{{name}}” is started again from scratch. Its data is deleted.",
+        "cancel": "Cancel",
+        "cancelTitle": "Cancel deployment?",
+        "cancelMessage": "“{{name}}” is not finished yet. Cancelling removes everything it created so far."
     },
     "wizard": {
         "title": "Deploy {{app}}",
@@ -352,6 +367,9 @@
         "allDefaults": "All settings keep the app's defaults.",
         "missing": "Still missing: {{names}}",
         "defaultsNote": "Settings not listed keep the app's defaults.",
-        "reloadList": "Reload list"
+        "reloadList": "Reload list",
+        "podsNoCredential": "This app runs as pods in the platform's cluster. It needs no OpenStack credential.",
+        "runtime": "Runs as",
+        "runtimePods": "Pods in the platform's cluster"
     }
 }

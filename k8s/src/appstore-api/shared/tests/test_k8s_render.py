@@ -210,3 +210,11 @@ def test_domain_placeholder_follows_the_app_domain():
     s = RenderSettings(zone="z.example.org", app_domain_override="z.example.org")
     pw = {r.name: "x" for r in workload_refs(spec, TEAMS)}
     assert render_access(spec, DEP, TEAMS, s, pw)[0].url == "https://team-a-alice-123e4567.z.example.org"
+
+
+def test_slots_named_by_the_wizard_match_normalised_workloads():
+    spec = parse_spec(VALID)
+    teams = [Team("Team 1", ("anna-b",))]  # worker: account name of anna.b@dhbw.de
+    pw = {r.name: "x" for r in workload_refs(spec, teams)}
+    objs = render(spec, DEP, teams, SETTINGS, pw, files={"assignment_zip": {"Team 1-anna-b": b"PK"}})
+    assert any(o["metadata"]["name"].endswith("-files") for o in of_kind(objs, "Secret"))

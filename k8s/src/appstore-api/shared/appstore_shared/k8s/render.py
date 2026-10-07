@@ -318,6 +318,12 @@ def _slot(values: Mapping[str, Any] | None, ref: WorkloadRef) -> Any:
     for key in ("all", f"{ref.team}-{ref.user}" if ref.user else None, ref.team):
         if key is not None and key in values:
             return values[key]
+    # The wizard names slots after the raw team name and e-mail local part
+    # ("Team-1-anna.b"); workloads use the normalised form ("team-1-anna-b").
+    wanted = {_slug(f"{ref.team}-{ref.user}") if ref.user else None, _slug(ref.team)} - {None}
+    for key, value in values.items():
+        if _slug(key) in wanted:
+            return value
     return None
 
 

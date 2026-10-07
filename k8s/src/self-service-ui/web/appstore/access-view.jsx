@@ -58,11 +58,13 @@ export function AccessView({ userAccounts, teamVms }) {
 function Account({ account }) {
     const { t } = useTranslation();
     const type = ['password', 'ssh_key', 'oauth', 'none'].includes(account.type) ? account.type : 'password';
-    const host = account.ip ? `${account.ip}${account.port ? `:${account.port}` : ''}` : '';
+    // Apps that run as pods are reached by an https link, not by host and port.
+    const host = !account.url && account.ip ? `${account.ip}${account.port ? `:${account.port}` : ''}` : '';
 
     return (
         <Table variant="vertical" withTableBorder layout="fixed">
             <Table.Tbody>
+                {account.url && <Row label={t('appstore.access.url')}><ExternalLink href={str(account.url)}>{str(account.url)}</ExternalLink></Row>}
                 {host && <Row label={t('appstore.access.host')}><CopyableText value={host}><Code>{host}</Code></CopyableText></Row>}
                 {account.username && (
                     <Row label={t('appstore.access.username')}>

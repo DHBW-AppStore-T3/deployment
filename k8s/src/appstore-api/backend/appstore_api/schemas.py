@@ -248,6 +248,8 @@ class DeploymentResponse(DeploymentBase):
     commit_sha: str | None = None
     course: str | None = None
     os_project_id: str | None = None
+    # "openstack-vm" or "kubernetes" (pods; os_project_id is then "kubernetes")
+    runtime: str = "openstack-vm"
     userInputVar: dict[str, Any] | None = None
     status: str | None = None  # From latest task
     created_at: datetime | None = None

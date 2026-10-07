@@ -21,7 +21,9 @@ export const isBool = (type) => ['bool', 'boolean'].includes(lower(type));
 export const isNumber = (type) => ['number', 'int', 'integer'].includes(lower(type));
 export const isList = (type) => /^(list|set|tuple|array)/.test(lower(type));
 export const isFileVar = (v) => v?.osType === 'file';
-export const hasPicker = (v) => Boolean(v?.osType) && v.osType !== 'file';
+// An app that runs as pods declares a fixed choice (`osType: 'enum'` with `values`); it needs no OpenStack lookup.
+export const isEnumVar = (v) => v?.osType === 'enum' && Array.isArray(v.values);
+export const hasPicker = (v) => Boolean(v?.osType) && v.osType !== 'file' && !isEnumVar(v);
 
 /** A variable's scope: 'all' (one value), 'team' (one per team) or 'user' (one per member); anything else counts as 'all'. */
 export function scopeOf(v) {
@@ -217,7 +219,8 @@ export function buildDeployment({ name, appId, releaseTag, course, credentialId,
         appId,
         releaseTag,
         course,
-        credentialId,
+        // Apps that run as pods have no OpenStack credential.
+        ...(credentialId ? { credentialId } : {}),
         teams: teams.map(t => ({ name: t.name.trim(), emails: t.emails })),
         userInputVar,
     };
