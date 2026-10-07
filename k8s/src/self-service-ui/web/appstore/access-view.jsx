@@ -46,7 +46,8 @@ export function AccessView({ userAccounts, teamVms }) {
                     </Table>
                 );
             })}
-            {accounts.map((a, i) => <Account key={`acc-${i}`} account={a} />)}
+            {/* An account's link is not repeated when the team's table above already shows it. */}
+            {accounts.map((a, i) => <Account key={`acc-${i}`} account={a} sharedUrl={vms.some(vm => str(vm.code_server_url || vm.url) === str(a.url))} />)}
         </Stack>
     );
 }
@@ -55,7 +56,7 @@ export function AccessView({ userAccounts, teamVms }) {
  * One user account: host, username and the `auth` shown according to its
  * `type`. An unknown type is treated as a password, so it stays hidden.
  */
-function Account({ account }) {
+function Account({ account, sharedUrl = false }) {
     const { t } = useTranslation();
     const type = ['password', 'ssh_key', 'oauth', 'none'].includes(account.type) ? account.type : 'password';
     // Apps that run as pods are reached by an https link, not by host and port.
@@ -64,7 +65,7 @@ function Account({ account }) {
     return (
         <Table variant="vertical" withTableBorder layout="fixed">
             <Table.Tbody>
-                {account.url && <Row label={t('appstore.access.url')}><ExternalLink href={str(account.url)}>{str(account.url)}</ExternalLink></Row>}
+                {account.url && !sharedUrl && <Row label={t('appstore.access.url')}><ExternalLink href={str(account.url)}>{str(account.url)}</ExternalLink></Row>}
                 {host && <Row label={t('appstore.access.host')}><CopyableText value={host}><Code>{host}</Code></CopyableText></Row>}
                 {account.username && (
                     <Row label={t('appstore.access.username')}>
