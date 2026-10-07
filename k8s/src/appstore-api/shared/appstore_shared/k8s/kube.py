@@ -62,6 +62,8 @@ class Snapshot:
     exists: bool
     terminating: bool = False
     statefulsets: list[StatefulSetInfo] = field(default_factory=list)
+    # Names of the volume claims, with the workload each belongs to.
+    pvcs: list[tuple[str, str]] = field(default_factory=list)
     pods: list[PodInfo] = field(default_factory=list)
     events: list[EventInfo] = field(default_factory=list)
 
@@ -139,6 +141,8 @@ class KubeApi:
                     labels.get(USER_LABEL, ""),
                 )
             )
+        for c in self._core.list_namespaced_persistent_volume_claim(namespace).items:
+            snap.pvcs.append((c.metadata.name, (c.metadata.labels or {}).get(WORKLOAD_LABEL, "")))
         for p in self._core.list_namespaced_pod(namespace).items:
             snap.pods.append(_pod_info(p))
         for ev in self._core.list_namespaced_event(namespace).items:

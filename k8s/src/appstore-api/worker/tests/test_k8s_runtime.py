@@ -241,3 +241,19 @@ def test_cancel_before_anything_is_created_creates_nothing(cluster):
     with pytest.raises(Failure, match="cancelled"):
         deploy(events=AlreadyCancelled())
     assert cluster.objects == {}
+
+
+def test_reset_waits_until_the_volume_is_really_gone(cluster):
+    deploy()
+    cluster.pvc_delete_polls = 3  # the claim stays Terminating for a few polls
+    seen_scale_up_with_pvc = []
+    real_scale = cluster.scale
+
+    def scale(ns, name, replicas):
+        if replicas == 1 and cluster._terminating_pvcs.get((ns, name)) is not None:
+            seen_scale_up_with_pvc.append(name)
+        real_scale(ns, name, replicas)
+
+    cluster.scale = scale
+    k8s_runtime.redeploy_resource(Events(), DEP, resource_address="reset:team-1-ben")
+    assert seen_scale_up_with_pvc == []

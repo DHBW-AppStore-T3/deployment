@@ -457,6 +457,15 @@ def redeploy_resource(
                 settings.K8S_DELETE_TIMEOUT_SECONDS, "the pod to stop",
             )
             kube.delete_pvcs(dep.namespace, workload)
+            # The claim is only marked for deletion while it is protected; a pod
+            # started now would collide with it (name and quota).
+            wait_until(
+                kube,
+                dep.namespace,
+                lambda s: not [c for c, w in s.pvcs if w == workload],
+                settings.K8S_DELETE_TIMEOUT_SECONDS,
+                "the volume to be deleted",
+            )
             kube.scale(dep.namespace, workload, 1)
         else:
             for pod_name in old_pods:

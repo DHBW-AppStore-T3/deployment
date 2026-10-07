@@ -20,6 +20,8 @@ class FakeKube:
         self.replicas: dict[tuple[str, str], int] = {}
         self.deleted_pods: list[str] = []
         self.deleted_pvcs: list[tuple[str, str]] = []
+        self.pvc_delete_polls = 0  # polls a deleted claim stays Terminating
+        self._terminating_pvcs: dict[tuple[str, str], int] = {}
         self.fail_reason = fail_reason
         self.ready_after_polls = ready_after_polls
         self.delete_polls = delete_polls
@@ -60,6 +62,7 @@ class FakeKube:
 
     def delete_pvcs(self, namespace: str, workload: str) -> None:
         self.deleted_pvcs.append((namespace, workload))
+        self._terminating_pvcs[(namespace, workload)] = self.pvc_delete_polls
 
     # --- reads ---------------------------------------------------------
     def namespaces(self, label_selector: str) -> list[str]:
@@ -79,6 +82,13 @@ class FakeKube:
             return Snapshot(exists=False)
         polls = self._polls[namespace] = self._polls.get(namespace, 0) + 1
         snap = Snapshot(exists=True)
+        for key in list(self._terminating_pvcs):
+            if key[0] == namespace:
+                if self._terminating_pvcs[key] <= 0:
+                    del self._terminating_pvcs[key]
+                else:
+                    self._terminating_pvcs[key] -= 1
+                    snap.pvcs.append((f"data-{key[1]}-0", key[1]))
         for (ns, name), replicas in sorted(self.replicas.items()):
             if ns != namespace:
                 continue

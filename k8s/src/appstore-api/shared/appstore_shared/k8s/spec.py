@@ -99,15 +99,38 @@ class Expose(_Strict):
         return self
 
 
-class Resources(_Strict):
+class ResourceRequests(_Strict):
     cpu: str
     memory: str
+
+
+class Resources(_Strict):
+    """``cpu``/``memory`` are the container's limits. ``requests`` is what the
+    scheduler reserves; it defaults to the limits. A mostly idle app (an IDE)
+    reserves little and may burst up to its limits."""
+
+    cpu: str
+    memory: str
+    requests: ResourceRequests | None = None
 
     @model_validator(mode="after")
     def _quantities(self) -> Resources:
         parse_cpu_millicores(self.cpu)
         parse_memory_mib(self.memory)
+        if self.requests is not None:
+            if parse_cpu_millicores(self.requests.cpu) > parse_cpu_millicores(self.cpu):
+                raise ValueError("requests.cpu must not exceed cpu")
+            if parse_memory_mib(self.requests.memory) > parse_memory_mib(self.memory):
+                raise ValueError("requests.memory must not exceed memory")
         return self
+
+    @property
+    def request_cpu(self) -> str:
+        return self.requests.cpu if self.requests else self.cpu
+
+    @property
+    def request_memory(self) -> str:
+        return self.requests.memory if self.requests else self.memory
 
 
 class EnvVar(_Strict):

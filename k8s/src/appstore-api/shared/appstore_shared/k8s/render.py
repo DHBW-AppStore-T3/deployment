@@ -162,9 +162,13 @@ def _meta(name: str, dep: DeploymentCtx, workload: str | None = None, *, namespa
 
 def _quantities(spec: AppSpec, n: int) -> dict[str, str]:
     assert spec.workload is not None
-    cpu = sum(parse_cpu_millicores(c.resources.cpu) for c in spec.workload.containers) * n
-    mem = sum(parse_memory_mib(c.resources.memory) for c in spec.workload.containers) * n
-    return {"cpu": f"{cpu}m", "memory": f"{mem}Mi"}
+    cs = spec.workload.containers
+    return {
+        "requests.cpu": f"{sum(parse_cpu_millicores(c.resources.request_cpu) for c in cs) * n}m",
+        "requests.memory": f"{sum(parse_memory_mib(c.resources.request_memory) for c in cs) * n}Mi",
+        "limits.cpu": f"{sum(parse_cpu_millicores(c.resources.cpu) for c in cs) * n}m",
+        "limits.memory": f"{sum(parse_memory_mib(c.resources.memory) for c in cs) * n}Mi",
+    }
 
 
 def _storage_mib(spec: AppSpec) -> int:
@@ -189,10 +193,7 @@ def _quota_and_limits(spec: AppSpec, dep: DeploymentCtx, n: int) -> list[dict[st
     assert spec.workload is not None
     total = _quantities(spec, n)
     hard: dict[str, str] = {
-        "requests.cpu": total["cpu"],
-        "requests.memory": total["memory"],
-        "limits.cpu": total["cpu"],
-        "limits.memory": total["memory"],
+        **total,
         "pods": str(n),
         "services": str(n),
         "services.loadbalancers": "0",
@@ -216,7 +217,7 @@ def _quota_and_limits(spec: AppSpec, dep: DeploymentCtx, n: int) -> list[dict[st
                 {
                     "type": "Container",
                     "default": {"cpu": biggest.resources.cpu, "memory": biggest.resources.memory},
-                    "defaultRequest": {"cpu": biggest.resources.cpu, "memory": biggest.resources.memory},
+                    "defaultRequest": {"cpu": biggest.resources.request_cpu, "memory": biggest.resources.request_memory},
                 }
             ]
         },
@@ -391,7 +392,7 @@ def _workload_objects(
             "image": c.image,
             "env": _env_entries(c, ref) + var_env,
             "resources": {
-                "requests": {"cpu": c.resources.cpu, "memory": c.resources.memory},
+                "requests": {"cpu": c.resources.request_cpu, "memory": c.resources.request_memory},
                 "limits": {"cpu": c.resources.cpu, "memory": c.resources.memory},
             },
             "securityContext": {

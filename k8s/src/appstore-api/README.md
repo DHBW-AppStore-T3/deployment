@@ -158,7 +158,7 @@ workload:
     - name: ide
       image: ghcr.io/dhbw-appstore-t3/apps/online-ide@sha256:<64 hex>   # digest, from the allowlist
       expose: { port: 8080, path: / }                                  # port >= 1024
-      resources: { cpu: "500m", memory: "1Gi" }                        # <= APP_MAX_*
+      resources: { cpu: "1", memory: "1Gi", requests: { cpu: 100m, memory: 256Mi } }   # limits <= APP_MAX_*; requests default to the limits
       env:
         - { name: PASSWORD, from: generated-password }                 # or team-name, user-name, or value: "..."
       writablePaths: [/tmp]      # emptyDir; everything else is read-only

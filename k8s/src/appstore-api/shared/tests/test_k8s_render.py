@@ -1,5 +1,6 @@
 """Tests for the pure Kubernetes renderer (golden file + invariants)."""
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -218,3 +219,25 @@ def test_slots_named_by_the_wizard_match_normalised_workloads():
     pw = {r.name: "x" for r in workload_refs(spec, teams)}
     objs = render(spec, DEP, teams, SETTINGS, pw, files={"assignment_zip": {"Team 1-anna-b": b"PK"}})
     assert any(o["metadata"]["name"].endswith("-files") for o in of_kind(objs, "Secret"))
+
+
+def test_requests_default_to_limits_and_can_be_lower():
+    spec = {**VALID}
+    spec["workload"] = copy.deepcopy(VALID["workload"])
+    spec["workload"]["containers"][0]["resources"] = {
+        "cpu": "1", "memory": "1Gi", "requests": {"cpu": "100m", "memory": "256Mi"},
+    }
+    objs = build(spec)[1]
+    res = of_kind(objs, "StatefulSet")[0]["spec"]["template"]["spec"]["containers"][0]["resources"]
+    assert res == {"requests": {"cpu": "100m", "memory": "256Mi"}, "limits": {"cpu": "1", "memory": "1Gi"}}
+    hard = of_kind(objs, "ResourceQuota")[0]["spec"]["hard"]
+    assert hard["requests.cpu"] == "600m" and hard["limits.cpu"] == "6000m" and hard["requests.memory"] == "1536Mi"
+
+
+def test_requests_above_limits_are_rejected():
+    from appstore_shared.k8s.spec import SpecValidationError
+
+    bad = copy.deepcopy(VALID)
+    bad["workload"]["containers"][0]["resources"] = {"cpu": "500m", "memory": "1Gi", "requests": {"cpu": "1", "memory": "1Gi"}}
+    with pytest.raises(SpecValidationError, match="requests.cpu"):
+        parse_spec(bad)
