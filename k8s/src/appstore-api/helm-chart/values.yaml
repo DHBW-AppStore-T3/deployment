@@ -33,6 +33,42 @@ appstore:
   # api.mode is "development".
   simulate: false
 
+  # Apps that run as pods (appstore.yaml in the app repository) instead of
+  # OpenStack VMs. The worker renders and applies the Kubernetes objects of a
+  # deployment into its own namespace dep-<id>; the API reads their status.
+  podApps:
+    enabled: false
+    # Apps are served at https://<workload>-<deployment>.apps.<zone>.
+    zone: ""
+    # Domain of the app hosts, <workload>-<deployment>.<appDomain>. Empty: apps.<zone>.
+    appDomain: ""
+    # Images must be pinned by digest and start with one of these prefixes
+    # (comma-separated).
+    imageRegistryAllowlist: "ghcr.io/dhbw-appstore-t3/"
+    # Ceilings per container / per volume.
+    maxCpu: "2"
+    maxMemory: "4Gi"
+    maxStorage: "20Gi"
+    ingressClass: "traefik"
+    # Namespace of the ingress controller (the only one allowed to reach the pods).
+    ingressNamespace: "kube-system"
+    # Either a ready wildcard certificate Secret (copied into no namespace: it
+    # must exist there) or a cert-manager ClusterIssuer (one certificate per host).
+    tlsSecret: ""
+    clusterIssuer: ""
+    storageClass: ""
+    # Run student pods only on nodes with these labels / tolerate these taints.
+    studentNodeSelector: {}
+    studentTolerations: []
+    # Pod, service and node addresses of the cluster that student pods must
+    # never reach, on top of the private ranges (IPv4 and IPv6 CIDRs).
+    extraEgressExcept: []
+    ready:
+      timeoutSeconds: 300
+    # Cluster-scoped RBAC and the admission policy that confines the worker.
+    rbac:
+      create: true
+
   api:
     image: ghcr.io/pfisterer/appstore-api
     # Several replicas are fine: the job queue and the live stream go

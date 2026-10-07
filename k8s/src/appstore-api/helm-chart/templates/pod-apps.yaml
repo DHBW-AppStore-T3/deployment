@@ -1,0 +1,173 @@
+{{- $v := .Values.appstore -}}
+{{- if and $v.podApps.enabled $v.podApps.rbac.create }}
+{{- $worker := include "appstore.componentName" (dict "context" . "component" "worker") -}}
+{{- $api := include "appstore.componentName" (dict "context" . "component" "api") -}}
+{{- $ns := .Release.Namespace -}}
+{{- $deployer := include "appstore.podAppsDeployerRole" . -}}
+{{- $workerUser := printf "system:serviceaccount:%s:%s" $ns $worker -}}
+# Everything the pod apps need in the cluster (issue #4, 2.4):
+#
+#   worker   may create/delete namespaces and bind ONE role in them; the role
+#            gives it rights inside that namespace and nowhere else. The
+#            admission policy below confines it to dep-* namespaces.
+#   api      may read pods/statefulsets/events (no secrets) for the live view.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $worker }}
+  namespace: {{ $ns }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $api }}
+  namespace: {{ $ns }}
+---
+# What the worker needs in the cluster as a whole: namespaces, and to bind the
+# deployer role inside them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: appstore-{{ $ns }}-worker
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "create", "patch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: [{{ $deployer | quote }}]
+    verbs: ["bind"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: appstore-{{ $ns }}-worker
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: appstore-{{ $ns }}-worker }
+subjects:
+  - { kind: ServiceAccount, name: {{ $worker }}, namespace: {{ $ns }} }
+---
+# Bound by the worker, per dep-* namespace, with a RoleBinding: these rights
+# exist only inside the namespace of one deployment.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $deployer }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "services", "persistentvolumeclaims", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete", "deletecollection"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets/scale"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: appstore-{{ $ns }}-api-status
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "events", "persistentvolumeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: appstore-{{ $ns }}-api-status
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: appstore-{{ $ns }}-api-status }
+subjects:
+  - { kind: ServiceAccount, name: {{ $api }}, namespace: {{ $ns }} }
+---
+# RBAC cannot say "only in namespaces starting with dep-". This policy does,
+# for the worker's identity only, and rejects what Pod Security would not
+# even look at in a StatefulSet template (K6).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: appstore-{{ $ns }}-confine-worker
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["namespaces"]
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["secrets", "services", "persistentvolumeclaims", "resourcequotas", "limitranges", "pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["statefulsets"]
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["ingresses", "networkpolicies"]
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["rolebindings"]
+  matchConditions:
+    - name: only-the-worker
+      expression: request.userInfo.username == {{ $workerUser | quote }}
+  variables:
+    - name: target
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+    - name: ns
+      expression: "request.resource.resource == 'namespaces' ? variables.target.metadata.name : request.namespace"
+    - name: podSpec
+      expression: >-
+        request.resource.resource == 'statefulsets' ? variables.target.spec.template.spec :
+        (request.resource.resource == 'pods' ? variables.target.spec : null)
+  validations:
+    - expression: "variables.ns.startsWith('dep-')"
+      message: "the worker may only touch namespaces named dep-*"
+    - expression: >-
+        request.resource.resource != 'namespaces' || request.operation == 'DELETE' ||
+        (has(variables.target.metadata.labels) && 'appstore.dhbw/deployment-id' in variables.target.metadata.labels)
+      message: "namespaces must carry the appstore.dhbw/deployment-id label"
+    - expression: >-
+        request.resource.resource != 'rolebindings' || request.operation == 'DELETE' ||
+        (variables.target.roleRef.kind == 'ClusterRole' && variables.target.roleRef.name == {{ $deployer | quote }} &&
+         variables.target.subjects.size() == 1 && variables.target.subjects[0].kind == 'ServiceAccount' &&
+         variables.target.subjects[0].name == {{ $worker | quote }} && variables.target.subjects[0].namespace == {{ $ns | quote }})
+      message: "the only role binding the worker may create is its own deployer role"
+    - expression: >-
+        variables.podSpec == null || (
+          (!has(variables.podSpec.hostNetwork) || !variables.podSpec.hostNetwork) &&
+          (!has(variables.podSpec.hostPID) || !variables.podSpec.hostPID) &&
+          (!has(variables.podSpec.hostIPC) || !variables.podSpec.hostIPC) &&
+          (!has(variables.podSpec.volumes) || variables.podSpec.volumes.all(v, !has(v.hostPath))) &&
+          variables.podSpec.containers.all(c,
+            !has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged)
+        )
+      message: "privileged containers, hostPath volumes and host namespaces are not allowed"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: appstore-{{ $ns }}-confine-worker
+spec:
+  policyName: appstore-{{ $ns }}-confine-worker
+  validationActions: ["Deny"]
+{{- end }}

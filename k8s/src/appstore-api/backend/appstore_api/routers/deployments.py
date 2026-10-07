@@ -44,13 +44,16 @@ from appstore_api.schemas import (
     DeploymentTeamResponse,
     LifecycleActionResponse,
     MyAccessResponse,
+    PodWorkloadSchema,
     TaskSummary,
     UserResponse,
 )
 from appstore_api.services import (
+    app_spec,
     courses,
     deployment_notifier,
     email_service,
+    k8s_status,
     openstack_client,
     tf_state_store,
 )
@@ -147,6 +150,7 @@ def list_deployments(
             commit_sha=deployment.commit_sha,
             course=deployment.course,
             os_project_id=deployment.os_project_id,
+            runtime=deployment.runtime,
             userInputVar=user_input_var_parsed,
             status=status_value,
             created_at=first_created_at,
@@ -276,6 +280,7 @@ def get_deployment(
         commit_sha=deployment.commit_sha,
         course=deployment.course,
         os_project_id=deployment.os_project_id,
+        runtime=deployment.runtime,
         userInputVar=user_input_var_parsed,
         status=status_value,
         created_at=created_at,
@@ -806,11 +811,16 @@ def create_deployment(
     ensure_deploy(current_user)
     ensure_teach_course(current_user, deployment.course)
 
-    # The deployment lives in the project of the credential the caller
-    # picked; it must be theirs. Read inside the locked TX, so a concurrent
-    # change of the credential is serialized behind us.
-    credential = crud_openstack_credentials.get_owned(db, current_user.userId, deployment.credentialId)
-    if credential is None:
+    # VM apps live in the project of the credential the caller picked; it
+    # must be theirs. Read inside the locked TX, so a concurrent change of
+    # the credential is serialized behind us. Pod apps need none (checked
+    # below, once the version is known).
+    credential = (
+        crud_openstack_credentials.get_owned(db, current_user.userId, deployment.credentialId)
+        if deployment.credentialId is not None
+        else None
+    )
+    if deployment.credentialId is not None and credential is None:
         raise HTTPException(
             status_code=status.HTTP_412_PRECONDITION_FAILED,
             detail={"reason": "openstack_credentials_missing"},
@@ -837,7 +847,7 @@ def create_deployment(
     # for exactly this commit; a private app is its owner's test bench and
     # deploys any tag (plan E6). ensure_view_app already keeps others out
     # of private apps.
-    from appstore_api.routers.apps import resolve_version_commit
+    from appstore_api.routers.apps import load_version_spec, resolve_version_commit
 
     commit_sha = resolve_version_commit(target_app, deployment.releaseTag)
     if not target_app.is_private and not crud_approvals.has_approved_version(
@@ -846,6 +856,32 @@ def create_deployment(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "version_not_approved", "version": deployment.releaseTag},
+        )
+
+    # Pod apps (appstore.yaml at the pinned commit) skip the OpenStack steps.
+    # A public app's runtime is on its approval, so VM apps cost no extra
+    # clone; a private app has no approval and is looked at directly.
+    approval = crud_approvals.get_approval(db, target_app.appId, deployment.releaseTag)
+    if target_app.is_private or (approval is not None and approval.runtime == app_spec.RUNTIME_K8S):
+        loaded_spec = load_version_spec(target_app, deployment.releaseTag, commit_sha)
+    else:
+        loaded_spec = None
+    is_k8s = loaded_spec is not None and loaded_spec.runtime == app_spec.RUNTIME_K8S
+    if is_k8s:
+        credential = None  # pods never use an OpenStack credential, even a supplied one
+        # Approval = commit + spec hash + image digests: the spec read just
+        # now must be the reviewed one.
+        if not target_app.is_private and (
+            approval is None or approval.spec_sha256 != loaded_spec.sha256
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "version_not_approved", "version": deployment.releaseTag},
+            )
+    elif credential is None:
+        raise HTTPException(
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            detail={"reason": "openstack_credentials_missing"},
         )
 
     # Load the app author's variable declarations so we can enforce
@@ -894,7 +930,12 @@ def create_deployment(
     courses.ensure_team_members(deployment.course, course_teams)
 
     db_deployment = crud_deployments.create_deployment(
-        db, deployment, current_user.userId, commit_sha, credential.project_id
+        db,
+        deployment,
+        current_user.userId,
+        commit_sha,
+        credential.project_id if credential is not None else app_spec.K8S_PROJECT,
+        runtime=app_spec.RUNTIME_K8S if is_k8s else app_spec.RUNTIME_VM,
     )
 
     users_by_email = crud_users.ensure_users(
@@ -928,7 +969,22 @@ def create_deployment(
     teams_dict = {name: [{"email": e} for e in emails] for name, emails in course_teams}
 
     # The envelope carries ciphertext only — the worker decrypts in-process.
-    openstack_envelope = crud_openstack_credentials.dispatch_envelope(credential)
+    # Pod deployments have no OpenStack credential.
+    openstack_envelope = crud_openstack_credentials.dispatch_envelope(credential) if credential is not None else {}
+    job_payload: JobPayload = {
+        "app_id": str(db_deployment.appId),
+        "app_git_link": db_deployment.app.git_link or "",
+        "release": db_deployment.releaseTag or "",
+        "commit_sha": db_deployment.commit_sha,
+        "user_vars": user_vars,
+        "teams": teams_dict,
+        "openstack_envelope": openstack_envelope,
+    }
+    if is_k8s:
+        job_payload["runtime"] = app_spec.RUNTIME_K8S
+        job_payload["spec"] = loaded_spec.spec.model_dump(mode="json", by_alias=True, exclude_none=True)
+        job_payload["course"] = db_deployment.course
+        job_payload["owner"] = current_user.email
 
     # Insert the PENDING task row in the SAME transaction as the
     # deployment and commit everything at once (deployment + teams +
@@ -938,15 +994,7 @@ def create_deployment(
         db,
         deployment_id=db_deployment.deploymentId,
         task_type=TaskType.DEPLOY,
-        payload={
-            "app_id": str(db_deployment.appId),
-            "app_git_link": db_deployment.app.git_link or "",
-            "release": db_deployment.releaseTag or "",
-            "commit_sha": db_deployment.commit_sha,
-            "user_vars": user_vars,
-            "teams": teams_dict,
-            "openstack_envelope": openstack_envelope,
-        },
+        payload=job_payload,
         rollback_on_conflict=True,
     )
 
@@ -969,6 +1017,7 @@ def create_deployment(
         commit_sha=db_deployment.commit_sha,
         course=db_deployment.course,
         os_project_id=db_deployment.os_project_id,
+        runtime=db_deployment.runtime,
         userInputVar=user_input_var_parsed,
         status=status_value,
         created_at=created_at,
@@ -1052,7 +1101,11 @@ def delete_deployment(
     # be hidden. ``pause_failed`` / ``resume_failed`` likewise still
     # have running OpenStack resources behind them — the deployment
     # itself didn't break, only the lifecycle pass.
-    if current_status in ("success", "failed", "paused", "pause_failed", "resume_failed", "redeploy_failed"):
+    # A cancelled pod deployment may have created its namespace before the cancel arrived.
+    pod_leftovers = current_status == "cancelled" and deployment.runtime == app_spec.RUNTIME_K8S
+    if pod_leftovers or current_status in (
+        "success", "failed", "paused", "pause_failed", "resume_failed", "redeploy_failed",
+    ):
         return _dispatch_destroy(db, deployment, current_user)
 
     # No resources to clean up (cancelled, or anything else terminal):
@@ -1207,7 +1260,8 @@ def _dispatch_lifecycle_task(
             members = crud_deployments.get_team_members(db, team.teamId)
             teams_dict[team.name] = [{"email": m.email} for m in members]
 
-    openstack_envelope = _fetch_dispatch_envelope(db, current_user, deployment)
+    is_k8s = deployment.runtime == app_spec.RUNTIME_K8S
+    openstack_envelope = {} if is_k8s else _fetch_dispatch_envelope(db, current_user, deployment)
 
     payload: JobPayload = {
         "app_id": str(deployment.appId),
@@ -1218,6 +1272,8 @@ def _dispatch_lifecycle_task(
         "teams": teams_dict,
         "openstack_envelope": openstack_envelope,
     }
+    if is_k8s:
+        payload["runtime"] = app_spec.RUNTIME_K8S
     if resource_address is not None:
         payload["resource_address"] = resource_address
     task = _commit_task(
@@ -1231,6 +1287,48 @@ def _dispatch_lifecycle_task(
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
         content={"task_id": str(task.taskId), "status": response_status},
+    )
+
+
+@router.post(
+    "/{deployment_id}/cancel",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=LifecycleActionResponse,
+)
+def cancel_deployment(
+    deployment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pod deployment that is still being deployed, and remove what it created.
+
+    Operate right; only deployments that run as pods (409 otherwise) and only
+    while the deploy task is pending or running (409). The deploy task ends
+    CANCELLED, a destroy task for the namespace is queued in the same
+    transaction (idempotent if nothing was created yet), and the destroy's
+    success soft-deletes the deployment.
+    """
+    deployment = crud_deployments.get_deployment_with_details(db, deployment_id)
+    if not deployment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found")
+    ensure_operate_deployment(current_user, deployment, db)
+    crud_locks.acquire_deployment_xact_lock(db, deployment_id)
+    if deployment.runtime != app_spec.RUNTIME_K8S:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only deployments that run as pods can be cancelled",
+        )
+    if task_service_module.cancel_active_task(db, deployment_id, TaskType.DEPLOY) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only a deployment that is still being deployed can be cancelled",
+        )
+    return _dispatch_lifecycle_task(
+        db,
+        deployment,
+        current_user,
+        task_type=TaskType.DESTROY,
+        response_status="cancelling",
     )
 
 
@@ -1285,6 +1383,10 @@ _TF_ADDRESS_RE = re.compile(
 )
 
 
+# A workload name, optionally prefixed ``reset:`` (also delete its volume).
+_WORKLOAD_ADDRESS_RE = re.compile(r"^(reset:)?[a-z0-9][a-z0-9-]{0,62}$")
+
+
 def _latest_tf_state_for(deployment_id: UUID, db: Session) -> str | None:
     """The deployment's OpenTofu state as JSON, or None before the first apply.
 
@@ -1322,6 +1424,15 @@ def list_deployment_resources(
         )
     # Inspect-only view (owner view); this endpoint is read-only.
     ensure_view_deployment_owner(current_user, deployment, db)
+
+    if deployment.runtime == app_spec.RUNTIME_K8S:
+        rows = k8s_status.workload_views(deployment_id, deployment.k8s_namespace or "")
+        return DeploymentResourceListResponse(
+            resources=[],
+            runtime=app_spec.RUNTIME_K8S,
+            workloads=[PodWorkloadSchema.model_validate(r) for r in rows or []],
+            live=rows is not None,
+        )
 
     state_json = _latest_tf_state_for(deployment_id, db)
     # Live data is fetched with the caller's own credential for the project
@@ -1441,6 +1552,28 @@ def redeploy_deployment_resource(
     lifecycle_service.ensure_action_allowed(
         db, deployment, lifecycle_service.DeploymentAction.REDEPLOY,
     )
+
+    if deployment.runtime == app_spec.RUNTIME_K8S:
+        # Pods: the address is a workload name; ``reset:<name>`` also drops its volume.
+        if not _WORKLOAD_ADDRESS_RE.match(address):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"reason": "invalid_resource_address"},
+            )
+        known = k8s_status.workload_views(deployment_id, deployment.k8s_namespace or "")
+        if known is not None and address.removeprefix("reset:") not in {r["workload"] for r in known}:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"reason": "resource_not_in_state", "address": address},
+            )
+        return _dispatch_lifecycle_task(
+            db=db,
+            deployment=deployment,
+            current_user=current_user,
+            task_type=TaskType.REDEPLOY,
+            response_status="redeploying",
+            resource_address=address,
+        )
 
     if not _TF_ADDRESS_RE.match(address):
         raise HTTPException(

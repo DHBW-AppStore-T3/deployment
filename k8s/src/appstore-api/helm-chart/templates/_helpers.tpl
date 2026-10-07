@@ -100,3 +100,25 @@ capabilities:
 seccompProfile:
   type: RuntimeDefault
 {{- end }}
+
+{{/* Environment shared by API and worker for pod apps */}}
+{{- define "appstore.podAppsEnv" -}}
+{{- $p := .Values.appstore.podApps -}}
+- name: K8S_ZONE
+  value: {{ $p.zone | quote }}
+- name: K8S_APP_DOMAIN
+  value: {{ $p.appDomain | quote }}
+- name: APP_IMAGE_REGISTRY_ALLOWLIST
+  value: {{ $p.imageRegistryAllowlist | quote }}
+- name: APP_MAX_CPU
+  value: {{ $p.maxCpu | quote }}
+- name: APP_MAX_MEMORY
+  value: {{ $p.maxMemory | quote }}
+- name: APP_MAX_STORAGE
+  value: {{ $p.maxStorage | quote }}
+{{- end }}
+
+{{/* Cluster-scoped objects are shared by all installs in the cluster: name them per namespace */}}
+{{- define "appstore.podAppsDeployerRole" -}}
+{{- printf "appstore-%s-deployer" .Release.Namespace -}}
+{{- end }}

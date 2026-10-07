@@ -5,6 +5,7 @@ generated TypeScript client; routers import from here, crud modules take the
 request models as input.
 """
 
+import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -16,6 +17,7 @@ from pydantic import (
     EmailStr,
     Field,
     StringConstraints,
+    field_validator,
     model_validator,
 )
 
@@ -151,6 +153,10 @@ class AppVersionApprovalResponse(BaseModel):
     version_tag: str
     # The reviewed commit; the approval does not cover the tag once it moves.
     commit_sha: str
+    # How the version runs and, for pods, what the approval covers besides the commit.
+    runtime: str = "openstack-vm"
+    spec_sha256: str | None = None
+    image_digests: list[str] | None = None
     status: AppVersionApprovalStatus
     diff_url: str | None = None
     notes: str | None = None
@@ -160,6 +166,11 @@ class AppVersionApprovalResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("image_digests", mode="before")
+    @classmethod
+    def _digests_from_json(cls, value):
+        return json.loads(value) if isinstance(value, str) else value
 
 
 class AppVersionApprovalWithApp(AppVersionApprovalResponse):
@@ -214,7 +225,8 @@ class DeploymentCreate(DeploymentBase):
     course: CourseToken
     # One of the caller's OpenStack credentials; the deployment lives in
     # its project (``GET /me/openstack-credentials``).
-    credentialId: UUID
+    # Not needed for apps that run as pods (appstore.yaml).
+    credentialId: UUID | None = None
     userInputVar: dict[str, Any] | None = None
     # Files-map keyed by ``@openstack:file:<scope>``-marked variable
     # name. Inner key:
@@ -236,6 +248,8 @@ class DeploymentResponse(DeploymentBase):
     commit_sha: str | None = None
     course: str | None = None
     os_project_id: str | None = None
+    # "openstack-vm" or "kubernetes" (pods; os_project_id is then "kubernetes")
+    runtime: str = "openstack-vm"
     userInputVar: dict[str, Any] | None = None
     status: str | None = None  # From latest task
     created_at: datetime | None = None
@@ -459,12 +473,29 @@ class DeploymentResourceSchema(BaseModel):
     metadata: dict[str, str] | None = None
 
 
+class PodWorkloadSchema(BaseModel):
+    """One pod workload (a team's or a person's) of a Kubernetes deployment."""
+
+    workload: str
+    team: str | None = None
+    user: str | None = None
+    ready: bool
+    restarts: int = 0
+    # Pending, Running, Stopped (paused), or the reason it does not start.
+    phase: str
+    url: str | None = None
+    lastEvent: str | None = None
+
+
 class DeploymentResourceListResponse(BaseModel):
     """The resources of a deployment's OpenTofu state, optionally joined with live OpenStack data.
 
     An object rather than a bare list so metadata can be added later without a breaking change.
     """
     resources: list[DeploymentResourceSchema]
+    # Kubernetes deployments: the pods instead of OpenStack resources.
+    runtime: str = "openstack-vm"
+    workloads: list[PodWorkloadSchema] = []
     # True when the response was fetched with live OpenStack join.
     # False means the caller passed ``?refresh=false`` and the
     # response reflects only cached TF state.

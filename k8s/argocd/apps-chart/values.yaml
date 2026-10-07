@@ -12,3 +12,11 @@ appstore:
   mode: production
 roleProvider:
   chartVersion: 0.8.0
+# Apps that run as pods (see k8s/src/appstore-api/helm-chart, podApps).
+podApps:
+  enabled: false
+  zone: ""
+  appDomain: ""
+  imageRegistryAllowlist: "ghcr.io/dhbw-appstore-t3/"
+  clusterIssuer: ""
+  extraEgressExcept: []

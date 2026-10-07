@@ -12,6 +12,7 @@ export const appstoreKeys = {
     apps: () => ['appstore', 'apps'],
     app: (id) => ['appstore', 'apps', id],
     variables: (id, version) => ['appstore', 'apps', id, 'variables', version],
+    runtime: (id, version) => ['appstore', 'apps', id, 'runtime', version],
     approvals: (id) => ['appstore', 'apps', id, 'approvals'],
     pendingApprovals: () => ['appstore', 'approvals', 'pending'],
     deployments: () => ['appstore', 'deployments'],

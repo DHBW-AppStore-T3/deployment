@@ -6,8 +6,8 @@ import { appstoreError, failed } from '/appstore/errors.js';
 // Named imports, not `sdk.<op>`: a missing named export fails the build, a
 // property access on a namespace only fails in the browser.
 import {
-    addTeamMember, approveVersion, createApp, createDeployment, deactivateApp, deleteApp, deleteDeployment,
-    deleteMyCredential, getApp, getAppVariables, getDeployment, getMyDeploymentAccess,
+    addTeamMember, approveVersion, cancelDeployment, createApp, createDeployment, deactivateApp, deleteApp, deleteDeployment,
+    deleteMyCredential, getApp, getAppRuntime, getAppVariables, getDeployment, getMyDeploymentAccess,
     getMe, getProjectQuota, listAvailabilityZones, listCourseStudents, listDeploymentResources,
     listDeploymentTasks, listDeployments, listApps, listFlavors, listFloatingIpPools, listImages,
     listKeypairs, listMyAccess, listMyCourses, listMyCredentials, listNetworks, listPendingVersions,
@@ -69,6 +69,8 @@ export function useAppStoreApi() {
             deleteApp: (appId) => call(deleteApp, { path: { app_id: appId } }),
             deactivateApp: (appId) => call(deactivateApp, { path: { app_id: appId } }),
             getVariables: (appId, version) => call(getAppVariables, { path: { app_id: appId }, query: { version } }),
+            // How a version runs: 'kubernetes' (pods) or 'openstack-vm'.
+            getRuntime: (appId, version) => call(getAppRuntime, { path: { app_id: appId }, query: { version } }),
 
             // ── Version approvals ────────────────────────────────────────
             listApprovals: (appId) => call(listVersionApprovals, { path: { app_id: appId } }),
@@ -112,6 +114,7 @@ export function useAppStoreApi() {
             createDeployment: (deployment) => call(createDeployment, body(deployment)),
             deleteDeployment: (id) => call(deleteDeployment, { path: { deployment_id: id } }),
             pauseDeployment: (id) => call(pauseDeployment, { path: { deployment_id: id } }),
+            cancelDeployment: (id) => call(cancelDeployment, { path: { deployment_id: id } }),
             resumeDeployment: (id) => call(resumeDeployment, { path: { deployment_id: id } }),
             listTasks: (id) => call(listDeploymentTasks, { path: { deployment_id: id } }),
             listResourcesOf: (id, refresh = true) =>

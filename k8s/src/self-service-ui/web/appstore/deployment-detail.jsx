@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Anchor, Badge, Button, Card, Code, Container, Group, Progress, ScrollArea, Stack, Table, Tabs, Text, Title, Tooltip } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Mail, Pause, Play, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, Mail, Pause, Play, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'wouter';
 import { useAppStoreApi } from '/appstore/api-appstore.jsx';
@@ -13,6 +13,7 @@ import { AccessView } from '/appstore/access-view.jsx';
 import { allowedActions, IN_FLIGHT, StatusBadge } from '/appstore/status.jsx';
 import { useDeploymentStream } from '/appstore/use-deployment-stream.jsx';
 import { logLine, parseTaskLogs } from '/appstore/task-logs.js';
+import { ExternalLink } from '/helper/external-link.jsx';
 import { LoadError, Loading, useApiMutation } from '/helper/query-state.jsx';
 import { useConfirm } from '/providers/confirm.jsx';
 import { formatDateTime } from '/format-date.js';
@@ -65,12 +66,15 @@ export function DeploymentDetail({ params }) {
                     <Stack gap={4}>
                         <Group gap="sm"><Title order={2}>{dep.name}</Title><StatusBadge status={shownStatus} /></Group>
                         <Text size="sm" c="dimmed">
-                            <Anchor component={Link} href={`/apps/${dep.appId}`}>{dep.app?.name}</Anchor>
+                            {/* The catalogue entry of a private app is the owner's; members would land on an error page. */}
+                            {perms.owner_view ? <Anchor component={Link} href={`/apps/${dep.appId}`}>{dep.app?.name}</Anchor> : dep.app?.name}
                             {' · '}{dep.releaseTag} <Code>{String(dep.commit_sha ?? '').slice(0, 8)}</Code>
                             {' · '}{String(dep.course ?? '').replace(/^group:/, '')}
                         </Text>
                         <Text size="xs" c="dimmed">
-                            {t('appstore.detail.ownerAndProject', { owner: dep.user?.email ?? '', project: dep.os_project_id ?? '' })}
+                            {dep.runtime === 'kubernetes'
+                                ? t('appstore.detail.ownerAndPods', { owner: dep.user?.email ?? '' })
+                                : t('appstore.detail.ownerAndProject', { owner: dep.user?.email ?? '', project: dep.os_project_id ?? '' })}
                         </Text>
                     </Stack>
                     {perms.operate && <Actions deployment={dep} />}
@@ -127,9 +131,20 @@ function Actions({ deployment: dep }) {
         onSuccess: (res) => { if (!res?.task_id) navigate('/deployments'); },
     });
     const destroys = allowed.has('destroy');
+    // A pod deployment can be called off while it is still being set up; the API removes what it created.
+    const cancel = useApiMutation({ mutationFn: () => api.cancelDeployment(dep.deploymentId), invalidates });
+    const cancellable = dep.runtime === 'kubernetes' && ['pending', 'running'].includes(dep.status);
 
     return (
         <Group gap="xs">
+            {cancellable && (
+                <Button color="red" variant="light" leftSection={<Ban size={16} />} loading={cancel.isPending}
+                    onClick={async () => {
+                        if (await confirm({ title: t('appstore.detail.cancelTitle'), message: t('appstore.detail.cancelMessage', { name: dep.name }), confirmLabel: t('appstore.detail.cancel') })) cancel.mutate();
+                    }}>
+                    {t('appstore.detail.cancel')}
+                </Button>
+            )}
             {allowed.has('pause') && (
                 <Button variant="default" leftSection={<Pause size={16} />} loading={pause.isPending} onClick={() => pause.mutate()}>
                     {t('appstore.detail.pause')}
@@ -145,7 +160,7 @@ function Actions({ deployment: dep }) {
                     onClick={async () => {
                         if (await confirm({
                             title: destroys ? t('appstore.detail.destroyTitle') : t('appstore.detail.deleteTitle'),
-                            message: destroys ? t('appstore.detail.destroyMessage', { name: dep.name }) : t('appstore.detail.deleteMessage', { name: dep.name }),
+                            message: destroys ? t(dep.runtime === 'kubernetes' ? 'appstore.detail.destroyMessagePods' : 'appstore.detail.destroyMessage', { name: dep.name }) : t('appstore.detail.deleteMessage', { name: dep.name }),
                             confirmLabel: destroys ? t('appstore.detail.destroy') : t('appstore.detail.delete'),
                         })) remove.mutate();
                     }}>
@@ -297,6 +312,90 @@ function MyAccessPanel({ deployment: dep }) {
 const REDEPLOYABLE = new Set(['success', 'redeploy_failed']);
 
 function Resources({ deployment: dep, operate }) {
+    if (dep.runtime === 'kubernetes') return <PodWorkloads deployment={dep} operate={operate} />;
+    return <VmResources deployment={dep} operate={operate} />;
+}
+
+/**
+ * Owner-view tab for a deployment that runs as pods: one row per team's or
+ * person's workload with its state, link and last warning, and restart / reset
+ * (api.redeployResource: the workload name, `reset:<name>` also drops its data).
+ */
+function PodWorkloads({ deployment: dep, operate }) {
+    const { t } = useTranslation();
+    const api = useAppStoreApi();
+    const confirm = useConfirm();
+    const query = useQuery({
+        queryKey: appstoreKeys.deploymentResources(dep.deploymentId),
+        queryFn: () => api.listResourcesOf(dep.deploymentId, true),
+        refetchInterval: 10_000,
+    });
+    const act = useApiMutation({
+        mutationFn: (address) => api.redeployResource(dep.deploymentId, address),
+        invalidates: [appstoreKeys.deployment(dep.deploymentId), appstoreKeys.deployments()],
+    });
+    const rows = query.data?.workloads ?? [];
+    const canAct = operate && REDEPLOYABLE.has(dep.status);
+    return (
+        <Stack gap="sm">
+            <Group justify="space-between">
+                <Text size="sm" c="dimmed">{t('appstore.detail.podsIntro')}</Text>
+                <Button size="xs" variant="default" leftSection={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => query.refetch()}>
+                    {t('appstore.detail.refresh')}
+                </Button>
+            </Group>
+            {query.isPending && <Loading />}
+            {query.isError && <LoadError query={query} />}
+            {query.isSuccess && query.data.live === false && <Alert color="yellow">{t('appstore.detail.podsNotLive')}</Alert>}
+            {query.isSuccess && rows.length === 0 && <Text size="sm" c="dimmed">{t('appstore.detail.noWorkloads')}</Text>}
+            {rows.length > 0 && (
+                <Table withTableBorder striped>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>{t('appstore.detail.workload')}</Table.Th>
+                            <Table.Th>{t('appstore.detail.team')}</Table.Th>
+                            <Table.Th>{t('appstore.detail.state')}</Table.Th>
+                            <Table.Th>{t('appstore.detail.restarts')}</Table.Th>
+                            <Table.Th>{t('appstore.access.url')}</Table.Th>
+                            <Table.Th />
+                        </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {rows.map(w => (
+                            <Table.Tr key={w.workload}>
+                                <Table.Td><Text size="sm" fw={500}>{w.user ?? w.workload}</Text>{w.lastEvent && <Text size="xs" c="orange">{w.lastEvent}</Text>}</Table.Td>
+                                <Table.Td>{w.team ?? '—'}</Table.Td>
+                                <Table.Td><Badge variant="light" color={w.ready ? 'green' : w.phase === 'Stopped' ? 'yellow' : 'orange'}>{w.phase}</Badge></Table.Td>
+                                <Table.Td>{w.restarts}</Table.Td>
+                                <Table.Td>{w.url ? <ExternalLink href={w.url}>{w.url.replace(/^https:\/\//, '')}</ExternalLink> : '—'}</Table.Td>
+                                <Table.Td ta="right">
+                                    {canAct && (
+                                        <Group gap={4} justify="flex-end" wrap="nowrap">
+                                            <Button size="xs" variant="subtle" leftSection={<RotateCcw size={14} />} loading={act.isPending && act.variables === w.workload}
+                                                onClick={async () => {
+                                                    if (await confirm({ title: t('appstore.detail.restartTitle'), message: t('appstore.detail.restartMessage', { name: w.workload }), confirmLabel: t('appstore.detail.restart') })) act.mutate(w.workload);
+                                                }}>
+                                                {t('appstore.detail.restart')}
+                                            </Button>
+                                            <Button size="xs" variant="subtle" color="red" loading={act.isPending && act.variables === `reset:${w.workload}`}
+                                                onClick={async () => {
+                                                    if (await confirm({ title: t('appstore.detail.resetTitle'), message: t('appstore.detail.resetMessage', { name: w.workload }), confirmLabel: t('appstore.detail.reset') })) act.mutate(`reset:${w.workload}`);
+                                                }}>
+                                                {t('appstore.detail.reset')}
+                                            </Button>
+                                        </Group>
+                                    )}
+                                </Table.Td>
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            )}
+        </Stack>
+    );
+}
+
+function VmResources({ deployment: dep, operate }) {
     const { t } = useTranslation();
     const api = useAppStoreApi();
     const confirm = useConfirm();

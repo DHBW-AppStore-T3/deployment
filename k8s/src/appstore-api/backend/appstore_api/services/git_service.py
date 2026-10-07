@@ -72,6 +72,7 @@ class GitService:
     # ``template.pkr.hcl`` files are fetched. ``terraform/variables.tf``
     # is a single file since only the variables file is needed.
     SPARSE_CHECKOUT_FILES = [
+        'appstore.yaml',
         'terraform/variables.tf',
         'packer/',
     ]
