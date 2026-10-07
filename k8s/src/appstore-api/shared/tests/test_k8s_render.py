@@ -190,3 +190,23 @@ def test_enum_variables_reach_containers_as_env():
     }
     assert envs["team-a-alice"]["APPSTORE_VAR_CPU_CLASS"] == "medium"
     assert envs["team-b-carol"]["APPSTORE_VAR_CPU_CLASS"] == "small"  # the declared default
+
+
+def test_ingress_always_has_tls_and_uses_the_default_certificate_without_a_secret():
+    s = RenderSettings(zone="z.example.org", app_domain_override="z.example.org")
+    ing = of_kind(build(settings=s)[1], "Ingress")[0]
+    assert ing["spec"]["tls"] == [{"hosts": ["team-a-alice-123e4567.z.example.org"]}]
+
+
+def test_access_url_must_match_the_ingress_host():
+    spec = parse_spec({**VALID, "access": [{"type": "url", "template": "https://{workload}.elsewhere.example"}]})
+    pw = {r.name: "x" for r in workload_refs(spec, TEAMS)}
+    with pytest.raises(ValueError, match="does not match"):
+        render_access(spec, DEP, TEAMS, SETTINGS, pw)
+
+
+def test_domain_placeholder_follows_the_app_domain():
+    spec = parse_spec({**VALID, "access": [{"type": "url", "template": "https://{workload}-{deployment}.{domain}"}]})
+    s = RenderSettings(zone="z.example.org", app_domain_override="z.example.org")
+    pw = {r.name: "x" for r in workload_refs(spec, TEAMS)}
+    assert render_access(spec, DEP, TEAMS, s, pw)[0].url == "https://team-a-alice-123e4567.z.example.org"

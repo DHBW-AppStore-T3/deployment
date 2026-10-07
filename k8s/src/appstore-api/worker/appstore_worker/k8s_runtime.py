@@ -97,6 +97,7 @@ def limits() -> PlatformLimits:
 def render_settings() -> RenderSettings:
     return RenderSettings(
         zone=settings.K8S_ZONE,
+        app_domain_override=settings.K8S_APP_DOMAIN,
         ingress_class=settings.K8S_INGRESS_CLASS,
         ingress_namespace=settings.K8S_INGRESS_NAMESPACE,
         tls_secret=settings.K8S_TLS_SECRET,

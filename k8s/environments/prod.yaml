@@ -6,3 +6,16 @@ env:
   branch: spike/main
   host: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+# Apps that run as pods: https://<workload>-<deployment>.<appDomain>.
+# The cluster's own ranges (pods fd00:42::/64 + 10.42.0.0/16, services fd00:43::/108,
+# the node's public IPv6 address) are unreachable from student pods.
+podApps:
+  enabled: true
+  zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  # The cluster's wildcard certificate covers *.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site: stay one label below it.
+  appDomain: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  extraEgressExcept:
+    - 10.42.0.0/16
+    - fd00:42::/48
+    - fd00:43::/48
+    - 2001:7c0:1b20:c913:1::10d/128

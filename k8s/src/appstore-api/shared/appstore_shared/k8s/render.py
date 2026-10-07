@@ -75,10 +75,13 @@ class RenderSettings:
     tolerations: tuple[Mapping[str, str], ...] = ()
     run_as_id: int = 1000
     extra_egress_except: tuple[str, ...] = ()  # pod/service/node CIDRs of the cluster
+    # Hosts are <workload>-<deployment>.<app_domain>. Default apps.<zone>; set it
+    # to the zone itself to stay under an existing single-level wildcard certificate.
+    app_domain_override: str = ""
 
     @property
     def app_domain(self) -> str:
-        return f"apps.{self.zone}"
+        return self.app_domain_override or f"apps.{self.zone}"
 
 
 @dataclass(frozen=True)
@@ -486,8 +489,14 @@ def _workload_objects(
             }
         ],
     }
-    if settings.tls_secret or settings.cluster_issuer:
-        ingress_spec["tls"] = [{"hosts": [host], "secretName": settings.tls_secret or f"{ref.name}-tls"}]
+    # Always a tls section: without one the ingress controller serves plain HTTP only.
+    # No secretName means the controller's default certificate (a cluster wildcard).
+    tls: dict[str, Any] = {"hosts": [host]}
+    if settings.tls_secret:
+        tls["secretName"] = settings.tls_secret
+    elif settings.cluster_issuer:
+        tls["secretName"] = f"{ref.name}-tls"
+    ingress_spec["tls"] = [tls]
     ingress = {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "Ingress",
@@ -538,6 +547,16 @@ def render(
     return objects
 
 
+def _checked_url(url: str, host: str) -> str:
+    """The access URL must lead to the ingress the platform created for the workload."""
+    actual = url.split("://", 1)[-1].split("/", 1)[0]
+    if actual != host:
+        raise ValueError(
+            f"access url {url!r} does not match the workload's host {host!r}; use https://{{workload}}-{{deployment}}.{{domain}}"
+        )
+    return url
+
+
 def render_access(
     spec: AppSpec,
     dep: DeploymentCtx,
@@ -550,7 +569,12 @@ def render_access(
     pw = next((a for a in spec.access if a.type == "password"), None)
     entries = []
     for ref in workload_refs(spec, teams):
-        fmt = {"workload": ref.name, "deployment": dep.short_id, "zone": settings.zone}
+        fmt = {
+            "workload": ref.name,
+            "deployment": dep.short_id,
+            "zone": settings.zone,
+            "domain": settings.app_domain,
+        }
         username = None
         if pw and pw.username:
             username = pw.username.format(user=ref.user or ref.team, team=ref.team)
@@ -559,7 +583,7 @@ def render_access(
                 workload=ref.name,
                 team=ref.team,
                 user=ref.user,
-                url=url_tpl.format(**fmt) if url_tpl else None,
+                url=_checked_url(url_tpl.format(**fmt), ref.host(dep, settings)) if url_tpl else None,
                 username=username,
                 password=passwords[ref.name] if pw else None,
             )

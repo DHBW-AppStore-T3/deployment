@@ -56,6 +56,7 @@ def workload_views(deployment_id, namespace: str) -> list[dict] | None:
         logger.exception("could not read namespace %s", namespace)
         return None
     dep = DeploymentCtx(id=str(deployment_id))
+    domain = settings.K8S_APP_DOMAIN or (f"apps.{settings.K8S_ZONE}" if settings.K8S_ZONE else "")
     rows = []
     for s in snap.statefulsets:
         phase, ready, restarts = _phase(snap, s.name, s.replicas)
@@ -68,7 +69,7 @@ def workload_views(deployment_id, namespace: str) -> list[dict] | None:
                 "ready": ready,
                 "restarts": restarts,
                 "phase": phase,
-                "url": f"https://{s.name}-{dep.short_id}.apps.{settings.K8S_ZONE}" if settings.K8S_ZONE else None,
+                "url": f"https://{s.name}-{dep.short_id}.{domain}" if domain else None,
                 "lastEvent": event,
             }
         )

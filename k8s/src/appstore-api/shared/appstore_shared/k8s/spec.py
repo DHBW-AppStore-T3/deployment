@@ -35,7 +35,7 @@ _CPU_RE = re.compile(r"^(\d+)m$|^(\d+(\.\d+)?)$")
 _MEM_RE = re.compile(r"^(\d+)(Mi|Gi)$")
 _SIZE_RE = re.compile(r"^(\d+)(Ki|Mi|Gi)$")
 
-ACCESS_URL_PLACEHOLDERS = {"workload", "deployment", "zone"}
+ACCESS_URL_PLACEHOLDERS = {"workload", "deployment", "zone", "domain"}
 ACCESS_USERNAME_PLACEHOLDERS = {"user", "team"}
 
 # Kubernetes Secrets are capped at 1 MiB. Larger file variables would need an

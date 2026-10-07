@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     APP_MAX_STORAGE: str = "20Gi"
     # Student workloads get https://<workload>-<deployment>.apps.<K8S_ZONE>.
     K8S_ZONE: str = ""
+    # Domain of the hosts; empty means apps.<K8S_ZONE>.
+    K8S_APP_DOMAIN: str = ""
     K8S_INGRESS_CLASS: str = "traefik"
     # Namespace of the ingress controller (allowed to reach the pods).
     K8S_INGRESS_NAMESPACE: str = "kube-system"

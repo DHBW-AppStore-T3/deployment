@@ -27,7 +27,13 @@ spec:
       labels:
         {{- include "appstore.selectorLabels" $comp | nindent 8 }}
     spec:
+      {{- if $v.podApps.enabled }}
+      # Pod apps: read-only view of the deployments' pods for the Infrastructure tab.
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: true
+      {{- else }}
       automountServiceAccountToken: false
+      {{- end }}
       securityContext:
         runAsUser: 10001
         runAsGroup: 10001
@@ -110,6 +116,11 @@ spec:
               value: {{ $v.api.adminGroups | quote }}
             - name: OPENSTACK_SIMULATE
               value: {{ $v.simulate | toString | quote }}
+            {{- if $v.podApps.enabled }}
+            {{- include "appstore.podAppsEnv" . | nindent 12 }}
+            - name: K8S_STATUS_ENABLED
+              value: "true"
+            {{- end }}
 
             - name: OIDC_ISSUER_URL
               value: {{ $v.oidc.issuerUrl | quote }}
