@@ -6,13 +6,20 @@
 ```
 postgres, postgres-tfstate, keycloak-postgres    (Basis-DBs, parallel)
   → keycloak                                      (wartet auf keycloak-postgres)
-rabbitmq, redis                                   (parallel zu den DBs)
-  → backend                                        (wartet auf postgres, rabbitmq, redis: healthy;
+  → backend                                        (wartet auf postgres: healthy;
                                                       keycloak: nur started, nicht healthy)
-  → worker                                         (wartet auf rabbitmq, redis, postgres-tfstate: healthy)
+  → worker                                         (wartet auf postgres, postgres-tfstate: healthy)
   → frontend                                       (wartet auf backend: healthy)
   → caddy                                          (wartet auf frontend, backend, keycloak: started)
 ```
+
+Seit .github#5 gibt es kein RabbitMQ und kein Redis mehr: Die Task-Queue
+ist die Tabelle `celery_queue` der Anwendungs-DB (Kombu-Transport `pgq`).
+Der Worker meldet sich mit der Rolle `appstore_worker` an, die erst nach
+den Migrationen ein Login bekommt (Ansible: `python -m
+app.worker_db_role`, danach `docker restart worker-prod`). Bis dahin
+versucht Celery die Verbindung erneut; der Neustart nach dem Rollen-Schritt
+macht das sofort.
 
 ## podman-mcp-/Moodle-Overlays — eigene, spätere Reihenfolge
 

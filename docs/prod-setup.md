@@ -1,6 +1,6 @@
 # Produktives Setup
 
-Der App Store ist ein Web-System, in dem Studierende und Dozierende vorgefertigte Cloud-Apps (Packer + Terraform in einem Git-Repo) per Klick auf OpenStack ausrollen. In Prod läuft alles auf einer einzelnen Ubuntu-VM in zehn Containern: Caddy als TLS-Terminator, Vue-Frontend, FastAPI-Backend, Celery-Worker, Keycloak als Identity Provider sowie PostgreSQL (App + Terraform-State + Keycloak), RabbitMQ und Redis als Infrastruktur. Alle Service-Images werden zur Laufzeit aus GHCR gezogen — auf der VM wird nichts gebaut. Diese Anleitung führt von einer leeren Ubuntu-VM bis zum eingeloggten Browser unter `https://$APP_HOSTNAME`.
+Der App Store ist ein Web-System, in dem Studierende und Dozierende vorgefertigte Cloud-Apps (Packer + Terraform in einem Git-Repo) per Klick auf OpenStack ausrollen. In Prod läuft alles auf einer einzelnen Ubuntu-VM in zehn Containern: Caddy als TLS-Terminator, Vue-Frontend, FastAPI-Backend, Celery-Worker, Keycloak als Identity Provider sowie PostgreSQL (App inkl. Task-Queue + Terraform-State + Keycloak) als Infrastruktur. Alle Service-Images werden zur Laufzeit aus GHCR gezogen — auf der VM wird nichts gebaut. Diese Anleitung führt von einer leeren Ubuntu-VM bis zum eingeloggten Browser unter `https://$APP_HOSTNAME`.
 
 > [!TIP]
 > Im CI-Betrieb läuft der Staging-Stack automatisch über
@@ -112,12 +112,14 @@ KEYCLOAK_DB_PASSWORD=<random>
 KEYCLOAK_DB_NAME=keycloak
 ```
 
-### 2c. RabbitMQ-Credentials (Pflicht)
+### 2c. Datenbankrolle des Workers (Pflicht)
+
+Der Worker liest die Task-Queue mit einer eigenen Rolle `appstore_worker`
+(nur Queue, Task-Events und Ergebnis-Spalten; .github#5). Ansible setzt ihr
+Passwort nach den Migrationen (`python -m app.worker_db_role`).
 
 ```
-RABBITMQ_USER=appstore
-RABBITMQ_PASSWORD=<random>
-RABBITMQ_VHOST=/
+WORKER_DB_PASSWORD=<random, mindestens 16 Zeichen>
 ```
 
 ### 2d. Keycloak-Admin (Pflicht)
@@ -262,7 +264,7 @@ Die Zertifikate und der ACME-Account-Key liegen im Volume `caddy_data`. Geht das
 make prod-up
 ```
 
-Anders als in Dev wird hier nichts gebaut — das Target lädt zunächst alle `:latest`-Images aus GHCR (`pull_policy: always`) und startet danach die zehn Container: `caddy`, `frontend`, `backend`, `worker`, `keycloak`, `keycloak-postgres`, `postgres`, `postgres-tfstate`, `redis`, `rabbitmq`. Erstdurchlauf dauert je nach Bandbreite 2–5 Minuten.
+Anders als in Dev wird hier nichts gebaut — das Target lädt zunächst alle `:latest`-Images aus GHCR (`pull_policy: always`) und startet danach die acht Container: `caddy`, `frontend`, `backend`, `worker`, `keycloak`, `keycloak-postgres`, `postgres`, `postgres-tfstate`. Erstdurchlauf dauert je nach Bandbreite 2–5 Minuten.
 
 Status prüfen:
 
@@ -462,7 +464,7 @@ Oder im Browser einzeln öffnen:
 | Keycloak Admin | `https://<VM-IP>/admin` | Keycloak Welcome, Login mit `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` aus Schritt 2d |
 | Keycloak OIDC Discovery | `https://<VM-IP>/realms/dhbw/.well-known/openid-configuration` | JSON mit `issuer: https://<VM-IP>/realms/dhbw` |
 
-RabbitMQ-UI und pgAdmin sind in Prod nicht über Caddy exponiert (kein Port-Mapping nach außen); für Debugging per Container-Shell oder SSH-Tunnel zugreifen.
+pgAdmin ist in Prod nicht über Caddy exponiert (kein Port-Mapping nach außen); für Debugging per Container-Shell oder SSH-Tunnel zugreifen.
 
 ## Login
 
@@ -506,7 +508,7 @@ Hinweise zur E-Mail-Konvention: `<vorname>.<nachname>@dhbw.de`, alles klein, Uml
 make prod-down
 ```
 
-Container weg, Volumes (DBs, Keycloak-Daten, RabbitMQ) bleiben. Beim nächsten `make prod-up` startet alles im Zustand vor dem Stopp.
+Container weg, Volumes (DBs inkl. Task-Queue, Keycloak-Daten) bleiben. Beim nächsten `make prod-up` startet alles im Zustand vor dem Stopp.
 
 ### Nur pausieren (schnellster Re-Start)
 

@@ -6,8 +6,8 @@ Vier Kern-Netzwerke in `docker-compose.prod.yml`
 | Netzwerk | Mitglieder | Zweck |
 |---|---|---|
 | `frontend-network` | caddy, backend, frontend | öffentlich erreichbare Services |
-| `backend-network` | caddy, postgres, keycloak, rabbitmq, redis, backend | Backend + seine direkten Abhängigkeiten |
-| `worker-network` | postgres, postgres-tfstate, rabbitmq, redis, worker | Worker isoliert von der Anwendungs-DB — kein `postgres`-Zugriff |
+| `backend-network` | caddy, postgres, keycloak, backend | Backend + seine direkten Abhängigkeiten |
+| `worker-network` | postgres, postgres-tfstate, worker | Worker: Task-Queue, Events und Ergebnisse in `postgres` nur über die Rolle `appstore_worker` (keine Nutzer-, App- oder Credential-Tabellen; .github#5), Terraform-State in `postgres-tfstate` |
 | `keycloak-network` | caddy, keycloak-postgres, keycloak | Identity-Provider isoliert |
 
 ## Ein zusätzliches Netzwerk aus den Overlays

@@ -1,6 +1,6 @@
 # Lokales Dev Setup
 
-Der App Store ist ein Web-System, in dem Studierende und Dozierende vorgefertigte Cloud-Apps (Packer + Terraform in einem Git-Repo) per Klick auf OpenStack ausrollen. Lokal läuft alles in Docker: Vue-Frontend, FastAPI-Backend, Celery-Worker, Keycloak als Identity Provider sowie PostgreSQL, RabbitMQ und Redis als Infrastruktur. Diese Anleitung führt von einem leeren Arbeitsverzeichnis bis zum eingeloggten Browser.
+Der App Store ist ein Web-System, in dem Studierende und Dozierende vorgefertigte Cloud-Apps (Packer + Terraform in einem Git-Repo) per Klick auf OpenStack ausrollen. Lokal läuft alles in Docker: Vue-Frontend, FastAPI-Backend, Celery-Worker, Keycloak als Identity Provider sowie PostgreSQL als Infrastruktur (die Task-Queue ist eine Postgres-Tabelle, kein RabbitMQ/Redis mehr). Diese Anleitung führt von einem leeren Arbeitsverzeichnis bis zum eingeloggten Browser.
 
 ## Voraussetzungen
 
@@ -102,7 +102,7 @@ E-Mail-Benachrichtigungen (Approval-Workflow). Wenn nicht gebraucht, einfach `SM
 make dev-up
 ```
 
-Das startet zwölf Container: `frontend`, `backend`, `worker`, `keycloak`, `keycloak-postgres`, `postgres`, `postgres-test`, `postgres-tfstate`, `redis`, `rabbitmq`, `pgadmin`.
+Das startet neun Container: `frontend`, `backend`, `worker`, `keycloak`, `keycloak-postgres`, `postgres`, `postgres-test`, `postgres-tfstate`, `pgadmin`.
 
 Beim ersten Start dauert der Boot 1–3 Minuten (Image-Pull + Keycloak-Init). Bevor Schritt 4 läuft, sicherstellen dass Keycloak fertig ist:
 
@@ -182,7 +182,7 @@ Oder im Browser einzeln öffnen:
 | Backend Health | http://localhost:8000/health | `{"status":"ok"}` |
 | Keycloak Admin | http://localhost:8080/admin | Keycloak Welcome, Login `admin` / `admin` |
 | Keycloak OIDC Discovery | http://localhost:8080/realms/dhbw/.well-known/openid-configuration | JSON mit `issuer: http://localhost:8080/realms/dhbw` |
-| RabbitMQ UI | http://localhost:15672 | Login `admin` / `admin`, Queue `celery` mit zwei Connections |
+| Task-Queue | `make shell-db`, dann `SELECT * FROM celery_queue;` | Wartende und laufende Aufträge (Live-Events in `task_events`) |
 | pgAdmin | http://localhost:5050 | Login `admin@admin.com` / `admin` |
 
 Token-Check auf der Kommandozeile:
