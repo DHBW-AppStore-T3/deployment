@@ -137,54 +137,6 @@ services:
     restart: unless-stopped
 
   # ----------------------------------------------------------------
-  # RabbitMQ (Message Broker)
-  # ----------------------------------------------------------------
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: rabbitmq-dev
-    hostname: rabbitmq-dev
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin}
-      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
-    ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
-    volumes:
-      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/10-consumer-timeout.conf:ro
-      - rabbitmq_dev_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend-network
-      - worker-network
-    restart: unless-stopped
-
-  # ----------------------------------------------------------------
-  # Redis (Result Backend for Celery)
-  # ----------------------------------------------------------------
-  redis:
-    image: redis:7-alpine
-    container_name: redis-dev
-    hostname: redis-dev
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_dev_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend-network
-      - worker-network
-    restart: unless-stopped
-
-  # ----------------------------------------------------------------
   # Backend API (FastAPI) - Development with Hot Reload
   # ----------------------------------------------------------------
   backend:
@@ -202,9 +154,11 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
       
-      # Celery
-      CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin}@rabbitmq:5672/${RABBITMQ_VHOST:-/}
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Celery broker (.github#5): the pgq transport on this database,
+      # derived from DATABASE_URL.
+      CELERY_BROKER_URL: ""
+      # Password of the worker's database role (make migrate-dev sets it).
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:-worker-dev-password}
       
       # Git
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
@@ -220,7 +174,7 @@ services:
       CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"]}'
 
       # Email (Gmail SMTP) — used by the post-deploy notify hook in
-      # celery_event_listener.py. SMTP_ENABLED is the explicit
+      # task_finalizer.py. SMTP_ENABLED is the explicit
       # kill-switch (default false): even with SMTP_USER/SMTP_PASSWORD
       # populated, mail delivery only happens when SMTP_ENABLED=true.
       # Use it to keep credentials in .env for later but turn delivery
@@ -256,8 +210,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       # Mount source code for hot reload
       - ../backend:/app
@@ -286,9 +238,9 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     environment:
-      # Celery
-      CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin}@rabbitmq:5672/${RABBITMQ_VHOST:-/}
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Database (.github#5): its own role on the application DB (queue,
+      # task events, results only).
+      DATABASE_URL: postgresql://appstore_worker:${WORKER_DB_PASSWORD:-worker-dev-password}@postgres:5432/${DB_NAME:-backend_dev}
 
       # OpenStack credential decryption (must match backend)
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
@@ -303,9 +255,7 @@ services:
       # Application
       DEBUG: "True"
     depends_on:
-      rabbitmq:
-        condition: service_healthy
-      redis:
+      postgres:
         condition: service_healthy
       postgres-tfstate:
         condition: service_healthy
@@ -377,10 +327,6 @@ volumes:
   postgres_tfstate_data:
     driver: local
   keycloak_postgres_data:
-    driver: local
-  rabbitmq_dev_data:
-    driver: local
-  redis_dev_data:
     driver: local
   backend_git_repos:
     driver: local

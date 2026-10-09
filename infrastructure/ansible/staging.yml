@@ -730,6 +730,19 @@
       register: migration_result
       changed_when: "'Running upgrade' in migration_result.stdout"
 
+    # .github#5: der Worker greift mit eigener Datenbankrolle (appstore_worker)
+    # auf die Task-Queue zu. Die Migration legt die Rolle ohne Login an; hier
+    # bekommt sie Login und Passwort (WORKER_DB_PASSWORD aus der .env, als
+    # SCRAM-Verifier, nie im Klartext im Server-Log). Danach den Worker neu
+    # starten: Er ist vor der Rolle hochgekommen und wartet sonst bis zum
+    # nächsten Broker-Reconnect.
+    - name: Datenbankrolle des Workers einrichten
+      ansible.builtin.command: docker exec backend-prod python -m app.worker_db_role
+      changed_when: false
+
+    - name: Worker neu starten (Datenbankrolle ist jetzt bereit)
+      ansible.builtin.command: docker restart worker-prod
+
     # Das Gegenstück zu keycloak-wait im Makefile: bei leerer Datenbank startet
     # Keycloak erst Quarkus, importiert den Realm und bindet den Listener zuletzt.
     # Ein Seed davor scheitert mit "Connection refused".

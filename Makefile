@@ -53,7 +53,6 @@ DC_RUNNER := docker compose -f docker-compose.prod.yml -f docker-compose.runner.
 FRONTEND_PORT_DEV  ?= 5173
 BACKEND_PORT       ?= 8000
 KEYCLOAK_PORT      ?= 8080
-RABBITMQ_UI_PORT   ?= 15672
 PGADMIN_PORT       ?= 5050
 
 .DEFAULT_GOAL := help
@@ -65,7 +64,7 @@ PGADMIN_PORT       ?= 5050
         dev-logs dev-logs-backend dev-logs-frontend dev-logs-worker dev-logs-keycloak \
         dev-build dev-build-backend dev-build-frontend dev-build-worker dev-rebuild dev-ps \
         shell-backend shell-worker shell-frontend \
-        shell-db shell-redis shell-keycloak shell-keycloak-db \
+        shell-db shell-keycloak shell-keycloak-db \
         keycloak-up keycloak-down keycloak-restart keycloak-logs keycloak-ps keycloak-reset keycloak-wait \
         keycloak-export keycloak-token keycloak-userinfo keycloak-url keycloak-disable-ssl \
         seed-data seed-reset \
@@ -92,7 +91,7 @@ help: ## Show this help message
 	@echo ""
 	@echo "Services (dev): frontend, backend, worker, keycloak, postgres,"
 	@echo "                postgres-test, postgres-tfstate, keycloak-postgres,"
-	@echo "                redis, rabbitmq, pgadmin"
+	@echo "                pgadmin"
 	@echo ""
 	@echo "Bootstrap a fresh checkout:  make init"
 	@echo "Show URLs:                   make urls"
@@ -141,7 +140,6 @@ urls: ## Show all dev URLs in one place
 	@echo "  Backend API Docs:   http://localhost:$(BACKEND_PORT)/docs"
 	@echo "  Keycloak Admin:     http://localhost:$(KEYCLOAK_PORT)/admin   (admin / admin)"
 	@echo "  Keycloak Realm:     http://localhost:$(KEYCLOAK_PORT)/realms/dhbw"
-	@echo "  RabbitMQ UI:        http://localhost:$(RABBITMQ_UI_PORT)       (admin / admin)"
 	@echo "  pgAdmin:            http://localhost:$(PGADMIN_PORT)            (admin@admin.com / admin)"
 	@echo ""
 
@@ -221,9 +219,6 @@ shell-frontend: ## Open sh in frontend container (dev)
 
 shell-db: ## Open psql in dev Postgres (backend_dev)
 	$(DC_DEV) exec postgres psql -U postgres -d backend_dev
-
-shell-redis: ## Open redis-cli (dev)
-	$(DC_DEV) exec redis redis-cli
 
 shell-keycloak: ## Open bash in Keycloak container (dev)
 	$(DC_DEV) exec keycloak bash
@@ -366,8 +361,10 @@ seed-reset: ## ⚠️  Reset DB + Keycloak realm, then seed
 # Migrations on the deployed stack run automatically as a step in
 # the Ansible CD pipeline (infrastructure/ansible/staging.yml)
 # — there is no local migrate-deploy target, on purpose.
-migrate-dev: ## Run database migrations (dev)
+migrate-dev: ## Run database migrations (dev), then give the worker's DB role its login
 	$(DC_DEV) exec backend poetry run alembic upgrade head
+	$(DC_DEV) exec backend poetry run python -m app.worker_db_role
+	$(DC_DEV) restart worker
 
 migration-create: ## Autogenerate migration (usage: make migration-create MSG="message")
 	@if [ -z "$(MSG)" ]; then \
@@ -605,8 +602,8 @@ prod-set-keycloak-urls: ## Patch Keycloak client redirect/web-origin URLs to APP
 	  -e APP_BASE_URL="$$APP_BASE_URL" \
 	  backend python /tmp/set_keycloak_urls.py
 
-prod-reset: ## ⚠️  STOP prod + DELETE all volumes (DBs, Keycloak, RabbitMQ). Irreversible.
-	@echo "⚠️  This wipes ALL prod data: postgres, keycloak DB, rabbitmq, redis, tfstate."
+prod-reset: ## ⚠️  STOP prod + DELETE all volumes (DBs, Keycloak). Irreversible.
+	@echo "⚠️  This wipes ALL prod data: postgres (incl. the task queue), keycloak DB, tfstate."
 	@read -p "Type 'yes' to continue: " -r REPLY; \
 	if [ "$$REPLY" = "yes" ]; then \
 	  $(DC_PROD) down -v; \
