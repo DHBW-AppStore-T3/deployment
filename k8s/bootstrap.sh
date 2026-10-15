@@ -7,9 +7,10 @@
 #   export KUBECONFIG=/path/to/kubeconfig-ma_wwi_24sea_appstore_g3.yaml
 #   k8s/bootstrap.sh staging|prod
 #
-# Idempotent: existing Secrets are left alone (rotating a Fernet key or the
-# cookie secret by accident would lock people out), so re-running is safe.
-# The generated values are printed once at the end of the FIRST run only.
+# Idempotent: existing Secrets and keys are left alone (rotating a Fernet key
+# or a database password by accident would lock people out); a key that is
+# missing in an existing Secret is added. The generated logins are printed
+# once, when they are created.
 set -euo pipefail
 cd "$(dirname "$0")"
 ENV_NAME=${1:?usage: bootstrap.sh staging|prod}
@@ -19,55 +20,71 @@ NS=$(awk '/^  namespace:/{print $2}' "environments/$ENV_NAME.yaml")
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
 rand() { python3 -c 'import secrets,sys;print(secrets.token_urlsafe(int(sys.argv[1])))' "${1:-24}"; }
+# A Fernet key: 32 random bytes, url-safe base64.
+fernet() { python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'; }
 have() { kubectl -n "$NS" get secret "$1" >/dev/null 2>&1; }
+key() { kubectl -n "$NS" get secret "$1" -o "jsonpath={.data.$2}" | base64 -d; }
+has_key() { [ -n "$(kubectl -n "$NS" get secret "$1" -o "jsonpath={.data.$2}" 2>/dev/null)" ]; }
+# Add key $2 with value $3 to Secret $1 unless it has one already.
+add_key() {
+  has_key "$1" "$2" && return 0
+  kubectl -n "$NS" patch secret "$1" --type merge \
+    -p "$(python3 -c 'import json,sys;print(json.dumps({"stringData":{sys.argv[1]:sys.argv[2]}}))' "$2" "$3")" >/dev/null
+}
+# A login for a CloudNativePG managed role (kubernetes.io/basic-auth).
+db_login() {
+  have "$1" || kubectl -n "$NS" create secret generic "$1" --type=kubernetes.io/basic-auth \
+    --from-literal=username="$2" --from-literal=password="$(rand)"
+}
 NEW=()
 
-if ! have appstore-db; then
-  kubectl -n "$NS" create secret generic appstore-db --type=kubernetes.io/basic-auth \
-    --from-literal=username=appstore --from-literal=password="$(rand)"
-fi
-if ! have keycloak-db; then
-  kubectl -n "$NS" create secret generic keycloak-db --type=kubernetes.io/basic-auth \
-    --from-literal=username=keycloak --from-literal=password="$(rand)"
-fi
+# --- Postgres roles (CNPG, k8s/manifests/platform/templates/postgres.yaml)
+db_login keycloak-db keycloak
+db_login appstore-t3-db appstore_t3
+db_login appstore-worker-db appstore_worker
+# The vendored reference stack's roles, declared in the same cluster.
+db_login appstore-db appstore
+db_login role-provider-db roleprovider
 
-if ! have role-provider-db; then
-  kubectl -n "$NS" create secret generic role-provider-db --type=kubernetes.io/basic-auth \
-    --from-literal=username=roleprovider --from-literal=password="$(rand)"
-fi
-
-# Needs the Fernet key of the cryptography package; falls back to the same format by hand.
-fernet() { python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'; }
-if ! have appstore-secret; then
-  DBPW=$(kubectl -n "$NS" get secret appstore-db -o jsonpath='{.data.password}' | base64 -d)
-  RPTOKEN=$(rand 32)
-  kubectl -n "$NS" create secret generic appstore-secret \
-    --from-literal=database-url="postgresql://appstore:${DBPW}@postgres-cluster-rw:5432/appstore" \
-    --from-literal=credential-encryption-key="$(fernet)" \
-    --from-literal=role-provider-api-token="$RPTOKEN" \
-    --from-literal=smtp-password=''
-fi
-
-# read token is shared with appstore-api (appstore-secret), write token is for the seed Job
-if ! have role-provider-secret; then
-  RPPW=$(kubectl -n "$NS" get secret role-provider-db -o jsonpath='{.data.password}' | base64 -d)
-  RPREAD=$(kubectl -n "$NS" get secret appstore-secret -o jsonpath='{.data.role-provider-api-token}' | base64 -d)
-  kubectl -n "$NS" create secret generic role-provider-secret \
-    --from-literal=db-connection-string="host=postgres-cluster-rw user=roleprovider password=${RPPW} dbname=roleprovider port=5432 sslmode=disable TimeZone=UTC" \
-    --from-literal=api-tokens="$RPREAD" --from-literal=api-write-tokens="$(rand 32)"
-fi
-
+# --- Keycloak: admin, demo users (staging), clients
 if ! have keycloak-secret; then
-  BFF=$(rand 32)
   ADMINPW=$(rand 18); DEMOPW=$(rand 12)
   kubectl -n "$NS" create secret generic keycloak-secret \
-    --from-literal=admin-password="$ADMINPW" --from-literal=demo-password="$DEMOPW" \
-    --from-literal=bff-client-secret="$BFF"
+    --from-literal=admin-password="$ADMINPW" --from-literal=demo-password="$DEMOPW"
+  NEW+=("Keycloak admin (kubectl -n $NS port-forward svc/keycloak 8080, then http://localhost:8080/admin/, user admin): $ADMINPW")
+  [ "$ENV_NAME" = staging ] && NEW+=("Demo users of realm dhbw (dozent.demo, admin.demo, student1-4.demo): $DEMOPW")
+fi
+add_key keycloak-secret bff-client-secret "$(rand 32)"
+add_key keycloak-secret appstore-backend-client-secret "$(rand 32)"
+
+# --- Our AppStore (k8s/charts/appstore, secretName appstore-t3)
+DB_HOST=postgres-cluster-rw:5432
+if ! have appstore-t3; then
+  kubectl -n "$NS" create secret generic appstore-t3 \
+    --from-literal=database-url="postgresql://appstore_t3:$(key appstore-t3-db password)@$DB_HOST/appstore_t3?sslmode=require" \
+    --from-literal=worker-database-url="postgresql://appstore_worker:$(key appstore-worker-db password)@$DB_HOST/appstore_t3?sslmode=require" \
+    --from-literal=credential-encryption-key="$(fernet)" \
+    --from-literal=keycloak-client-secret="$(key keycloak-secret appstore-backend-client-secret)" \
+    --from-literal=lti13-session-secret="$(rand 48)"
+fi
+
+# --- The vendored reference stack (kept until it is retired; its apps are no
+# longer deployed by this branch, see k8s/README.md)
+if ! have appstore-secret; then
+  kubectl -n "$NS" create secret generic appstore-secret \
+    --from-literal=database-url="postgresql://appstore:$(key appstore-db password)@$DB_HOST/appstore" \
+    --from-literal=credential-encryption-key="$(fernet)" \
+    --from-literal=role-provider-api-token="$(rand 32)"
+fi
+if ! have role-provider-secret; then
+  kubectl -n "$NS" create secret generic role-provider-secret \
+    --from-literal=db-connection-string="host=postgres-cluster-rw user=roleprovider password=$(key role-provider-db password) dbname=roleprovider port=5432 sslmode=disable TimeZone=UTC" \
+    --from-literal=api-tokens="$(key appstore-secret role-provider-api-token)" --from-literal=api-write-tokens="$(rand 32)"
+fi
+if ! have oauth2-proxy-ui-secret; then
   kubectl -n "$NS" create secret generic oauth2-proxy-ui-secret \
-    --from-literal=client-id=appstore --from-literal=client-secret="$BFF" \
-    --from-literal=cookie-secret="$(python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
-  NEW+=("Keycloak admin (https://<sso host>/admin, user admin): $ADMINPW"
-        "Demo users (faculty@cs.example, cs-student@cs.com, root.admin@uni.example): $DEMOPW")
+    --from-literal=client-id=appstore --from-literal=client-secret="$(key keycloak-secret bff-client-secret)" \
+    --from-literal=cookie-secret="$(fernet)"
 fi
 
 kubectl apply -f "argocd/roots/$ENV_NAME.yaml"
