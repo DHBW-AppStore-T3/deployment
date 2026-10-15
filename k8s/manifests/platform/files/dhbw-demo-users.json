@@ -1,0 +1,62 @@
+[
+  {
+    "username": "dozent.demo",
+    "email": "dozent.demo@appstore.example",
+    "firstName": "Dozentin",
+    "lastName": "Demo",
+    "enabled": true,
+    "emailVerified": true,
+    "realmRoles": ["default-roles-dhbw", "teacher"],
+    "credentials": [{ "type": "password", "value": "${DEMO_PASSWORD}", "temporary": false }]
+  },
+  {
+    "username": "admin.demo",
+    "email": "admin.demo@appstore.example",
+    "firstName": "Admin",
+    "lastName": "Demo",
+    "enabled": true,
+    "emailVerified": true,
+    "realmRoles": ["default-roles-dhbw", "admin"],
+    "credentials": [{ "type": "password", "value": "${DEMO_PASSWORD}", "temporary": false }]
+  },
+  {
+    "username": "student1.demo",
+    "email": "student1.demo@appstore.example",
+    "firstName": "Studentin",
+    "lastName": "Eins",
+    "enabled": true,
+    "emailVerified": true,
+    "realmRoles": ["default-roles-dhbw", "student"],
+    "credentials": [{ "type": "password", "value": "${DEMO_PASSWORD}", "temporary": false }]
+  },
+  {
+    "username": "student2.demo",
+    "email": "student2.demo@appstore.example",
+    "firstName": "Student",
+    "lastName": "Zwei",
+    "enabled": true,
+    "emailVerified": true,
+    "realmRoles": ["default-roles-dhbw", "student"],
+    "credentials": [{ "type": "password", "value": "${DEMO_PASSWORD}", "temporary": false }]
+  },
+  {
+    "username": "student3.demo",
+    "email": "student3.demo@appstore.example",
+    "firstName": "Studentin",
+    "lastName": "Drei",
+    "enabled": true,
+    "emailVerified": true,
+    "realmRoles": ["default-roles-dhbw", "student"],
+    "credentials": [{ "type": "password", "value": "${DEMO_PASSWORD}", "temporary": false }]
+  },
+  {
+    "username": "student4.demo",
+    "email": "student4.demo@appstore.example",
+    "firstName": "Student",
+    "lastName": "Vier",
+    "enabled": true,
+    "emailVerified": true,
+    "realmRoles": ["default-roles-dhbw", "student"],
+    "credentials": [{ "type": "password", "value": "${DEMO_PASSWORD}", "temporary": false }]
+  }
+]

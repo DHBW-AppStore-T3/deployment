@@ -1,6 +1,8 @@
-# Keycloak as the OIDC issuer of this cluster (realm "appstore").
-# Env substitution in the realm file (${DEMO_PASSWORD}, ${BFF_CLIENT_SECRET})
-# is done by Keycloak from the keycloak-secret Secret, so no secret is in git.
+# Keycloak as the OIDC issuer of this environment (realms "dhbw" and, for the
+# vendored reference stack, "appstore").
+# Env substitution in the realm files (${DEMO_PASSWORD}, ${BFF_CLIENT_SECRET},
+# ${APPSTORE_BACKEND_CLIENT_SECRET}) is done by Keycloak from the keycloak-secret
+# Secret, so no secret is in git.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,7 +12,11 @@ spec:
   replicas: 1
   selector: { matchLabels: { app: keycloak } }
   template:
-    metadata: { labels: { app: keycloak } }
+    metadata:
+      labels: { app: keycloak }
+      annotations:
+        # A new realm file is imported at the next start only.
+        checksum/realms: {{ include "platform.dhbwRealm" . | sha256sum }}
     spec:
       containers:
         - name: keycloak
@@ -24,6 +30,11 @@ spec:
             - name: KC_DB_PASSWORD
               valueFrom: { secretKeyRef: { name: keycloak-db, key: password } }
             - { name: KC_HOSTNAME, value: "https://{{ .Values.ssoHost }}" }
+            {{- if not .Values.publicAdmin }}
+            # The admin console is not on the public host (security review
+            # H-9): it is served for kubectl port-forward svc/keycloak 8080.
+            - { name: KC_HOSTNAME_ADMIN, value: "http://localhost:8080" }
+            {{- end }}
             - { name: KC_HTTP_ENABLED, value: "true" }       # TLS ends at Traefik
             - { name: KC_PROXY_HEADERS, value: xforwarded }
             - { name: KC_HEALTH_ENABLED, value: "true" }
@@ -34,6 +45,10 @@ spec:
               valueFrom: { secretKeyRef: { name: keycloak-secret, key: demo-password } }
             - name: BFF_CLIENT_SECRET
               valueFrom: { secretKeyRef: { name: keycloak-secret, key: bff-client-secret } }
+            # Client secret of appstore-backend (realm dhbw), set by bootstrap.sh.
+            # Required: without it the placeholder would become the secret.
+            - name: APPSTORE_BACKEND_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: keycloak-secret, key: appstore-backend-client-secret } }
           ports: [{ name: http, containerPort: 8080 }, { name: mgmt, containerPort: 9000 }]
           readinessProbe:
             httpGet: { path: /health/ready, port: 9000 }
@@ -68,8 +83,21 @@ spec:
     - host: {{ .Values.ssoHost }}
       http:
         paths:
+          {{- if .Values.publicAdmin }}
           - path: /
             pathType: Prefix
             backend: { service: { name: keycloak, port: { number: 8080 } } }
+          {{- else }}
+          # Only the realms people sign in to, and the login pages' static
+          # files. The master realm and the admin console stay internal.
+          {{- range .Values.publicRealms }}
+          - path: /realms/{{ . }}/
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+          {{- end }}
+          - path: /resources/
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+          {{- end }}
   tls:
     - hosts: [{{ .Values.ssoHost }}]
