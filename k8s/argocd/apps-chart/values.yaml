@@ -5,18 +5,11 @@ env:
   name: ""          # staging | prod; prefixes every Application name
   namespace: ""     # target namespace of the whole environment
   branch: ""        # git branch Argo tracks for this environment
-  host: ""          # public UI host
+  host: ""          # public AppStore host (frontend, and the API under /api)
   ssoHost: ""       # public Keycloak host
-appstore:
-  simulate: false   # true: OpenStack and the jobs are faked (needs mode: development)
-  mode: production
-roleProvider:
-  chartVersion: 0.8.0
-# Apps that run as pods (see k8s/src/appstore-api/helm-chart, podApps).
-podApps:
-  enabled: false
-  zone: ""
-  appDomain: ""
-  imageRegistryAllowlist: "ghcr.io/dhbw-appstore-t3/"
-  clusterIssuer: ""
-  extraEgressExcept: []
+# Values of the platform chart (k8s/manifests/platform/values.yaml):
+# demoUsers, publicRealms, publicAdmin.
+platform: {}
+# Values of our AppStore chart (k8s/charts/appstore/values.yaml), passed as
+# they are: api, podApps, network, ...
+appstore: {}

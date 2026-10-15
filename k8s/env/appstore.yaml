@@ -1,0 +1,11 @@
+# Images of our AppStore (k8s/charts/appstore), written by the k8s-bump
+# workflow after each push of a component's spike/dev ("[skip ci]" commit):
+# the digest of the image built from that commit, with its tag as a comment.
+# Argo CD rolls out what is here. Do not edit by hand, except to roll back.
+# Until the first bump: the moving spike-dev tags.
+images:
+  tags:
+    backend: spike-dev
+    worker: spike-dev
+    workerPods: spike-dev
+    frontend: spike-dev
