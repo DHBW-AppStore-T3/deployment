@@ -1,0 +1,243 @@
+{{- $ns := .Release.Namespace -}}
+{{- $env := include "appstore.environment" . -}}
+{{- $p := .Values.podApps -}}
+{{- $deployerSa := include "appstore.name" (dict "context" . "component" "pod-deployer") -}}
+{{- $api := include "appstore.name" (dict "context" . "component" "api") -}}
+{{- $deployer := include "appstore.clusterName" (dict "context" . "component" "deployer") -}}
+{{- $reader := include "appstore.clusterName" (dict "context" . "component" "reader") -}}
+{{- $name := include "appstore.clusterName" (dict "context" . "component" "confine-pod-deployer") -}}
+{{- $appDomain := default (printf "apps.%s" (required "podApps.zone is required" $p.zone)) $p.appDomain -}}
+{{- $v4 := concat (include "appstore.privateV4" . | fromJsonArray) (list) -}}
+{{- $v6 := concat (include "appstore.privateV6" . | fromJsonArray) (list) -}}
+{{- range $p.extraEgressExcept }}
+{{- if contains ":" . }}{{ $v6 = append $v6 . }}{{ else }}{{ $v4 = append $v4 . }}{{ end }}
+{{- end }}
+# What RBAC cannot express (.github#4 2.4, migration plan finding 3): the pod
+# deployer may touch only dep-* namespaces of its own installation, and only
+# objects that look like what app/k8s/render.py makes. RBAC limits the kinds
+# and verbs; this policy limits the content. It matches the pod deployer's
+# identity only; the controllers (StatefulSet, namespace deletion) are not
+# affected, and Pod Security "restricted" on every dep-* namespace checks the
+# pods they create.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["namespaces", "secrets", "services", "persistentvolumeclaims", "resourcequotas", "limitranges", "pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["statefulsets", "statefulsets/scale"]
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["ingresses", "networkpolicies"]
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["rolebindings"]
+  matchConditions:
+    - name: only-the-pod-deployer
+      expression: {{ printf "request.userInfo.username == 'system:serviceaccount:%s:%s'" $ns $deployerSa | quote }}
+  variables:
+    - name: target
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+    - name: resource
+      expression: "has(request.subResource) && request.subResource != '' ? request.resource.resource + '/' + request.subResource : request.resource.resource"
+    - name: isNamespace
+      expression: "request.resource.resource == 'namespaces'"
+    - name: nsName
+      expression: "variables.isNamespace ? variables.target.metadata.name : request.namespace"
+    # The 8 hex digits of the deployment id in dep-<id>.
+    - name: nsId
+      expression: "variables.nsName.startsWith('dep-') ? variables.nsName.substring(4) : ''"
+    - name: env
+      expression: {{ $env | squote | quote }}
+    - name: labels
+      expression: "has(variables.target.metadata.labels) ? variables.target.metadata.labels : {}"
+    - name: oldLabels
+      expression: "request.operation != 'CREATE' && has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}"
+    - name: nsLabels
+      expression: "namespaceObject != null && has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels : {}"
+    - name: podSpec
+      expression: >-
+        variables.resource == 'statefulsets' && request.operation != 'DELETE' ? object.spec.template.spec :
+        (variables.resource == 'pods' && request.operation != 'DELETE' ? object.spec : null)
+    - name: containers
+      expression: >-
+        variables.podSpec == null ? [] :
+        variables.podSpec.containers +
+        (has(variables.podSpec.initContainers) ? variables.podSpec.initContainers : []) +
+        (has(variables.podSpec.ephemeralContainers) ? variables.podSpec.ephemeralContainers : [])
+    - name: hostSuffix
+      expression: {{ printf "'-' + variables.nsId + '.%s'" $appDomain | quote }}
+  validations:
+    # --- where ----------------------------------------------------------
+    - expression: "variables.nsName.startsWith('dep-') && variables.nsId.matches('^[0-9a-f]{8}$')"
+      message: "the pod deployer may only touch namespaces named dep-<8 hex digits>"
+    - expression: >-
+        !variables.isNamespace || request.operation == 'DELETE' || (
+          'appstore.dhbw/deployment-id' in variables.labels &&
+          'app.kubernetes.io/managed-by' in variables.labels && variables.labels['app.kubernetes.io/managed-by'] == 'appstore' &&
+          'appstore.dhbw/environment' in variables.labels && variables.labels['appstore.dhbw/environment'] == variables.env &&
+          'pod-security.kubernetes.io/enforce' in variables.labels && variables.labels['pod-security.kubernetes.io/enforce'] == 'restricted' &&
+          (!('pod-security.kubernetes.io/enforce-version' in variables.labels) || variables.labels['pod-security.kubernetes.io/enforce-version'] == 'latest'))
+      message: "a namespace needs its deployment id, managed-by=appstore, this installation's environment label and Pod Security 'restricted'"
+    - expression: >-
+        !variables.isNamespace || request.operation == 'CREATE' || (
+          'app.kubernetes.io/managed-by' in variables.oldLabels && variables.oldLabels['app.kubernetes.io/managed-by'] == 'appstore' &&
+          'appstore.dhbw/environment' in variables.oldLabels && variables.oldLabels['appstore.dhbw/environment'] == variables.env &&
+          (request.operation == 'DELETE' || (
+            'appstore.dhbw/deployment-id' in variables.oldLabels &&
+            variables.oldLabels['appstore.dhbw/deployment-id'] == variables.labels['appstore.dhbw/deployment-id'])))
+      message: "only namespaces this installation created may be changed or deleted, and never handed to another deployment"
+    - expression: >-
+        variables.isNamespace || (
+          'app.kubernetes.io/managed-by' in variables.nsLabels && variables.nsLabels['app.kubernetes.io/managed-by'] == 'appstore' &&
+          'appstore.dhbw/environment' in variables.nsLabels && variables.nsLabels['appstore.dhbw/environment'] == variables.env)
+      message: "objects only in this installation's own dep-* namespaces"
+    # --- what -----------------------------------------------------------
+    # Namespaces go as a whole; single objects are never deleted, except
+    # pods (restart) and volume claims (reset).
+    - expression: >-
+        request.operation != 'DELETE' || variables.isNamespace ||
+        variables.resource == 'pods' || variables.resource == 'persistentvolumeclaims'
+      message: "the pod deployer deletes namespaces, pods and volume claims only"
+    - expression: >-
+        variables.resource != 'rolebindings' || request.operation == 'DELETE' || (
+          object.roleRef.kind == 'ClusterRole' && has(object.subjects) && object.subjects.size() == 1 &&
+          object.subjects[0].kind == 'ServiceAccount' && (
+            (object.roleRef.name == {{ $deployer | squote }} &&
+             object.subjects[0].name == {{ $deployerSa | squote }} && object.subjects[0].namespace == {{ $ns | squote }}) ||
+            (object.roleRef.name == {{ $reader | squote }} &&
+             object.subjects[0].name == {{ $api | squote }} && object.subjects[0].namespace == {{ $ns | squote }})))
+      message: "role bindings only of the deployer role to the pod deployer, or of the reader role to the API"
+    - expression: "variables.resource != 'secrets' || request.operation == 'DELETE' || !has(object.type) || object.type == 'Opaque'"
+      message: "only Opaque secrets"
+    - expression: >-
+        variables.resource != 'services' || request.operation == 'DELETE' || (
+          (!has(object.spec.type) || object.spec.type == 'ClusterIP') &&
+          !has(object.spec.externalIPs) && !has(object.spec.externalName))
+      message: "services only of type ClusterIP, without external IPs"
+    - expression: >-
+        variables.resource != 'resourcequotas' || request.operation == 'DELETE' || (
+          has(object.spec.hard) &&
+          ['pods', 'services', 'requests.cpu', 'requests.memory', 'limits.cpu', 'limits.memory', 'persistentvolumeclaims', 'requests.storage'].all(k, k in object.spec.hard) &&
+          'services.nodeports' in object.spec.hard && string(object.spec.hard['services.nodeports']) == '0' &&
+          'services.loadbalancers' in object.spec.hard && string(object.spec.hard['services.loadbalancers']) == '0')
+      message: "the resource quota must cap pods, services, CPU, memory and storage and allow no node ports or load balancers"
+    - expression: "variables.resource != 'statefulsets/scale' || request.operation == 'DELETE' || object.spec.replicas <= 1"
+      message: "a workload runs one pod or none"
+    - expression: "variables.resource != 'statefulsets' || request.operation == 'DELETE' || (!has(object.spec.replicas) || object.spec.replicas <= 1)"
+      message: "a workload runs one pod or none"
+    # --- pods (StatefulSet templates) -------------------------------------
+    - expression: >-
+        variables.podSpec == null || (
+          (!has(variables.podSpec.hostNetwork) || !variables.podSpec.hostNetwork) &&
+          (!has(variables.podSpec.hostPID) || !variables.podSpec.hostPID) &&
+          (!has(variables.podSpec.hostIPC) || !variables.podSpec.hostIPC) &&
+          has(variables.podSpec.automountServiceAccountToken) && !variables.podSpec.automountServiceAccountToken &&
+          !has(variables.podSpec.nodeName) && !has(variables.podSpec.priorityClassName) &&
+          !has(variables.podSpec.schedulerName) && !has(variables.podSpec.runtimeClassName) &&
+          !has(variables.podSpec.hostAliases) && !has(variables.podSpec.serviceAccountName) &&
+          has(variables.podSpec.securityContext) && has(variables.podSpec.securityContext.runAsNonRoot) &&
+          variables.podSpec.securityContext.runAsNonRoot)
+      message: "pods run as non-root without host namespaces, service account token or scheduling overrides"
+    - expression: >-
+        variables.podSpec == null || !has(variables.podSpec.volumes) || variables.podSpec.volumes.all(v,
+          has(v.emptyDir) ? has(v.emptyDir.sizeLimit) : (has(v.secret) || has(v.persistentVolumeClaim)))
+      message: "volumes: emptyDir with a size limit, secrets and the workload's own claims only"
+    - expression: >-
+        variables.containers.all(c,
+          has(c.securityContext) &&
+          has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation &&
+          has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot &&
+          (!has(c.securityContext.privileged) || !c.securityContext.privileged) &&
+          (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add) || c.securityContext.capabilities.add.size() == 0) &&
+          (!has(c.ports) || c.ports.all(port, !has(port.hostPort) || port.hostPort == 0)))
+      message: "containers: no privilege escalation, no root, no added capabilities, no host ports"
+    - expression: >-
+        variables.containers.all(c,
+          {{ toJson $p.imageRegistryAllowlist }}.exists(prefix, c.image.startsWith(prefix)) &&
+          c.image.matches('@sha256:[0-9a-f]{64}$'))
+      message: "images only from the allowed registries and pinned by digest"
+{{- with $p.studentNodeSelector }}
+    - expression: >-
+        variables.podSpec == null || (has(variables.podSpec.nodeSelector) &&
+          {{ toJson . }}.all(k, k in variables.podSpec.nodeSelector && variables.podSpec.nodeSelector[k] == {{ toJson . }}[k]))
+      message: "student pods run on the student nodes"
+{{- end }}
+    - expression: >-
+        variables.podSpec == null || !has(variables.podSpec.tolerations) ||
+        variables.podSpec.tolerations.all(t, {{ toJson $p.studentTolerations }}.exists(a,
+          (has(a.key) ? a.key : '') == (has(t.key) ? t.key : '') &&
+          (has(a.operator) ? a.operator : 'Equal') == (has(t.operator) ? t.operator : 'Equal') &&
+          (has(a.value) ? a.value : '') == (has(t.value) ? t.value : '') &&
+          (has(a.effect) ? a.effect : '') == (has(t.effect) ? t.effect : '') &&
+          !has(t.tolerationSeconds)))
+      message: "student pods tolerate only the configured taints"
+    - expression: >-
+        variables.resource != 'statefulsets' || request.operation == 'DELETE' || !has(object.spec.volumeClaimTemplates) ||
+        object.spec.volumeClaimTemplates.all(t,
+          {{ if $p.storageClass }}has(t.spec.storageClassName) && t.spec.storageClassName == {{ $p.storageClass | squote }}{{ else }}!has(t.spec.storageClassName){{ end }})
+      message: "volume claims only of the configured storage class"
+    # --- ingress ----------------------------------------------------------
+    # Hosts are <workload>-<deployment>.<appDomain>, the deployment being this
+    # namespace's: a dep-* namespace can never route the platform's own hosts
+    # (appstore.<zone>, sso.<zone>, ...) or another deployment's.
+    - expression: >-
+        variables.resource != 'ingresses' || request.operation == 'DELETE' || (
+          has(object.spec.ingressClassName) && object.spec.ingressClassName == {{ $p.ingressClass | squote }} &&
+          !has(object.spec.defaultBackend) && has(object.spec.rules) && object.spec.rules.size() > 0 &&
+          object.spec.rules.all(r,
+            has(r.host) && r.host.endsWith(variables.hostSuffix) && r.host.size() > variables.hostSuffix.size() &&
+            r.host.substring(0, r.host.size() - variables.hostSuffix.size()).matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') &&
+            has(r.http) && r.http.paths.all(path,
+              has(path.pathType) && path.pathType == 'Prefix' && has(path.path) &&
+              path.path.matches('^/([A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/?)?$') &&
+              has(path.backend.service) && !has(path.backend.resource))) &&
+          (!has(object.spec.tls) || object.spec.tls.all(t, has(t.hosts) && t.hosts.all(h,
+            h.endsWith(variables.hostSuffix) && h.size() > variables.hostSuffix.size() &&
+            h.substring(0, h.size() - variables.hostSuffix.size()).matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')))))
+      message: "{{ printf "ingress: class %s, hosts <workload>-<deployment>.%s of this deployment only, plain Prefix paths, service backends" $p.ingressClass $appDomain }}"
+    - expression: >-
+        variables.resource != 'ingresses' || request.operation == 'DELETE' ||
+        !has(object.metadata.annotations) || object.metadata.annotations.all(k, k == 'cert-manager.io/cluster-issuer')
+      message: "ingress annotations: only cert-manager.io/cluster-issuer"
+    # --- network policies -------------------------------------------------
+    # Ingress only from the ingress controller's namespace; egress only to
+    # kube-dns, or to "internet" that still excludes every private and
+    # cluster range. A rule without peers (= everything) is refused.
+    - expression: >-
+        variables.resource != 'networkpolicies' || request.operation == 'DELETE' || (
+          !has(object.spec.podSelector.matchLabels) && !has(object.spec.podSelector.matchExpressions) &&
+          (!has(object.spec.ingress) || object.spec.ingress.all(rule,
+            has(rule.from) && rule.from.size() > 0 && rule.from.all(peer,
+              !has(peer.ipBlock) && !has(peer.podSelector) && has(peer.namespaceSelector) &&
+              peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': {{ $p.ingressNamespace | squote }}}}))) &&
+          (!has(object.spec.egress) || object.spec.egress.all(rule,
+            has(rule.to) && rule.to.size() > 0 && rule.to.all(peer,
+              (has(peer.namespaceSelector) && has(peer.podSelector) && !has(peer.ipBlock) &&
+               peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}} &&
+               peer.podSelector == {'matchLabels': {'k8s-app': 'kube-dns'}}) ||
+              (has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) && has(peer.ipBlock.except) && (
+                (peer.ipBlock.cidr == '0.0.0.0/0' && {{ toJson $v4 }}.all(r, r in peer.ipBlock.except)) ||
+                (peer.ipBlock.cidr == '::/0' && {{ toJson $v6 }}.all(r, r in peer.ipBlock.except))))))))
+      message: "network policies: ingress from the ingress controller only, egress to DNS or to the internet without private and cluster ranges"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+spec:
+  policyName: {{ $name }}
+  validationActions: ["Deny"]

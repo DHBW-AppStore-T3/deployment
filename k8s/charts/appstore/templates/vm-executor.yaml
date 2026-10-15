@@ -1,0 +1,83 @@
+{{- if .Values.vmExecutor.enabled }}
+{{- $comp := dict "context" . "component" "vm-executor" -}}
+{{- $name := include "appstore.name" $comp -}}
+{{- $v := .Values.vmExecutor -}}
+# The VM executor: OpenTofu/Packer jobs (queue "vm", and "celery", where jobs
+# from before the queues were split may still wait) of the apps that still
+# run as OpenStack VMs, the Windows desktop. It runs app code we do not
+# control (local-exec, provisioners), so it has no Kubernetes token, reaches
+# only DNS, Postgres, the API's state backend and the internet
+# (networkpolicies.yaml), and runs each slot's tools as their own user
+# (UID 20000+n) with nothing of the slot's previous job left over
+# (app/job_context.py).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  replicas: {{ $v.replicas }}
+  # A rollout must not stop a job mid-apply: the old pod finishes what it
+  # runs (Celery's warm shutdown) while the new one takes the next jobs.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  selector:
+    matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "appstore.labels" $comp | nindent 8 }}
+    spec:
+      {{- include "appstore.podDefaults" . | nindent 6 }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $v.terminationGracePeriodSeconds }}
+      containers:
+        - name: vm-executor
+          image: {{ include "appstore.image" (dict "context" . "key" "worker" "name" "worker") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          # args, not command: the image's entrypoint (tini) reaps the
+          # processes a job leaves behind.
+          args:
+            - celery
+            - -A
+            - app.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency={{ $v.concurrency }}
+            - -Q
+            - vm,celery
+            - --without-gossip
+            - --without-mingle
+            - --without-heartbeat
+          env:
+            {{- include "appstore.workerEnv" . | nindent 12 }}
+            # OpenTofu's state backend, with each task's own token.
+            - { name: APPSTORE_API_URL, value: {{ printf "http://%s:8000" (include "appstore.name" (dict "context" . "component" "api")) | quote }} }
+            - { name: OPENSTACK_ALLOWED_AUTH_URLS, value: {{ .Values.api.openstackAllowedAuthUrls | quote }} }
+            - { name: APP_GIT_ALLOWED_HOSTS, value: {{ .Values.api.gitAllowedHosts | quote }} }
+            - { name: WORKER_JOB_TIMEOUT_SECONDS, value: {{ $v.jobTimeoutSeconds | quote }} }
+          # Root only to hand each job's tools to the slot's user; every
+          # capability that takes is listed, all others are dropped.
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources: {{- toYaml $v.resources | nindent 12 }}
+          {{- include "appstore.workerProbe" . | nindent 10 }}
+          volumeMounts:
+            # The job directories (TEMP_REPO_BASE_PATH below /tmp) and the
+            # slot homes; the worker resets their modes at start.
+            - { name: tmp, mountPath: /tmp }
+            - { name: homes, mountPath: /var/lib/appstore-worker }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: {{ $v.tmpSizeLimit }} }
+        - name: homes
+          emptyDir: { sizeLimit: {{ $v.homesSizeLimit }} }
+{{- end }}
