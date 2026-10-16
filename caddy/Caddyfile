@@ -34,6 +34,13 @@
 		}
 	}
 
+	# OpenTofu's state backend in the API (/internal/tfstate) is for the
+	# worker, which reaches the backend directly; never routed from outside.
+	# More specific than /api/*, so Caddy tries it first.
+	handle /api/internal* {
+		respond 404
+	}
+
 	# handle_path strips the prefix before proxying, which is what nginx's
 	# `rewrite ^/api/(.*) /$1 break` did.
 	handle_path /api/* {
