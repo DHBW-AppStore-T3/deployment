@@ -1,0 +1,89 @@
+name: K8s - chart, admission policy and RBAC
+
+# Our AppStore on Kubernetes (k8s/charts/appstore, k8s/manifests/platform):
+#   render   staging and prod rendered the way Argo CD does, checked against
+#            the Kubernetes schemas; the pod deployer's admission policy
+#            evaluated by kube-apiserver's own CEL evaluator against every
+#            request the renderer makes and the attacks it must refuse.
+#   cluster  a kind cluster with the chart's RBAC and policy: the pod deployer
+#            and the API do what the code does, and nothing more.
+on:
+  push:
+    branches: ['spike/**']
+    paths: ['k8s/**', '.github/workflows/k8s-chart.yml']
+  pull_request:
+    paths: ['k8s/**', '.github/workflows/k8s-chart.yml']
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v3.16.4
+  KUBECONFORM_VERSION: v0.6.7
+  KUBECONFORM_SHA256: 95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: { version: '${{ env.HELM_VERSION }}' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyyaml==6.0.2
+      - name: Render staging and prod as Argo CD does
+        run: |
+          set -euo pipefail
+          mkdir -p rendered
+          for env in staging prod; do python k8s/tests/render_env.py "$env" "rendered/$env.yaml"; done
+          helm template appstore k8s/charts/appstore -n appstore-staging \
+            -f k8s/tests/policy/placement-values.yaml > rendered/placement.yaml
+          helm lint k8s/charts/appstore -f k8s/tests/policy/placement-values.yaml
+      - name: Check against the Kubernetes schemas
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/kubeconform.tgz \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tgz" | sha256sum -c -
+          tar -xzf /tmp/kubeconform.tgz -C /tmp kubeconform
+          # CRDs (CloudNativePG) have no schema there and are skipped.
+          /tmp/kubeconform -kubernetes-version 1.31.0 -strict -summary -ignore-missing-schemas \
+            rendered/staging.yaml rendered/prod.yaml rendered/placement.yaml
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: k8s/tests/policy/go.mod
+          cache-dependency-path: k8s/tests/policy/go.sum
+      - name: Admission policy, evaluated as kube-apiserver does
+        working-directory: k8s/tests/policy
+        run: |
+          set -euo pipefail
+          python make_cases.py fixtures.json /tmp/cases.json /tmp/placement-cases.json
+          go run . ../../../rendered/staging.yaml /tmp/cases.json
+          go run . ../../../rendered/placement.yaml /tmp/placement-cases.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-manifests
+          path: rendered/
+          retention-days: 7
+
+  cluster:
+    needs: render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: { version: '${{ env.HELM_VERSION }}' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyyaml==6.0.2
+      - uses: helm/kind-action@v1.12.0
+        with:
+          version: v0.26.0
+          node_image: kindest/node:v1.31.4
+          cluster_name: appstore
+      - name: RBAC and admission policy in a real cluster
+        run: |
+          set -euo pipefail
+          python k8s/tests/render_env.py staging /tmp/staging.yaml
+          python k8s/tests/cluster_probe.py /tmp/staging.yaml k8s/tests/policy/fixtures.json
