@@ -51,6 +51,8 @@ spec:
             - --without-heartbeat
           env:
             {{- include "appstore.workerEnv" . | nindent 12 }}
+            # The OpenStack credential envelopes and state tokens of its jobs.
+            {{- include "appstore.secretEnv" (dict "context" . "name" "CREDENTIAL_ENCRYPTION_KEY" "key" "credential-encryption-key") | nindent 12 }}
             # OpenTofu's state backend, with each task's own token.
             - { name: APPSTORE_API_URL, value: {{ printf "http://%s:8000" (include "appstore.name" (dict "context" . "component" "api")) | quote }} }
             - { name: OPENSTACK_ALLOWED_AUTH_URLS, value: {{ .Values.api.openstackAllowedAuthUrls | quote }} }

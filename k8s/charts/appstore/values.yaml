@@ -29,7 +29,8 @@ images:
 
 # Created by k8s/bootstrap.sh. Keys: database-url (the owner role; API,
 # migrations, orphan check), worker-database-url (role appstore_worker; both
-# workers), credential-encryption-key, keycloak-client-secret,
+# workers), credential-encryption-key (API, VM executor),
+# results-encryption-key (API, both workers), keycloak-client-secret,
 # lti13-session-secret.
 secretName: appstore-t3
 

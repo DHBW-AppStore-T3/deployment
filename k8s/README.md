@@ -62,6 +62,12 @@ backend / worker / frontend: push to spike/dev
   login comes from the Secret `appstore-worker-db`); the migrations grant it
   only the queue, task events and task results. `python -m app.worker_db_role`
   is not used here.
+- **Two Fernet keys** (Secret `appstore-t3`): `credential-encryption-key`
+  (OpenStack credentials at rest, the VM jobs' credential envelopes and state
+  tokens) for the API and the VM executor; `results-encryption-key` (task
+  results) for the API and both workers. The pod deployer has only the
+  second: as a worker it can read the job queue, where the VM jobs'
+  envelopes travel.
 - **NetworkPolicies**: deny by default, then only the flows in the table.
   "Internet" excludes the private and link-local ranges (the metadata service
   among them) and the cluster's own ranges (`podApps.extraEgressExcept`).
@@ -123,10 +129,12 @@ Staging first; prod the same way after a successful staging test, through
    ```
 3. **Secrets**: `k8s/bootstrap.sh staging` (from this branch). It adds the
    logins of `appstore_t3` and `appstore_worker`, the Secret `appstore-t3`
-   (database URLs, a new Fernet key, the Keycloak client secret of
+   (database URLs, two new Fernet keys, the Keycloak client secret of
    `appstore-backend`, the LTI session secret) and the key
    `appstore-backend-client-secret` of `keycloak-secret`. Keycloak does not
-   start without that key, by design.
+   start without that key, by design. Run it again whenever this branch
+   gains a key (e.g. `results-encryption-key`): pods do not start without
+   their keys.
 4. **Images**: push `spike/dev` of backend, worker and frontend; their CI pins
    the new images in `k8s/env/appstore.yaml`. Until then the chart uses the
    moving `spike-dev` tags.

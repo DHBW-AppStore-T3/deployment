@@ -186,6 +186,8 @@ services:
       ALGORITHM: ${ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
+      # Task results (optional; without it the credential key seals them)
+      RESULTS_ENCRYPTION_KEY: ${RESULTS_ENCRYPTION_KEY:-}
 
       # Celery broker (.github#5): the pgq transport on this very database,
       # derived from DATABASE_URL. Set empty on purpose: an older .env on
@@ -312,6 +314,8 @@ services:
 
       # OpenStack credential decryption (must match backend)
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
+      # Task results (optional; without it the credential key seals them)
+      RESULTS_ENCRYPTION_KEY: ${RESULTS_ENCRYPTION_KEY:-}
 
       # Terraform pg backend — isolated DB, NOT the application DB.
       # Worker uses one schema per deployment (deployment_<uuid>).

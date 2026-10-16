@@ -93,6 +93,7 @@ to start in production without them (.github#7 O).
 - { name: APP_ENV, value: production }
 {{ include "appstore.secretEnv" (dict "context" . "name" "DATABASE_URL" "key" "database-url") }}
 {{ include "appstore.secretEnv" (dict "context" . "name" "CREDENTIAL_ENCRYPTION_KEY" "key" "credential-encryption-key") }}
+{{ include "appstore.secretEnv" (dict "context" . "name" "RESULTS_ENCRYPTION_KEY" "key" "results-encryption-key") }}
 - { name: KEYCLOAK_SERVER_URL, value: {{ $k.serverUrl | quote }} }
 - { name: KEYCLOAK_REALM, value: {{ $k.realm | quote }} }
 - { name: KEYCLOAK_ISSUER, value: {{ printf "https://%s/realms/%s" (required "ssoHost is required" .Values.ssoHost) $k.realm | quote }} }
@@ -116,10 +117,16 @@ to start in production without them (.github#7 O).
 - { name: TEMP_REPO_BASE_PATH, value: /tmp/repos }
 {{- end }}
 
+{{/*
+Both workers seal task results with the results key. Only the VM executor
+also gets the credential key (vm-executor.yaml): the pod deployer can read
+the job queue, where the VM jobs' credential envelopes travel, and has no
+business decrypting them.
+*/}}
 {{- define "appstore.workerEnv" -}}
 - { name: APP_ENV, value: production }
 {{ include "appstore.secretEnv" (dict "context" . "name" "DATABASE_URL" "key" "worker-database-url") }}
-{{ include "appstore.secretEnv" (dict "context" . "name" "CREDENTIAL_ENCRYPTION_KEY" "key" "credential-encryption-key") }}
+{{ include "appstore.secretEnv" (dict "context" . "name" "RESULTS_ENCRYPTION_KEY" "key" "results-encryption-key") }}
 {{- end }}
 
 {{/* Liveness of a Celery worker: its main process touches the heartbeat file every 30 s. */}}

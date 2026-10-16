@@ -64,9 +64,12 @@ if ! have appstore-t3; then
     --from-literal=database-url="postgresql://appstore_t3:$(key appstore-t3-db password)@$DB_HOST/appstore_t3?sslmode=require" \
     --from-literal=worker-database-url="postgresql://appstore_worker:$(key appstore-worker-db password)@$DB_HOST/appstore_t3?sslmode=require" \
     --from-literal=credential-encryption-key="$(fernet)" \
+    --from-literal=results-encryption-key="$(fernet)" \
     --from-literal=keycloak-client-secret="$(key keycloak-secret appstore-backend-client-secret)" \
     --from-literal=lti13-session-secret="$(rand 48)"
 fi
+# Task results have a key of their own (the pod deployer gets no other).
+add_key appstore-t3 results-encryption-key "$(fernet)"
 
 # --- The vendored reference stack (kept until it is retired; its apps are no
 # longer deployed by this branch, see k8s/README.md)
