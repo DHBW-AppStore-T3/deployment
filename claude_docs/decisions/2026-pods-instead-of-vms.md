@@ -1,5 +1,8 @@
 # Entscheidung: Apps als Pods statt als VMs (.github#4)
 
+> Ergänzt durch `2026-appstore-on-kubernetes.md` (unser Stack auf k8s); dort geändert: Punkt 3 (der Worker bindet
+> zwei Rollen) und Punkt 7 (jeder Host gehört seinem Deployment).
+
 ## Kontext
 Apps liefen als OpenTofu/Packer-Code, den der Worker ausführt. Das ist eine Lizenzfrage (BSL) und vor allem ein
 Sicherheitsproblem (fremder Code im Worker), dazu langsam (Packer-Builds) und betriebsintensiv. Der Cluster ist da.
