@@ -37,6 +37,8 @@
           "client": { "account": ["view-profile"] }
         }
       },
+      { "name": "offline_access", "description": "${role_offline-access}" },
+      { "name": "uma_authorization", "description": "${role_uma_authorization}" },
       { "name": "student", "description": "Uses deployments" },
       { "name": "teacher", "description": "Registers apps and deploys them" },
       { "name": "admin", "description": "Reviews app versions; administers the AppStore" }

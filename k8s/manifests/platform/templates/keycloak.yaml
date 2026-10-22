@@ -13,10 +13,9 @@ spec:
   selector: { matchLabels: { app: keycloak } }
   template:
     metadata:
+      # No checksum of the realm files: Keycloak never re-imports an existing
+      # realm (keycloak-realm.yaml), a restart would change nothing.
       labels: { app: keycloak }
-      annotations:
-        # A new realm file is imported at the next start only.
-        checksum/realms: {{ include "platform.dhbwRealm" . | sha256sum }}
     spec:
       containers:
         - name: keycloak
@@ -32,7 +31,8 @@ spec:
             - { name: KC_HOSTNAME, value: "https://{{ .Values.ssoHost }}" }
             {{- if not .Values.publicAdmin }}
             # The admin console is not on the public host (security review
-            # H-9): it is served for kubectl port-forward svc/keycloak 8080.
+            # H-9): it is served for kubectl port-forward svc/keycloak 8080,
+            # with the master realm's login pages (keycloak-admin-url.yaml).
             - { name: KC_HOSTNAME_ADMIN, value: "http://localhost:8080" }
             {{- end }}
             - { name: KC_HTTP_ENABLED, value: "true" }       # TLS ends at Traefik

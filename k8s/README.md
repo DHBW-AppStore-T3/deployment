@@ -90,7 +90,12 @@ backend / worker / frontend: push to spike/dev
   users cannot change their e-mail. Only `/realms/dhbw/`, `/realms/appstore/`
   and `/resources/` are on the public host: the master realm and the admin
   console are reached with `kubectl -n <ns> port-forward svc/keycloak 8080`
-  (then <http://localhost:8080/admin/>). Demo users only on staging.
+  (then <http://localhost:8080/admin/>, user `admin`, password from
+  `show-credentials.sh`). The local port has to be 8080: the console and the
+  master realm's login pages are built for <http://localhost:8080> (the job
+  `keycloak-admin-url` gives the master realm that frontend URL after each
+  sync). Realm files are imported into a new database only; a running realm
+  is changed in the admin console. Demo users only on staging.
 
 ## Layout
 
@@ -144,8 +149,9 @@ Staging first; prod the same way after a successful staging test, through
    `appstore.network.kubeApi` with `kubectl get svc,endpoints kubernetes -n default`.
 6. **Merge** `spike/pods-platform` into `spike/dev`. Argo CD prunes the old
    Applications (and, through the finalizer, what they deployed), creates the
-   database `appstore_t3`, imports realm `dhbw` (Keycloak restarts once),
-   migrates and starts our services.
+   database `appstore_t3`, imports realm `dhbw` (Keycloak restarts once, its
+   settings change), sets the master realm's frontend URL (job
+   `keycloak-admin-url`), migrates and starts our services.
 7. **Check**: `kubectl -n argocd get applications | grep staging`; then the
    staging test of the migration plan (phase 7): every app with two teams of
    two people, access checked per person, pause/resume, restart/reset,
