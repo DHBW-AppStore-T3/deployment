@@ -100,11 +100,12 @@ if ! have moodle-admin; then
 fi
 
 # Password of Moodle's demo users (moodle.setup.demoUsers; created by the chart's
-# `configure` init container). Staging: the same as the Keycloak demo users.
+# `configure` init container). Moodle's policy wants a special character, a digit,
+# upper and lower case.
 if ! have moodle-demo; then
-  if [ "$ENV_NAME" = staging ]; then DEMOPW=$(key keycloak-secret demo-password); else DEMOPW=$(rand 12); fi
+  DEMOPW="$(rand 12)-Aa1"
   kubectl -n "$NS" create secret generic moodle-demo --from-literal=password="$DEMOPW"
-  [ "$ENV_NAME" = staging ] || NEW+=("Moodle demo users (dozent, student1, student2): $DEMOPW")
+  NEW+=("Moodle demo users (see moodle.setup.demoUsers): $DEMOPW")
 fi
 
 # --- Pulling our private images (images.pullSecrets in environments/*.yaml).
