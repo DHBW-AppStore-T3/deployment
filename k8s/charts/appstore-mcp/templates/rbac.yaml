@@ -1,0 +1,81 @@
+# Read-only, and nothing else: get/list/watch only, no `secrets`, no
+# `configmaps`, no `pods/exec`, `pods/attach`, `pods/portforward`, no write verb.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: appstore-mcp
+  labels: {{- include "mcp.labels" . | nindent 4 }}
+automountServiceAccountToken: true
+---
+# Cluster-wide: just enough for the overview and the dep-* counts (no logs, no
+# events, no workloads of dep-* namespaces).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "mcp.clusterName" . }}
+  labels: {{- include "mcp.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, nodes, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [applications, appprojects]
+    verbs: [get, list, watch]
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters, backups, scheduledbackups]
+    verbs: [get, list, watch]
+  - apiGroups: [cert-manager.io]
+    resources: [certificates, certificaterequests, issuers, clusterissuers]
+    verbs: [get, list, watch]
+  - apiGroups: [acme.cert-manager.io]
+    resources: [orders, challenges]
+    verbs: [get, list, watch]
+  - apiGroups: [metrics.k8s.io]
+    resources: [nodes, pods]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "mcp.clusterName" . }}
+  labels: {{- include "mcp.labels" . | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "mcp.clusterName" . }} }
+subjects:
+  - { kind: ServiceAccount, name: appstore-mcp, namespace: {{ .Release.Namespace }} }
+---
+# Bound by a RoleBinding in each of `readableNamespaces` only: logs, events,
+# workloads. dep-* namespaces are not among them, so even a bug in the server
+# cannot read student pods' logs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "mcp.clusterName" . }}-namespaced
+  labels: {{- include "mcp.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, events, services, endpoints, persistentvolumeclaims]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch]
+{{- range .Values.readableNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "mcp.clusterName" $ }}
+  namespace: {{ . }}
+  labels: {{- include "mcp.labels" $ | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "mcp.clusterName" $ }}-namespaced }
+subjects:
+  - { kind: ServiceAccount, name: appstore-mcp, namespace: {{ $.Release.Namespace }} }
+{{- end }}

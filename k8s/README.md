@@ -29,6 +29,13 @@ push to dev  of backend / worker / frontend            push to main of backend /
 push to dev of this repository (charts, policy, platform) -> staging; k8s/promote.sh: PR dev -> main -> prod
 ```
 
+`appstore-mcp` (`charts/appstore-mcp`, Application `<env>-mcp`, host
+`appstore-mcp[-staging].<zone>`): a read-only remote MCP server for agents
+(`staging_verdict` after a push to dev), image key `appstoreMcp`. Secret
+`appstore-mcp` is created by `bootstrap.sh`; a human adds the GitHub OAuth app
+credentials (see the appstore-mcp repo, docs/OPERATIONS.md). Off on prod until
+`main` has an image (`mcp.enabled` in `environments/prod.yaml`).
+
 Apps (the things students deploy) are not part of this: they are registered
 through the AppStore and run as pods; see the app-registry repository.
 

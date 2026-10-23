@@ -40,6 +40,8 @@ jobs:
           helm template appstore k8s/charts/appstore -n appstore-staging \
             -f k8s/tests/policy/placement-values.yaml > rendered/placement.yaml
           helm lint k8s/charts/appstore -f k8s/tests/policy/placement-values.yaml
+      - name: appstore-mcp may only read (no Secrets, no exec)
+        run: python k8s/tests/check_mcp_rbac.py rendered/staging.yaml rendered/prod.yaml
       - name: Check against the Kubernetes schemas
         run: |
           set -euo pipefail

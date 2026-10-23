@@ -70,6 +70,23 @@ fi
 # Task results have a key of their own (the pod deployer gets no other).
 add_key appstore-t3 results-encryption-key "$(fernet)"
 
+# --- appstore-mcp (k8s/charts/appstore-mcp, secretName appstore-mcp). Only the token
+# signing key is generated here; the GitHub OAuth app credentials (and an optional
+# read-only GitHub PAT) are created by a human, see appstore-mcp docs/OPERATIONS.md:
+#   kubectl -n <ns> patch secret appstore-mcp --type merge -p '{"stringData":{"github-client-id":"<ID>","github-client-secret":"<SECRET>"}}'
+# Empty placeholders keep the keys visible; an existing Secret is never touched
+# (a missing signing key is added).
+if ! have appstore-mcp; then
+  kubectl -n "$NS" create secret generic appstore-mcp \
+    --from-literal=token-signing-key="$(fernet)" \
+    --from-literal=static-tokens="" \
+    --from-literal=github-client-id="" \
+    --from-literal=github-client-secret="" \
+    --from-literal=github-api-token="" >/dev/null
+  echo "Secret appstore-mcp created: still needs github-client-id and github-client-secret (appstore-mcp docs/OPERATIONS.md)"
+fi
+add_key appstore-mcp token-signing-key "$(fernet)"
+
 # --- Pulling our private images (images.pullSecrets in environments/*.yaml).
 # The token goes from the file to kubectl's stdin, never into an argument.
 if [ -n "${GHCR_PULL_TOKEN_FILE:-}" ]; then

@@ -34,7 +34,7 @@ and System 3.1 (branch protection, already enforced server-side).
                                            past a required check.
 6. Merge into dev autonomously           — `gh pr merge --squash --delete-branch` once
                                            CI is green. dev → staging deploys automatically.
-7. Call /verify-staging                  — Hermes prüft Staging, postet auf Discord.
+7. Call /verify-staging                  — appstore-MCP prüft Staging (healthy/progressing/unhealthy).
 8. STOP before main                      — main → prod. This is System 5.2's second gate.
                                            Never merge to main yourself. Report staging
                                            status and wait for explicit human approval.
@@ -60,16 +60,14 @@ Once merged, staging deploys automatically
 (`deployment/.github/workflows/staging.yml` — no action needed from
 you).
 
-### Stufe 8 — Hermes Staging-Verify (Handoff)
+### Stufe 8 — Staging-Verify (appstore MCP)
 
-Nach erfolgtem Merge und Staging-Deploy rufe `/verify-staging` auf.
-Dieser Skill sendet Hermes eine Verify-Anfrage via Discord-Webhook —
-Hermes prüft Container-Health, Logs und allgemeinen Status und postet
-das Ergebnis im Discord-Channel.
-
-Warte auf Hermes' Discord-Antwort, bevor du dem Menschen "Staging sieht
-gut aus" meldest. Wenn Hermes Probleme meldet, nutze `/diagnose-production`
-für tiefere Analyse.
+Nach erfolgtem Merge auf `dev` rufe `/verify-staging` auf. Der Skill fragt
+den read-only MCP-Server `appstore` (Repo appstore-mcp): CI- und
+`k8s-bump.yml`-Läufe, Argo CD, Rollout-Digests, Pods, Health. Warte auf
+`staging_verdict = healthy`, bevor du dem Menschen "Staging sieht gut aus"
+meldest. Bei `unhealthy` diagnostiziere mit den Tools des Skills
+(`rollout_status`, `argocd_app`, `pods`, `events`, `logs`).
 
 **Do not** proceed to prod — that is System 5.2's second gate, always a
 separate, explicit human decision, never something this skill initiates.
