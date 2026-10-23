@@ -180,23 +180,34 @@ migrations:
 
 # Demo data after every sync (files/seed.py): the realm's users in the database,
 # a demo course (realm teachers = its teachers, students without a course join
-# it) and public catalog apps owned by the first admin. Idempotent, adds only.
+# it) and public catalog apps (registered, v2.0.0 submitted and approved as the
+# first admin, through the API handlers in the pod). Idempotent, adds only.
 seed:
   enabled: false
   courseName: Demo-Kurs
+  # name, description, gitLink (public repository), versions: tags that are submitted
+  # and approved. Needs the tag on a commit with appstore.yaml (runtime pods).
   apps:
     - name: Online-IDE
-      description: Browserbasierte Entwicklungsumgebung (VS Code im Browser) fuer Lehrveranstaltungen.
-      gitLink: https://github.com/DHBW-AppStore/Online-IDE.git
+      description: Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Online-IDE
+      versions: [v2.0.0]
     - name: Web-LaTeX
-      description: LaTeX im Browser schreiben und als PDF ausgeben, ohne lokale Installation.
-      gitLink: https://github.com/DHBW-AppStore/Web-LaTeX.git
+      description: LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Web-LaTeX
+      versions: [v2.0.0]
     - name: Jupyter-Notebook
-      description: Jupyter-Notebooks fuer Datenanalyse und Python-Uebungen.
-      gitLink: https://github.com/DHBW-AppStore/Jupyter-Notebook.git
+      description: JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Jupyter-Notebook
+      versions: [v2.0.0]
     - name: pgAdmin
-      description: Weboberflaeche zur Verwaltung von PostgreSQL-Datenbanken.
-      gitLink: https://github.com/DHBW-AppStore/pgAdmin.git
+      description: pgAdmin mit PostgreSQL und Pagila-Beispieldatenbank, ein Pod pro Team.
+      gitLink: https://github.com/DHBW-AppStore-T3/pgAdmin
+      versions: [v2.0.0]
+    - name: template-app
+      description: Vorlage fuer neue AppStore-Apps (nginx-Pod).
+      gitLink: https://github.com/DHBW-AppStore-T3/template-app
+      versions: [v2.0.0]
 
 # Hourly report of dep-* namespaces without a live deployment (the Job fails
 # when it finds one).
