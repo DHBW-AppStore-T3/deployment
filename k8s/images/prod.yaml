@@ -12,5 +12,5 @@ images:
     appstoreMcp: "latest"  # placeholder tag; the mcp application is disabled on prod until the first main CI run
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
-    selfServiceUi: ""
+    selfServiceUi: "sha256:e2aa3534681c48978f201350b38e5f829063dd567c091fe884259e4547c7584e"  # sha-728d910
     moodle: "sha-0000000"  # not built yet
