@@ -1,7 +1,7 @@
 name: K8s - roll out an image (staging)
 
 # Called by the CI of backend and worker (spike/dev) and of the frontend
-# (spike/vue-pods) after they pushed an image:
+# (spike/react-pods) after they pushed an image:
 #   gh workflow run k8s-bump.yml --ref spike/dev #     -f component=... -f tag=sha-<commit> -f digest=sha256:<64 hex>
 # Writes the digest into k8s/env/appstore.yaml on spike/dev; Argo CD's staging
 # follows. The caller passes the digest it pushed, so this workflow needs no
