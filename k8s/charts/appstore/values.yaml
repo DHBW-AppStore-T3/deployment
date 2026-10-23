@@ -178,6 +178,26 @@ selfServiceUi:
 migrations:
   enabled: true
 
+# Demo data after every sync (files/seed.py): the realm's users in the database,
+# a demo course (realm teachers = its teachers, students without a course join
+# it) and public catalog apps owned by the first admin. Idempotent, adds only.
+seed:
+  enabled: false
+  courseName: Demo-Kurs
+  apps:
+    - name: Online-IDE
+      description: Browserbasierte Entwicklungsumgebung (VS Code im Browser) fuer Lehrveranstaltungen.
+      gitLink: https://github.com/DHBW-AppStore/Online-IDE.git
+    - name: Web-LaTeX
+      description: LaTeX im Browser schreiben und als PDF ausgeben, ohne lokale Installation.
+      gitLink: https://github.com/DHBW-AppStore/Web-LaTeX.git
+    - name: Jupyter-Notebook
+      description: Jupyter-Notebooks fuer Datenanalyse und Python-Uebungen.
+      gitLink: https://github.com/DHBW-AppStore/Jupyter-Notebook.git
+    - name: pgAdmin
+      description: Weboberflaeche zur Verwaltung von PostgreSQL-Datenbanken.
+      gitLink: https://github.com/DHBW-AppStore/pgAdmin.git
+
 # Hourly report of dep-* namespaces without a live deployment (the Job fails
 # when it finds one).
 orphans:

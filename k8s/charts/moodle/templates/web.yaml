@@ -32,6 +32,9 @@ spec:
   template:
     metadata:
       labels: {{- include "moodle.labels" $comp | nindent 8 }}
+      annotations:
+        # A changed setup (values or script) restarts the pod, which re-runs `configure`.
+        checksum/setup: {{ include (print $.Template.BasePath "/setup.yaml") . | sha256sum }}
     spec:
       {{- include "moodle.podDefaults" . | nindent 6 }}
       initContainers:
@@ -53,6 +56,26 @@ spec:
             requests: { cpu: 200m, memory: 512Mi }
             limits: { memory: 1536Mi }
           volumeMounts: {{- include "moodle.volumeMounts" . | nindent 12 }}
+        {{- if .Values.setup.enabled }}
+        # After the install/upgrade: site defaults, LTI tool, example course,
+        # demo users (idempotent, configure.php). A failure is logged and does
+        # not keep Moodle from starting.
+        - name: configure
+          image: {{ include "moodle.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [php, /setup/configure.php]
+          env:
+            {{- include "moodle.env" . | nindent 12 }}
+            - name: MOODLE_DEMO_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.demo }}, key: password, optional: true } }
+          securityContext: {{- include "moodle.containerSecurity" . | nindent 12 }}
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 1536Mi }
+          volumeMounts:
+            {{- include "moodle.volumeMounts" . | nindent 12 }}
+            - { name: setup, mountPath: /setup, readOnly: true }
+        {{- end }}
       containers:
         - name: moodle
           image: {{ include "moodle.image" . }}
@@ -76,7 +99,12 @@ spec:
             initialDelaySeconds: 20
             periodSeconds: 20
           volumeMounts: {{- include "moodle.volumeMounts" . | nindent 12 }}
-      volumes: {{- include "moodle.volumes" . | nindent 8 }}
+      volumes:
+        {{- include "moodle.volumes" . | nindent 8 }}
+        {{- if .Values.setup.enabled }}
+        - name: setup
+          configMap: { name: moodle-setup }
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

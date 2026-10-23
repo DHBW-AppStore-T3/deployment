@@ -16,9 +16,12 @@ mcp:
 platform:
   demoUsers: false
 appstore:
-  # The Keycloak client exists in the live realm (created with
-  # k8s/keycloak-self-service-client.sh prod).
+  # The Keycloak client in the live realm is kept by the platform chart's
+  # keycloak-config job (k8s/keycloak-self-service-client.sh does the same by hand).
   selfServiceUi:
+    enabled: true
+  # Demo course and catalog apps after every sync (charts/appstore/files/seed.py).
+  seed:
     enabled: true
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
@@ -74,3 +77,10 @@ moodle:
     pullSecrets: [ghcr-pull]
   site:
     adminEmail: max.rml@web.de
+  # Demo users of Moodle (password: Secret moodle-demo); same e-mail addresses as
+  # the Keycloak users, so an LTI launch and the SSO login meet the same AppStore user.
+  setup:
+    demoUsers:
+      - { username: dozent, email: dozent@appstore.example, firstName: Dozent, lastName: Prod, role: teacher }
+      - { username: student1, email: student1@appstore.example, firstName: Student, lastName: Eins, role: student }
+      - { username: student2, email: student2@appstore.example, firstName: Student, lastName: Zwei, role: student }
