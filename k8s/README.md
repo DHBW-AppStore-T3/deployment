@@ -99,6 +99,8 @@ through the AppStore and run as pods; see the app-registry repository.
 
 - `charts/appstore`: our services (values documented in `values.yaml`).
 - `manifests/platform` (Postgres + Keycloak): chart, parametrised by host.
+- `argocd/cluster/cnpg.yaml`: the CloudNativePG operator, shared by both
+  environments (applied by `bootstrap.sh`).
 - `argocd/apps-chart`: renders every Argo Application of one environment from
   `environments/<env>.yaml`; `argocd/roots/<env>.yaml`: the environment's root.
 - `images/<env>.yaml`: the image digests, written by CI (dev writes staging,

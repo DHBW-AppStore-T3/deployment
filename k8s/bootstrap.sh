@@ -87,6 +87,8 @@ elif ! have ghcr-pull; then
   echo "WARNING: no Secret ghcr-pull; our images cannot be pulled. Run again with GHCR_PULL_TOKEN_FILE." >&2
 fi
 
+# The CloudNativePG operator is cluster-wide (shared by both environments).
+kubectl apply -f argocd/cluster/cnpg.yaml
 kubectl apply -f "argocd/roots/$ENV_NAME.yaml"
 
 if ((${#NEW[@]})); then
