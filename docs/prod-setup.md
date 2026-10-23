@@ -353,23 +353,13 @@ Anders als in Dev entfällt der Vorlauf mit `make keycloak-disable-ssl` — Cadd
 
 Ab jetzt kann das Backend Tokens validieren.
 
-## Optional: podman-mcp (Hermes läuft auf einer eigenen VM)
+## Entfallen: podman-mcp und Hermes
 
-Seit deployment#49 läuft `hermes-agent` nicht mehr auf `appstore-prod-01`
-selbst, sondern auf einer eigenen, dedizierten VM
-(`hermes-dhbw-appstore`, siehe `infrastructure/terraform/envs/hermes/`
-und `claude_docs/decisions/2026-hermes-dedicated-vm.md`). Diese VM hier
-läuft weiterhin nur `podman-mcp`, das Hermes über MCP/TCP von außen
-erreicht — additiv zum laufenden Prod-Stack, siehe `HARNESS.md` in
-`.github` für die volle Begründung (Systeme 2, 3.2, 3.5). Kurzform:
-
-1. `make podman-mcp-up` startet `podman-mcp` (Port 8080 auf dem Host-Interface, aber per OpenStack-Security-Group ausschließlich für die IPv6-Adresse von `hermes-dhbw-appstore` erreichbar — kein offener Port).
-2. `agent/config.yaml` (auf der Hermes-VM, nicht hier) filtert, welche podman-mcp-Tools Hermes überhaupt sieht — aktuell nur `container_list`/`container_inspect`/`container_logs`. Das ist die eigentliche Guardrail, nicht der Container selbst; podman-mcp hat kein eingebautes Allowlist/Read-Only-Feature.
-3. `make podman-mcp-logs` zum Verifizieren, `make podman-mcp-down` zum Entfernen — der Prod-Stack selbst bleibt davon unberührt.
-
-Für den Hermes-Agent selbst (Gemini-Key, Discord-Bot-Setup,
-`docker-compose.hermes.yml`) siehe die Einrichtung auf
-`hermes-dhbw-appstore`, nicht diese Anleitung.
+`podman-mcp`, der Hermes-Agent (`docker-compose.hermes.yml`) und ihr Workflow
+sind abgelöst durch den read-only MCP-Server `appstore-mcp`
+(`k8s/charts/appstore-mcp`, Repo appstore-mcp). Die Terraform-Env
+`infrastructure/terraform/envs/hermes` (VM `hermes-dhbw-appstore`) bleibt, bis
+die VM separat abgebaut wird.
 
 ## Optional: Moodle-Stack (LTI-Prototyp)
 

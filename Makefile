@@ -33,17 +33,9 @@ DC_PROD := docker compose -f docker-compose.prod.yml
 # compose file, never applied standalone, since both reference
 # backend-network-prod / frontend-network-prod as external networks
 # that only exist once docker-compose.prod.yml has created them.
-#
-# podman-mcp (deployment#49) is the exception: it no longer shares a
-# Docker network with anything, so it's combined with the base file
-# purely so `docker compose ps` shows the full picture on this VM, same
-# as DC_RUNNER below. MCP_ENV must be set in the environment (prod here;
-# staging/ci invoke the same overlay with their own MCP_ENV from their
-# own Makefile-equivalent / manual step).
-DC_PODMAN_MCP := MCP_ENV=prod docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml
 DC_MOODLE     := docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml
 # Runner overlay joins no prod network at all (see docker-compose.runner.yml's
-# header), so unlike DC_PODMAN_MCP/DC_MOODLE it's fine standalone — kept combined
+# header), so unlike DC_MOODLE it's fine standalone — kept combined
 # with the base file anyway, purely so `docker compose ps` from either
 # invocation shows the same full picture.
 DC_RUNNER := docker compose -f docker-compose.prod.yml -f docker-compose.runner.yml
@@ -76,7 +68,6 @@ PGADMIN_PORT       ?= 5050
         prod-up prod-down prod-stop prod-restart prod-pull prod-logs prod-ps \
         prod-migrate prod-seed prod-reset \
         prod-set-keycloak-urls \
-        podman-mcp-up podman-mcp-down podman-mcp-logs podman-mcp-ps \
         moodle-up moodle-install moodle-down moodle-logs moodle-ps \
         runner-up runner-down runner-logs runner-ps \
         up down logs build
@@ -481,23 +472,6 @@ prod-logs: ## Follow prod logs (all services, or SVC=backend for one)
 
 prod-ps: ## List prod containers + health
 	$(DC_PROD) ps
-
-# ----------------------------------------------------------------
-# podman-mcp (this VM only) — HARNESS.md Systems 2/3, deployment#49.
-# Hermes itself no longer runs here; see docker-compose.hermes.yml on
-# hermes-dhbw-appstore for that half.
-# ----------------------------------------------------------------
-podman-mcp-up: ## Start podman-mcp alongside the running prod stack
-	$(DC_PODMAN_MCP) up -d --build podman-mcp
-
-podman-mcp-down: ## Stop and remove podman-mcp only (prod untouched)
-	$(DC_PODMAN_MCP) rm -sf podman-mcp
-
-podman-mcp-logs: ## Follow podman-mcp logs
-	$(DC_PODMAN_MCP) logs -f podman-mcp
-
-podman-mcp-ps: ## List podman-mcp container + health
-	$(DC_PODMAN_MCP) ps podman-mcp
 
 # ----------------------------------------------------------------
 # Moodle stack (LTI prototype) — deploys the moodle_appstore fork,

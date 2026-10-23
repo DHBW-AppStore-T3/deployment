@@ -12,5 +12,5 @@ Details zu diesem Repo:
 
 ## Repo-Lokale Skills & Befehle
 - Lokale Skills: `/deploy-status`, `/diagnose-production`, `/restart-service`
-- Staging-Healthcheck & Hermes Discord Notification: `python infrastructure/scripts/notify_staging_health.py`
+- Staging nach einem Push prüfen: `/verify-staging` (MCP-Server `appstore`, Repo appstore-mcp: `claude mcp add --transport http appstore https://appstore-mcp-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/mcp`, dann `/mcp` -> Authenticate). Hermes ist abgelöst.
 
