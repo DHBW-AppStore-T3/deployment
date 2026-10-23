@@ -18,9 +18,10 @@ spec:
     helm:
       valueFiles: [../../images/{{ .Values.env.name }}.yaml]
       values: |
-        {{- with .Values.moodle }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- /* The LTI tool matches the AppStore's LTI13_* settings (appstore.api.lti) */}}
+        {{- $lti := dig "api" "lti" dict .Values.appstore }}
+        {{- $moodle := mergeOverwrite (dict "lti" (dict "appstoreHost" .Values.env.host "clientId" ($lti.clientId | default "") "deploymentId" ($lti.deploymentId | default ""))) (deepCopy .Values.moodle) }}
+        {{- toYaml $moodle | nindent 8 }}
   destination:
     server: https://kubernetes.default.svc
     namespace: {{ .Values.env.namespace }}

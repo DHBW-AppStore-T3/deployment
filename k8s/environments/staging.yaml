@@ -17,6 +17,9 @@ platform:
 appstore:
   selfServiceUi:
     enabled: true
+  # Demo course and catalog apps after every sync (charts/appstore/files/seed.py).
+  seed:
+    enabled: true
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
   images:
@@ -70,3 +73,10 @@ moodle:
     pullSecrets: [ghcr-pull]
   site:
     adminEmail: max.rml@web.de
+  # Demo users of Moodle (password: Secret moodle-demo); same e-mail addresses as
+  # the Keycloak users, so an LTI launch and the SSO login meet the same AppStore user.
+  setup:
+    demoUsers:
+      - { username: dozent.demo, email: dozent.demo@appstore.example, firstName: Dozentin, lastName: Demo, role: teacher }
+      - { username: student1.demo, email: student1.demo@appstore.example, firstName: Studentin, lastName: Eins, role: student }
+      - { username: student2.demo, email: student2.demo@appstore.example, firstName: Student, lastName: Zwei, role: student }
