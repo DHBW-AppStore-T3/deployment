@@ -1,3 +1,4 @@
+{{- if .Values.moodle.enabled }}
 # Moodle (our moodle_appstore fork): web, cron, volume, ingress. The image
 # digest comes from k8s/images/<env>.yaml (key moodle), the database from the
 # platform application (wave 1).
@@ -26,3 +27,4 @@ spec:
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [CreateNamespace=true]
+{{- end }}
