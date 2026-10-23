@@ -26,6 +26,7 @@
 # Configuration
 # ----------------------------------------------------------------
 DC_DEV  := docker compose -f docker-compose.dev.yml
+DC_SIM  := docker compose -f docker-compose.dev-sim.yml
 DC_PROD := docker compose -f docker-compose.prod.yml
 
 # Additive overlays on top of the prod stack (HARNESS.md Systems 2) — always combined with the base prod
@@ -53,6 +54,7 @@ PGADMIN_PORT       ?= 5050
         dev-up dev-down dev-stop dev-restart dev-restart-backend dev-restart-frontend dev-restart-worker \
         dev-logs dev-logs-backend dev-logs-frontend dev-logs-worker dev-logs-keycloak \
         dev-build dev-build-backend dev-build-frontend dev-build-worker dev-rebuild dev-ps \
+        dev-sim dev-sim-up dev-sim-down dev-sim-logs \
         shell-backend shell-worker shell-frontend \
         shell-db shell-keycloak shell-keycloak-db \
         keycloak-up keycloak-down keycloak-restart keycloak-logs keycloak-ps keycloak-reset keycloak-wait \
@@ -130,6 +132,33 @@ urls: ## Show all dev URLs in one place
 	@echo "  Keycloak Realm:     http://localhost:$(KEYCLOAK_PORT)/realms/dhbw"
 	@echo "  pgAdmin:            http://localhost:$(PGADMIN_PORT)            (admin@admin.com / admin)"
 	@echo ""
+
+# ----------------------------------------------------------------
+# Simulation Mode (.github#6): no OpenStack, no Keycloak, no cluster
+# ----------------------------------------------------------------
+dev-sim: ## First start: up + migrate + seed (simulate mode, no Keycloak/OpenStack)
+	@$(MAKE) --no-print-directory env
+	$(DC_SIM) up -d --build
+	@echo "Warte auf Postgres..."
+	@$(DC_SIM) exec -T postgres sh -c 'until pg_isready -U postgres; do sleep 1; done'
+	$(DC_SIM) exec -T backend poetry run alembic upgrade head
+	$(DC_SIM) cp ./seed/seed_sim.py backend-sim:/tmp/seed_sim.py
+	$(DC_SIM) exec -T backend poetry run python /tmp/seed_sim.py
+	@echo ""
+	@echo "✓ Simulation stack bereit."
+	@echo "  Backend API Docs:   http://localhost:$(BACKEND_PORT)/docs"
+	@echo "  Frontend:           http://localhost:$(FRONTEND_PORT_DEV)"
+	@echo ""
+	@echo "  Auth: X-Dev-User Header, z.B. prof@dhbw.de oder student@dhbw.de"
+
+dev-sim-up: ## Start simulation stack (without rebuild/migrate/seed)
+	$(DC_SIM) up -d
+
+dev-sim-down: ## Stop simulation stack
+	$(DC_SIM) down
+
+dev-sim-logs: ## Follow simulation stack logs
+	$(DC_SIM) logs -f
 
 # ----------------------------------------------------------------
 # Development Environment

@@ -1,0 +1,126 @@
+# ================================================================
+# Simulation-Mode Development Stack (.github#6)
+#
+# Runs without OpenStack, Keycloak, Redis or RabbitMQ.
+# Pod-apps deploy against FakeKube (no cluster needed).
+#
+# Usage:
+#   make dev-sim            # first start: up + migrate + seed
+#   make dev-sim-up         # subsequent starts
+#   make dev-sim-down       # stop
+# ================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres-sim
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-backend_dev}
+    volumes:
+      - postgres_sim_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sim-network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.dev
+    container_name: backend-sim
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-sim}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
+      GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      # Simulate mode: no Keycloak, no OpenStack
+      DEV_MODE: "true"
+      OPENSTACK_SIMULATE: "true"
+      # Stub values so Keycloak config does not fail validation
+      KEYCLOAK_SERVER_URL: "http://localhost:8080"
+      KEYCLOAK_REALM: "dhbw"
+      KEYCLOAK_CLIENT_ID: "appstore-backend"
+      KEYCLOAK_ENABLED: "false"
+      SMTP_ENABLED: "false"
+      LTI13_SESSION_SECRET: "change-me-in-dev"
+      HANDOFF_SESSION_SECRET: "change-me-in-dev"
+      DEBUG: "true"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+      - /app/.venv
+      - backend_sim_repos:/tmp/repos
+    networks:
+      - sim-network
+
+  worker:
+    build:
+      context: ../worker
+      dockerfile: Dockerfile.dev
+    container_name: worker-sim
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
+      RESULTS_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
+      APPSTORE_API_URL: http://backend:8000
+      GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
+      APP_ENV: "development"
+      WORKER_SIMULATE: "true"
+      DEBUG: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../worker:/app
+      - /app/.venv
+    networks:
+      - sim-network
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend-sim
+    environment:
+      VITE_APP_URL: ${VITE_APP_URL:-http://localhost:5173}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # No Keycloak in sim mode
+      VITE_KEYCLOAK_URL: ""
+      NODE_ENV: development
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - sim-network
+
+volumes:
+  postgres_sim_data:
+    driver: local
+  backend_sim_repos:
+    driver: local
+
+networks:
+  sim-network:
+    driver: bridge
+    name: sim-network-dev
