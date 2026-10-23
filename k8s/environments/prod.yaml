@@ -60,6 +60,9 @@ appstore:
         - 10.43.0.1/32
         - 2001:7c0:1b20:c913:1::10d/128
 moodle:
+  # Off on prod until the first image of `main` is built (images/prod.yaml: moodle),
+  # the moodle-admin Secret exists and the LTI values are set.
+  enabled: false
   # Moodle (k8s/charts/moodle); one label below the wildcard certificate.
   host: moodle.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   images:
