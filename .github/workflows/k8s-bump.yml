@@ -8,7 +8,8 @@ name: K8s - roll out an image
 # of that environment follows. The caller passes the digest it pushed, so this
 # workflow needs no read access to the components' (private) packages.
 #   dev   a commit on dev                       -> staging
-#   main  a pull request with auto-merge on main -> prod (main requires checks)
+#   main  a pull request with auto-merge on main -> prod (main requires the
+#         Gitleaks check, which this workflow dispatches on the bump branch)
 on:
   workflow_dispatch:
     inputs:
@@ -33,6 +34,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: write     # dispatch the secret scan on the bump branch
 
 jobs:
   bump:
@@ -49,10 +51,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-          # Staging only needs the GITHUB_TOKEN. For prod the secret
-          # DEPLOYMENT_PAT (repo + workflow scope) is required: a pull request
-          # opened with the GITHUB_TOKEN does not run the required checks.
-          token: ${{ secrets.DEPLOYMENT_PAT || github.token }}
       - name: Pin the image by its digest
         id: pin
         env:
@@ -87,14 +85,16 @@ jobs:
       - name: Prod - pull request into main, merged when the checks pass
         if: steps.pin.outputs.changed == 'true' && github.ref_name == 'main'
         env:
-          GH_TOKEN: ${{ secrets.DEPLOYMENT_PAT }}
+          GH_TOKEN: ${{ github.token }}
           COMPONENT: ${{ inputs.component }}
           TAG: ${{ inputs.tag }}
         run: |
-          [ -n "$GH_TOKEN" ] || { echo "secret DEPLOYMENT_PAT is missing: prod cannot be rolled out automatically" >&2; exit 1; }
           BR="bump/prod-${COMPONENT}-${TAG}"
           git push origin "HEAD:refs/heads/${BR}"
+          # No workflow runs for a pull request opened with the GITHUB_TOKEN:
+          # report the required check by running it on the branch ourselves.
+          gh workflow run secret-scan.yml --ref "$BR"
           gh pr create --base main --head "$BR" \
             --title "chore(k8s): roll out ${COMPONENT} ${TAG} on prod" \
-            --body "Written by k8s-bump.yml after the CI of ${COMPONENT} pushed ${TAG} from main. Merging rolls it out on prod."
+            --body "Written by k8s-bump.yml after the CI of ${COMPONENT} pushed ${TAG} from main. Merges itself when the Gitleaks check is green."
           gh pr merge "$BR" --auto --squash --delete-branch
