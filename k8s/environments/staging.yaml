@@ -8,6 +8,10 @@ env:
 platform:
   demoUsers: true
 appstore:
+  # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
+  # this docker-registry Secret from a read:packages token.
+  images:
+    pullSecrets: [ghcr-pull]
   api:
     # The DHBW Keystone (OPENSTACK_ALLOWED_AUTH_URLS); empty: no OpenStack
     # credential can be saved, so no VM app (the Windows desktop) runs.

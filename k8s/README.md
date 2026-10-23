@@ -22,9 +22,10 @@ its Argo apps live on `spike/k8s` (root app `root`, which also owns the
 cluster-wide `cnpg` operator).
 
 ```
-backend / worker / frontend: push to spike/dev
-   └─ CI builds, scans and pushes the images (tags spike-dev and sha-<commit>)
-   └─ CI dispatches k8s-bump.yml here: the image's digest goes into k8s/env/appstore.yaml [skip ci]
+backend / worker: push to spike/dev; frontend: push to spike/vue-pods (the Vue
+frontend; the frontend's spike/dev is the React port, not deployed here)
+   └─ CI builds, scans and pushes the images (tags spike-dev / spike-vue-pods and sha-<commit>)
+   └─ CI dispatches k8s-bump.yml here with the pushed digest: it goes into k8s/env/appstore.yaml [skip ci]
                                         │ Argo CD (staging-root, tracks spike/dev)
                                         ▼
                                     STAGING  (appstore-staging.<zone>)
@@ -132,17 +133,18 @@ Staging first; prod the same way after a successful staging test, through
        -p '{"metadata":{"finalizers":["resources-finalizer.argocd.argoproj.io"]}}'
    done
    ```
-3. **Secrets**: `k8s/bootstrap.sh staging` (from this branch). It adds the
-   logins of `appstore_t3` and `appstore_worker`, the Secret `appstore-t3`
-   (database URLs, two new Fernet keys, the Keycloak client secret of
-   `appstore-backend`, the LTI session secret) and the key
-   `appstore-backend-client-secret` of `keycloak-secret`. Keycloak does not
-   start without that key, by design. Run it again whenever this branch
-   gains a key (e.g. `results-encryption-key`): pods do not start without
-   their keys.
-4. **Images**: push `spike/dev` of backend, worker and frontend; their CI pins
-   the new images in `k8s/env/appstore.yaml`. Until then the chart uses the
-   moving `spike-dev` tags.
+3. **Secrets**: `GHCR_PULL_TOKEN_FILE=<file> k8s/bootstrap.sh staging` (from
+   this branch). It adds the logins of `appstore_t3` and `appstore_worker`,
+   the Secret `appstore-t3` (database URLs, two new Fernet keys, the Keycloak
+   client secret of `appstore-backend`, the LTI session secret), the key
+   `appstore-backend-client-secret` of `keycloak-secret` and the image pull
+   Secret `ghcr-pull` (the file holds a token with `read:packages` only; our
+   packages are private). Keycloak does not start without that key, by
+   design. Run it again whenever this branch gains a key (e.g.
+   `results-encryption-key`): pods do not start without their keys.
+4. **Images**: push `spike/dev` of backend and worker and `spike/vue-pods` of
+   the frontend; their CI pins the new images in `k8s/env/appstore.yaml`.
+   Until then the chart uses the moving `spike-dev` / `spike-vue-pods` tags.
 5. **Settings** in `environments/staging.yaml`: `appstore.api.openstackAllowedAuthUrls`
    (the DHBW Keystone, from the GitHub secrets; without it no VM app runs),
    the LTI settings if Moodle should launch the AppStore, and check

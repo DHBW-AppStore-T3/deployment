@@ -1,10 +1,12 @@
 name: K8s - roll out an image (staging)
 
-# Called by the CI of backend, worker and frontend after they pushed the
-# images of a spike/dev commit (gh workflow run k8s-bump.yml --ref spike/dev
-# -f component=... -f tag=sha-<commit>). Writes the image's digest into
-# k8s/env/appstore.yaml on spike/dev; Argo CD's staging follows. Production
-# gets it only through k8s/promote.sh (a PR into spike/main).
+# Called by the CI of backend and worker (spike/dev) and of the frontend
+# (spike/vue-pods) after they pushed an image:
+#   gh workflow run k8s-bump.yml --ref spike/dev #     -f component=... -f tag=sha-<commit> -f digest=sha256:<64 hex>
+# Writes the digest into k8s/env/appstore.yaml on spike/dev; Argo CD's staging
+# follows. The caller passes the digest it pushed, so this workflow needs no
+# read access to the components' (private) packages. Production gets it only
+# through k8s/promote.sh (a PR into spike/main).
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +19,16 @@ on:
         description: "Image tag pushed by the component's CI (sha-<7 hex>)"
         required: true
         type: string
+      digest:
+        description: "Digest of that image (sha256:<64 hex>)"
+        required: true
+        type: string
+  # Only so that GitHub knows this workflow: it is not on the default branch,
+  # and a dispatch-only workflow that never ran cannot be dispatched. The job
+  # does not run for this event.
+  push:
+    branches: [spike/dev]
+    paths: ['.github/workflows/k8s-bump.yml']
 
 concurrency:
   group: k8s-bump
@@ -24,34 +36,28 @@ concurrency:
 
 permissions:
   contents: write   # the commit to k8s/env/appstore.yaml
-  packages: read    # reading the digest of a private package
 
 jobs:
   bump:
-    if: github.ref == 'refs/heads/spike/dev'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/spike/dev'
     runs-on: ubuntu-latest
     steps:
       - name: Check the inputs
         env:
           TAG: ${{ inputs.tag }}
+          DIGEST: ${{ inputs.digest }}
         run: |
           [[ "$TAG" =~ ^sha-[0-9a-f]{7,40}$ ]] || { echo "tag must be sha-<hex>, got '$TAG'" >&2; exit 1; }
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "digest must be sha256:<64 hex>, got '$DIGEST'" >&2; exit 1; }
       - uses: actions/checkout@v4
         with: { ref: spike/dev }
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pin the image by its digest
         env:
           COMPONENT: ${{ inputs.component }}
           TAG: ${{ inputs.tag }}
+          DIGEST: ${{ inputs.digest }}
         run: |
           set -euo pipefail
-          IMAGE="ghcr.io/dhbw-appstore-t3/${COMPONENT}:${TAG}"
-          DIGEST=$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Manifest}}' | jq -r .digest)
-          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "no digest for $IMAGE" >&2; exit 1; }
           case "$COMPONENT" in
             backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;;
           esac

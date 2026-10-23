@@ -1,11 +1,13 @@
 # Images of our AppStore (k8s/charts/appstore), written by the k8s-bump
-# workflow after each push of a component's spike/dev ("[skip ci]" commit):
-# the digest of the image built from that commit, with its tag as a comment.
-# Argo CD rolls out what is here. Do not edit by hand, except to roll back.
-# Until the first bump: the moving spike-dev tags.
+# workflow after each push of a component's branch ("[skip ci]" commit):
+# backend and worker from spike/dev, the frontend from spike/vue-pods (the Vue
+# frontend; spike/dev of the frontend is the React port). The digest of the
+# image built from that commit, with its tag as a comment. Argo CD rolls out
+# what is here. Do not edit by hand, except to roll back.
+# Until the first bump: the moving spike-dev / spike-vue-pods tags.
 images:
   tags:
     backend: spike-dev
     worker: spike-dev
     workerPods: spike-dev
-    frontend: spike-dev
+    frontend: spike-vue-pods

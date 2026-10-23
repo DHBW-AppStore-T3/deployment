@@ -5,12 +5,14 @@
 # the environment's branch (staging: spike/dev, prod: spike/main).
 #
 #   export KUBECONFIG=/path/to/kubeconfig-ma_wwi_24sea_appstore_g3.yaml
-#   k8s/bootstrap.sh staging|prod
+#   [GHCR_PULL_TOKEN_FILE=/path/to/token] k8s/bootstrap.sh staging|prod
 #
 # Idempotent: existing Secrets and keys are left alone (rotating a Fernet key
 # or a database password by accident would lock people out); a key that is
 # missing in an existing Secret is added. The generated logins are printed
-# once, when they are created.
+# once, when they are created. The exception is the image pull Secret
+# ghcr-pull: given GHCR_PULL_TOKEN_FILE (a token with read:packages only), it
+# is created or replaced, so an expired token can be swapped.
 set -euo pipefail
 cd "$(dirname "$0")"
 ENV_NAME=${1:?usage: bootstrap.sh staging|prod}
@@ -70,6 +72,23 @@ if ! have appstore-t3; then
 fi
 # Task results have a key of their own (the pod deployer gets no other).
 add_key appstore-t3 results-encryption-key "$(fernet)"
+
+# --- Pulling our private images (images.pullSecrets in environments/*.yaml).
+# The token goes from the file to kubectl's stdin, never into an argument.
+if [ -n "${GHCR_PULL_TOKEN_FILE:-}" ]; then
+  python3 - "$GHCR_PULL_TOKEN_FILE" "$NS" <<'PY' | kubectl apply -f - >/dev/null
+import base64, json, sys
+token = open(sys.argv[1], encoding="utf-8").read().strip()
+auth = base64.b64encode(f"x:{token}".encode()).decode()
+config = json.dumps({"auths": {"ghcr.io": {"auth": auth}}})
+print(json.dumps({"apiVersion": "v1", "kind": "Secret", "type": "kubernetes.io/dockerconfigjson",
+                  "metadata": {"name": "ghcr-pull", "namespace": sys.argv[2]},
+                  "data": {".dockerconfigjson": base64.b64encode(config.encode()).decode()}}))
+PY
+  echo "image pull Secret ghcr-pull written"
+elif ! have ghcr-pull; then
+  echo "WARNING: no Secret ghcr-pull; our images cannot be pulled. Run again with GHCR_PULL_TOKEN_FILE." >&2
+fi
 
 # --- The vendored reference stack (kept until it is retired; its apps are no
 # longer deployed by this branch, see k8s/README.md)
