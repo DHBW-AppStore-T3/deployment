@@ -2,15 +2,9 @@
 # Makefile for Multi-Repo Deployment
 # Manages frontend, backend, worker services
 #
-# This Makefile drives both the LOCAL development environment
-# (docker-compose.dev.yml) and the production stack
-# (docker-compose.prod.yml) when bootstrapping a Prod-VM by hand —
-# see docs/prod-setup.md for the manual walkthrough.
-#
-# Staging (docker-compose.staging.yml) has no local targets on
-# purpose: that stack is rolled out exclusively via the Ansible CD
-# pipeline (infrastructure/ansible/) so a developer laptop can't
-# accidentally diverge from what CI produces.
+# This Makefile drives the LOCAL development environment
+# (docker-compose.dev.yml). Staging and prod run on Kubernetes
+# (k8s/, rolled out by Argo CD).
 # ================================================================
 #
 # Conventions:
@@ -26,17 +20,6 @@
 # Configuration
 # ----------------------------------------------------------------
 DC_DEV  := docker compose -f docker-compose.dev.yml
-DC_PROD := docker compose -f docker-compose.prod.yml
-
-# Additive overlays on top of the prod stack (HARNESS.md Systems 2) — always combined with the base prod
-# compose file, never applied standalone, since both reference
-# backend-network-prod / frontend-network-prod as external networks
-# that only exist once docker-compose.prod.yml has created them.
-# Runner overlay joins no prod network at all (see docker-compose.runner.yml's
-# header), so it's fine standalone — kept combined
-# with the base file anyway, purely so `docker compose ps` from either
-# invocation shows the same full picture.
-DC_RUNNER := docker compose -f docker-compose.prod.yml -f docker-compose.runner.yml
 
 # Host-Ports (müssen mit den ${...:-default} Werten in den compose-
 # Dateien übereinstimmen, sonst zeigt `make urls` falsche Links).
@@ -63,10 +46,6 @@ PGADMIN_PORT       ?= 5050
         health status stats watch-dev top \
         clean-dev clean-all prune \
         test-backend test-backend-cov lint-backend lint-backend-fix format-backend \
-        prod-up prod-down prod-stop prod-restart prod-pull prod-logs prod-ps \
-        prod-migrate prod-seed prod-reset \
-        prod-set-keycloak-urls \
-        runner-up runner-down runner-logs runner-ps \
         up down logs build
 
 # ----------------------------------------------------------------
@@ -346,9 +325,7 @@ seed-reset: ## ⚠️  Reset DB + Keycloak realm, then seed
 # ----------------------------------------------------------------
 # Database Migrations
 # ----------------------------------------------------------------
-# Migrations on the deployed stack run automatically as a step in
-# the Ansible CD pipeline (infrastructure/ansible/staging.yml)
-# — there is no local migrate-deploy target, on purpose.
+# Migrations on staging/prod run automatically in the backend chart.
 migrate-dev: ## Run database migrations (dev), then give the worker's DB role its login
 	$(DC_DEV) exec backend poetry run alembic upgrade head
 	$(DC_DEV) exec backend poetry run python -m app.worker_db_role
@@ -443,111 +420,6 @@ lint-backend-fix: ## ruff check --fix
 
 format-backend: ## ruff format
 	$(DC_DEV) exec backend ruff format .
-
-# ----------------------------------------------------------------
-# Production (manual VM bootstrap — see docs/prod-setup.md)
-# ----------------------------------------------------------------
-prod-up: ## Start the prod stack (pulls :latest first)
-	$(DC_PROD) up -d --pull always
-
-prod-down: ## Stop and REMOVE prod containers (volumes kept)
-	$(DC_PROD) down
-
-prod-stop: ## Stop prod containers without removing them
-	$(DC_PROD) stop
-
-prod-restart: ## Restart one prod service (usage: make prod-restart SVC=backend)
-	@if [ -z "$(SVC)" ]; then echo "Error: pass SVC=<service>, e.g. SVC=backend"; exit 1; fi
-	$(DC_PROD) up -d --force-recreate $(SVC)
-
-prod-pull: ## Re-pull all prod images and recreate changed containers
-	$(DC_PROD) pull
-	$(DC_PROD) up -d
-
-prod-logs: ## Follow prod logs (all services, or SVC=backend for one)
-	@$(DC_PROD) logs -f $(SVC)
-
-prod-ps: ## List prod containers + health
-	$(DC_PROD) ps
-
-# ----------------------------------------------------------------
-
-# ----------------------------------------------------------------
-# Self-hosted GitHub Actions runner for staging.yml — see
-# docker-compose.runner.yml for why this runs as a container here
-# instead of a separate VM, and what it deliberately can't reach.
-# ----------------------------------------------------------------
-runner-up: ## Start the self-hosted runner for staging.yml (needs GITHUB_ACCESS_TOKEN in .env)
-	$(DC_RUNNER) up -d --pull always staging-runner
-
-runner-down: ## Stop and remove the runner container (deregisters on graceful stop)
-	$(DC_RUNNER) rm -sf staging-runner
-
-runner-logs: ## Follow the runner's registration/job logs
-	$(DC_RUNNER) logs -f staging-runner
-
-runner-ps: ## Show runner container status
-	$(DC_RUNNER) ps staging-runner
-
-prod-migrate: ## Apply Alembic migrations against the running backend-prod container
-	docker exec backend-prod python -m alembic upgrade head
-
-prod-seed: ## Seed Keycloak users + DB (kurse, apps, approvals) against the prod stack
-	@# Same shape as dev's seed-data: copy script + descriptions + realm
-	@# export into the running backend container, then run it as a plain
-	@# python call (the prod image has no poetry; the venv on PATH makes
-	@# `python` resolve to /app/.venv/bin/python, which has the keycloak
-	@# + SQLAlchemy deps).
-	@# Critically we source .env inside the recipe shell so the
-	@# KEYCLOAK_ADMIN_* values flow into the -e flags below. Without the
-	@# source, the make shell sees them as empty (Make does not
-	@# auto-include .env), the docker compose exec runs with empty
-	@# admin creds, and the seed script hits Keycloak with a 401.
-	@echo "📥 Kopiere Seed-Skript + Realm-Export in den Backend-Container..."
-	$(DC_PROD) cp ./seed/seed_data.py backend:/tmp/seed_data.py
-	$(DC_PROD) cp ./seed/app_descriptions backend:/tmp/app_descriptions
-	$(DC_PROD) cp ./keycloak/realm-export.json backend:/tmp/realm-export.json
-	@echo "🌱 Führe Seed aus..."
-	@set -a; . ./.env; set +a; \
-	if [ -z "$$KEYCLOAK_ADMIN_USER" ] || [ -z "$$KEYCLOAK_ADMIN_PASSWORD" ]; then \
-	  echo "❌ KEYCLOAK_ADMIN_USER / KEYCLOAK_ADMIN_PASSWORD fehlen in .env"; \
-	  exit 1; \
-	fi; \
-	$(DC_PROD) exec -T \
-	  -e KEYCLOAK_ADMIN_USER="$$KEYCLOAK_ADMIN_USER" \
-	  -e KEYCLOAK_ADMIN_PASSWORD="$$KEYCLOAK_ADMIN_PASSWORD" \
-	  -e REALM_EXPORT_PATH=/tmp/realm-export.json \
-	  backend python /tmp/seed_data.py
-
-prod-set-keycloak-urls: ## Patch Keycloak client redirect/web-origin URLs to APP_BASE_URL from .env
-	@# Der Realm-Export bringt localhost-URLs mit (Dev-Snapshot). Dieses
-	@# Target patcht die beiden Clients (`appstore-frontend` +
-	@# `appstore-backend`) auf den Wert von `APP_BASE_URL`. Idempotent
-	@# und bewusst NICHT Teil von `prod-seed` — sonst würden manuell
-	@# ergänzte Redirect-URIs bei jedem Seed-Lauf stillschweigend weg.
-	@set -a; . ./.env; set +a; \
-	if [ -z "$$APP_BASE_URL" ]; then \
-	  echo "❌ APP_BASE_URL fehlt in .env"; exit 1; \
-	fi; \
-	if [ -z "$$KEYCLOAK_ADMIN_USER" ] || [ -z "$$KEYCLOAK_ADMIN_PASSWORD" ]; then \
-	  echo "❌ KEYCLOAK_ADMIN_USER / KEYCLOAK_ADMIN_PASSWORD fehlen in .env"; exit 1; \
-	fi; \
-	$(DC_PROD) cp ./seed/set_keycloak_urls.py backend:/tmp/set_keycloak_urls.py; \
-	$(DC_PROD) exec -T \
-	  -e KEYCLOAK_ADMIN_USER="$$KEYCLOAK_ADMIN_USER" \
-	  -e KEYCLOAK_ADMIN_PASSWORD="$$KEYCLOAK_ADMIN_PASSWORD" \
-	  -e APP_BASE_URL="$$APP_BASE_URL" \
-	  backend python /tmp/set_keycloak_urls.py
-
-prod-reset: ## ⚠️  STOP prod + DELETE all volumes (DBs, Keycloak). Irreversible.
-	@echo "⚠️  This wipes ALL prod data: postgres (incl. the task queue), keycloak DB, tfstate."
-	@read -p "Type 'yes' to continue: " -r REPLY; \
-	if [ "$$REPLY" = "yes" ]; then \
-	  $(DC_PROD) down -v; \
-	  echo "✓ Prod stack and all volumes removed."; \
-	else \
-	  echo "Aborted."; \
-	fi
 
 # ----------------------------------------------------------------
 # Aliases
