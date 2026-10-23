@@ -22,9 +22,9 @@ its Argo apps live on `spike/k8s` (root app `root`, which also owns the
 cluster-wide `cnpg` operator).
 
 ```
-backend / worker: push to spike/dev; frontend: push to spike/vue-pods (the Vue
-frontend; the frontend's spike/dev is the React port, not deployed here)
-   └─ CI builds, scans and pushes the images (tags spike-dev / spike-vue-pods and sha-<commit>)
+backend / worker: push to spike/dev; frontend: push to spike/react-pods (the React
+frontend; spike/vue-pods, the Vue one, is frozen and no longer deployed)
+   └─ CI builds, scans and pushes the images (tags spike-dev / spike-react-pods and sha-<commit>)
    └─ CI dispatches k8s-bump.yml here with the pushed digest: it goes into k8s/env/appstore.yaml [skip ci]
                                         │ Argo CD (staging-root, tracks spike/dev)
                                         ▼
@@ -142,9 +142,9 @@ Staging first; prod the same way after a successful staging test, through
    packages are private). Keycloak does not start without that key, by
    design. Run it again whenever this branch gains a key (e.g.
    `results-encryption-key`): pods do not start without their keys.
-4. **Images**: push `spike/dev` of backend and worker and `spike/vue-pods` of
+4. **Images**: push `spike/dev` of backend and worker and `spike/react-pods` of
    the frontend; their CI pins the new images in `k8s/env/appstore.yaml`.
-   Until then the chart uses the moving `spike-dev` / `spike-vue-pods` tags.
+   Until then the chart uses the moving `spike-dev` / `spike-react-pods` tags.
 5. **Settings** in `environments/staging.yaml`: `appstore.api.openstackAllowedAuthUrls`
    (the DHBW Keystone, from the GitHub secrets; without it no VM app runs),
    the LTI settings if Moodle should launch the AppStore, and check
