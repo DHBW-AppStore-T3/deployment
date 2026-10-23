@@ -87,9 +87,10 @@ podApps:
   # Images must be pinned by digest and start with one of these prefixes.
   imageRegistryAllowlist:
     - ghcr.io/dhbw-appstore-t3/
-  # Ceilings per container and volume.
-  maxCpu: "2"
-  maxMemory: 4Gi
+  # Ceilings per container and volume. An app can offer people a range up to
+  # these (resourceBounds in appstore.yaml); the node has 4 vCPU and 16 GiB.
+  maxCpu: "4"
+  maxMemory: 8Gi
   maxStorage: 20Gi
   # Workloads (one per team or person) per deployment, and per owner across
   # their live pod deployments (0: no budget).
