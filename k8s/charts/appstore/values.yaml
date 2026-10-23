@@ -195,3 +195,8 @@ network:
   # Addresses the API and the VM executor may reach although they are in a
   # private range (e.g. an internal OpenStack endpoint); CIDRs.
   extraEgressAllow: []
+  # Addresses only the API may reach, on TCP 443 only, although they are
+  # excluded for the pods (podApps.extraEgressExcept): the cluster's own
+  # public address, so the API can fetch Moodle's LTI keys (Moodle is served
+  # by this cluster). CIDRs.
+  httpsEgressAllow: []
