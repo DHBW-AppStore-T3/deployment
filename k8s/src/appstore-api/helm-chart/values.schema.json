@@ -34,6 +34,10 @@
         "smtp"
       ],
       "properties": {
+        "podApps": {
+          "type": "object",
+          "description": "Apps that run as pods (appstore.yaml) instead of OpenStack VMs."
+        },
         "imagePullPolicy": {
           "type": "string",
           "enum": [

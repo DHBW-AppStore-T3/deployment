@@ -5,7 +5,7 @@ import { FileUp, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStoreApi } from '/appstore/api-appstore.jsx';
 import { appstoreKeys } from '/appstore/query-keys.js';
-import { hasPicker, isBool, isList, isNumber, readFile } from '/appstore/wizard-logic.js';
+import { hasPicker, isBool, isEnumVar, isList, isNumber, readFile } from '/appstore/wizard-logic.js';
 
 // The input for ONE value of a variable. Whether a variable needs one value or
 // one per team/member is the step's business (StepVariables in steps.jsx); this picks
@@ -21,6 +21,9 @@ export const MAX_FILE_BYTES = 2 * 1024 * 1024;
  */
 export function ValueField({ variable: v, value, onChange, credentialId, networkId, label, error }) {
     const { t } = useTranslation();
+    if (isEnumVar(v)) {
+        return <Select label={label} data={v.values} value={value ? String(value) : (v.default ?? null)} onChange={(x) => onChange(x ?? '')} error={error} allowDeselect={false} />;
+    }
     if (hasPicker(v)) {
         return <ResourcePicker variable={v} value={value} onChange={onChange} credentialId={credentialId} networkId={networkId} label={label} error={error} />;
     }

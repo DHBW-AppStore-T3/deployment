@@ -464,8 +464,18 @@ def get_deployments(
     return query.offset(skip).limit(limit).all()
 
 
+def k8s_namespace_for(deployment_id: UUID) -> str:
+    """The namespace a Kubernetes deployment lives in: ``dep-`` plus the first 8 hex digits of its id."""
+    return f"dep-{deployment_id.hex[:8]}"
+
+
 def create_deployment(
-    db: Session, deployment: DeploymentCreate, user_id: UUID, commit_sha: str, os_project_id: str
+    db: Session,
+    deployment: DeploymentCreate,
+    user_id: UUID,
+    commit_sha: str,
+    os_project_id: str,
+    runtime: str = "openstack-vm",
 ) -> Deployment:
     """Insert a deployment row in the current transaction.
 
@@ -487,10 +497,14 @@ def create_deployment(
         commit_sha=commit_sha,
         course=deployment.course,
         os_project_id=os_project_id,
+        runtime=runtime,
         userInputVar=user_input_var_json,
     )
     db.add(db_deployment)
     db.flush()
+    if runtime == "kubernetes":
+        db_deployment.k8s_namespace = k8s_namespace_for(db_deployment.deploymentId)
+        db.flush()
     db.refresh(db_deployment)
     return db_deployment
 

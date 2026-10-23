@@ -148,6 +148,16 @@ describe('the AppStore views render', () => {
         expectNoRenderFailure();
     });
 
+    it('typing into the register form keeps strings in its state (React clears currentTarget)', async () => {
+        renderWithProviders(<RegisterApp />);
+        await screen.findByText(/public Git repository/);
+        fireEvent.change(document.querySelector('input'), { target: { value: 'Online-IDE (Pods)' } });
+        fireEvent.change(screen.getByPlaceholderText('https://github.com/org/app'), { target: { value: 'https://github.com/org/app' } });
+        // Used to throw "s.name.trim is not a function" and replace the page with the error boundary.
+        expect(screen.getByDisplayValue('Online-IDE (Pods)')).toBeTruthy();
+        expectNoRenderFailure();
+    });
+
     it('credentials show their project and quota', async () => {
         renderWithProviders(<Credentials />);
         expect(await screen.findByText('WWI23SEB Übungen')).toBeTruthy();

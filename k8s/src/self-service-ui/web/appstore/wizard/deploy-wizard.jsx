@@ -63,6 +63,13 @@ export function DeployWizard({ params }) {
     });
 
     const variables = useMemo(() => dedupe(variablesQuery.data), [variablesQuery.data]);
+    // Apps with an appstore.yaml run as pods: no OpenStack credential, no VM settings.
+    const runtimeQuery = useQuery({
+        queryKey: appstoreKeys.runtime(appId, version),
+        queryFn: () => api.getRuntime(appId, version),
+        enabled: Boolean(version),
+    });
+    const pods = runtimeQuery.data?.runtime === 'kubernetes';
 
     // What the steps show: first choices where nothing was chosen yet (the
     // newest deployable version, the only credential, the only course), and
@@ -77,9 +84,9 @@ export function DeployWizard({ params }) {
     }), [state, versions, credentials, courses, variables]);
 
     const body = useMemo(() => buildDeployment({
-        name: view.name, appId, releaseTag: view.version, course: view.course, credentialId: view.credentialId,
+        name: view.name, appId, releaseTag: view.version, course: view.course, credentialId: pods ? null : view.credentialId,
         teams: view.teams, variables, values: view.values,
-    }), [view, appId, variables]);
+    }), [view, appId, variables, pods]);
 
     const create = useApiMutation({
         mutationFn: () => api.createDeployment(body),
@@ -95,7 +102,7 @@ export function DeployWizard({ params }) {
     if (appQuery.isError) return <Container py="xl"><LoadError query={appQuery} /></Container>;
 
     const stepOk = [
-        basicsComplete(view),
+        basicsComplete(view, pods),
         teamProblems(view.teams).length === 0,
         variablesComplete(view, variables),
         true,
@@ -110,7 +117,7 @@ export function DeployWizard({ params }) {
                 {versions.length === 0 && <Alert color="yellow">{t('appstore.appDetail.noApprovedVersion')}</Alert>}
                 <Stepper active={step} onStepClick={(i) => (i < step || stepOk.slice(0, i).every(Boolean)) && setStep(i)}>
                     <Stepper.Step label={t('appstore.wizard.stepBasics')}>
-                        <StepBasics state={view} set={set} app={app} versions={versions} credentials={credentials} courses={courses} />
+                        <StepBasics state={view} set={set} app={app} versions={versions} credentials={credentials} courses={courses} pods={pods} />
                     </Stepper.Step>
                     <Stepper.Step label={t('appstore.wizard.stepTeams')}>
                         <StepTeams state={view} set={set} students={studentsQuery.data ?? NONE} studentsQuery={studentsQuery} />
@@ -119,7 +126,7 @@ export function DeployWizard({ params }) {
                         <StepVariables state={view} set={set} variables={variables} variablesQuery={variablesQuery} />
                     </Stepper.Step>
                     <Stepper.Step label={t('appstore.wizard.stepSummary')}>
-                        <StepSummary state={view} app={app} credentials={credentials} courses={courses} variables={variables} body={body} />
+                        <StepSummary state={view} app={app} credentials={credentials} courses={courses} variables={variables} body={body} pods={pods} />
                     </Stepper.Step>
                 </Stepper>
                 {create.error && <Alert color="red">{create.error.message}</Alert>}

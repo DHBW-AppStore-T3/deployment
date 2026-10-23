@@ -69,7 +69,7 @@ def test_a_moved_tag_is_no_longer_approved(client, db, mock_user, monkeypatch):
     assert response.json()["detail"]["code"] == "version_not_approved"
 
 
-def test_private_app_deploys_unapproved_tags_for_its_owner(client, db, mock_user):
+def test_private_app_deploys_unapproved_tags_for_its_owner(client, db, mock_user, empty_app_checkout):
     cred = _credentials(db, mock_user)
     app = _app(db, mock_user, is_private=True)
 
@@ -94,7 +94,7 @@ def test_release_tag_is_required(client, db, mock_user):
     assert response.status_code == 422
 
 
-def test_lifecycle_jobs_check_out_the_deployed_commit(client, db, mock_user, monkeypatch, jobs):
+def test_lifecycle_jobs_check_out_the_deployed_commit(client, db, mock_user, monkeypatch, jobs, empty_app_checkout):
     cred = _credentials(db, mock_user)
     app = _app(db, mock_user, is_private=True)
     deployment_id = uuid.UUID(_deploy(client, cred, app).json()["deploymentId"])

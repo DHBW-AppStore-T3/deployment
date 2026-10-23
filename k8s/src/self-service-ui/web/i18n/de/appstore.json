@@ -287,7 +287,23 @@
         "noTasks": "Noch keine Aktionen.",
         "noLog": "Kein Protokoll.",
         "destroyedTitle": "Abgebaut",
-        "destroyedMessage": "Alle OpenStack-Ressourcen wurden gelöscht; das Deployment verschwindet aus der Liste."
+        "destroyedMessage": "Alle OpenStack-Ressourcen wurden gelöscht; das Deployment verschwindet aus der Liste.",
+        "ownerAndPods": "Eigentümer/in {{owner}} · läuft als Pods im Cluster",
+        "podsIntro": "Eine Zeile je Team oder Person, direkt aus dem Cluster gelesen.",
+        "podsNotLive": "Der Cluster kann gerade nicht abgefragt werden.",
+        "noWorkloads": "Noch keine Workloads.",
+        "workload": "Workload",
+        "restarts": "Neustarts",
+        "restart": "Neu starten",
+        "restartTitle": "Workload neu starten?",
+        "restartMessage": "„{{name}}“ wird gestoppt und neu gestartet. Die Daten bleiben erhalten.",
+        "reset": "Zurücksetzen",
+        "resetTitle": "Workload zurücksetzen?",
+        "resetMessage": "„{{name}}“ wird von vorn gestartet. Die Daten werden gelöscht.",
+        "cancel": "Abbrechen",
+        "cancelTitle": "Deployment abbrechen?",
+        "cancelMessage": "„{{name}}“ ist noch nicht fertig. Beim Abbrechen wird alles entfernt, was bisher angelegt wurde.",
+        "destroyMessagePods": "Alles, was „{{name}}“ im Cluster angelegt hat (Pods, Daten, Links), wird gelöscht. Das lässt sich nicht rückgängig machen."
     },
     "wizard": {
         "title": "{{app}} bereitstellen",
@@ -352,6 +368,9 @@
         "allDefaults": "Alle Einstellungen behalten die Vorgaben der App.",
         "missing": "Es fehlt noch: {{names}}",
         "defaultsNote": "Nicht aufgeführte Einstellungen behalten die Vorgaben der App.",
-        "reloadList": "Liste neu laden"
+        "reloadList": "Liste neu laden",
+        "podsNoCredential": "Diese App läuft als Pods im Cluster der Plattform. Ein OpenStack-Credential wird nicht gebraucht.",
+        "runtime": "Läuft als",
+        "runtimePods": "Pods im Cluster der Plattform"
     }
 }

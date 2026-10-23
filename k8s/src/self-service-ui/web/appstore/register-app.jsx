@@ -22,7 +22,12 @@ export function RegisterApp() {
     const [, navigate] = useLocation();
     const { canRegisterApps, query: meQuery } = useMe();
     const [form, setForm] = useState({ name: '', git_link: '', description: '', is_private: true, submit_all_versions: false });
-    const set = (key) => (e) => setForm(f => ({ ...f, [key]: e?.currentTarget ? (e.currentTarget.type === 'checkbox' ? e.currentTarget.checked : e.currentTarget.value) : e }));
+    // Read the event now: React clears `currentTarget` once the handler returns,
+    // and the state updater below runs later.
+    const set = (key) => (e) => {
+        const value = e?.currentTarget ? (e.currentTarget.type === 'checkbox' ? e.currentTarget.checked : e.currentTarget.value) : e;
+        setForm(f => ({ ...f, [key]: value }));
+    };
 
     const create = useApiMutation({
         mutationFn: () => api.createApp({

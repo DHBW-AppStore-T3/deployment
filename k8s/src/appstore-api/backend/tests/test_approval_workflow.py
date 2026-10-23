@@ -115,7 +115,10 @@ def test_submit_blocked_when_marker_errors(client, mock_user, db):
 def test_submit_succeeds_with_clean_markers(client, mock_user, db):
     app_obj = create_app_in_db(db, mock_user)
     clean_vars = [{"name": "flavor", "description": "@openstack:flavor", "osType": "flavor"}]
-    with patch("appstore_api.routers.apps.load_variable_definitions", return_value=clean_vars):
+    with (
+        patch("appstore_api.routers.apps.load_variable_definitions", return_value=clean_vars),
+        patch("appstore_api.routers.apps.load_version_spec", return_value=None),
+    ):
         resp = client.post(f"/apps/{app_obj.appId}/versions/v1.0/submit", json={})
     assert resp.status_code == 201
     assert resp.json()["status"] == "pending"

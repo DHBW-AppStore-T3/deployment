@@ -209,6 +209,11 @@ class Deployment(Base):
     # credential at creation. Everyone with a credential for this project
     # may see and run the deployment, each with their own credential (E2).
     os_project_id: Mapped[str] = mapped_column(String, index=True)
+    # How the app runs: "openstack-vm" (OpenTofu/Packer, the default) or
+    # "kubernetes" (pods rendered from the app's appstore.yaml; os_project_id
+    # is then the sentinel "kubernetes" and the namespace is ``dep-<id>``).
+    runtime: Mapped[str] = mapped_column(String(16), default="openstack-vm", server_default="openstack-vm")
+    k8s_namespace: Mapped[str | None] = mapped_column(String(63))
     userInputVar: Mapped[str | None] = mapped_column(Text)  # JSON
     userId: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.userId"), index=True
@@ -524,6 +529,12 @@ class AppVersionApproval(Base):
     # covers this commit only: once the tag points elsewhere, the version
     # counts as unapproved until it is submitted and reviewed again.
     commit_sha: Mapped[str] = mapped_column(String(40))
+    # What the review covered besides the commit: how the version runs and,
+    # for Kubernetes apps, the hash of its appstore.yaml and the image
+    # digests in it (approval = commit + spec hash + digests).
+    runtime: Mapped[str] = mapped_column(String(16), default="openstack-vm", server_default="openstack-vm")
+    spec_sha256: Mapped[str | None] = mapped_column(String(64))
+    image_digests: Mapped[str | None] = mapped_column(Text)  # JSON list
     status: Mapped[AppVersionApprovalStatus] = mapped_column(
         Enum(AppVersionApprovalStatus), default=AppVersionApprovalStatus.PENDING
     )

@@ -33,7 +33,14 @@ spec:
       labels:
         {{- include "appstore.selectorLabels" $comp | nindent 8 }}
     spec:
+      {{- if $v.podApps.enabled }}
+      # Pod apps: the worker talks to the Kubernetes API as its own account,
+      # confined to dep-* namespaces (pod-apps.yaml).
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: true
+      {{- else }}
       automountServiceAccountToken: false
+      {{- end }}
       # Long enough for the longest job; beyond it the job's deadline has
       # killed the tools anyway and the API's reaper fails the task.
       terminationGracePeriodSeconds: {{ $v.worker.terminationGracePeriodSeconds }}
@@ -80,3 +87,30 @@ spec:
               value: {{ $v.worker.jobTimeoutSeconds | toString | quote }}
             - name: WORKER_SIMULATE
               value: {{ $v.simulate | toString | quote }}
+            {{- if $v.podApps.enabled }}
+            {{- include "appstore.podAppsEnv" . | nindent 12 }}
+            - name: K8S_WORKER_SERVICE_ACCOUNT
+              value: {{ $name | quote }}
+            - name: K8S_WORKER_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: K8S_DEPLOYER_CLUSTER_ROLE
+              value: {{ include "appstore.podAppsDeployerRole" . | quote }}
+            - name: K8S_INGRESS_NAMESPACE
+              value: {{ $v.podApps.ingressNamespace | quote }}
+            - name: K8S_INGRESS_CLASS
+              value: {{ $v.podApps.ingressClass | quote }}
+            - name: K8S_TLS_SECRET
+              value: {{ $v.podApps.tlsSecret | quote }}
+            - name: K8S_CLUSTER_ISSUER
+              value: {{ $v.podApps.clusterIssuer | quote }}
+            - name: K8S_STORAGE_CLASS
+              value: {{ $v.podApps.storageClass | quote }}
+            - name: K8S_STUDENT_NODE_SELECTOR
+              value: {{ $v.podApps.studentNodeSelector | toJson | quote }}
+            - name: K8S_STUDENT_TOLERATIONS
+              value: {{ $v.podApps.studentTolerations | toJson | quote }}
+            - name: K8S_EXTRA_EGRESS_EXCEPT
+              value: {{ join "," $v.podApps.extraEgressExcept | quote }}
+            - name: K8S_READY_TIMEOUT_SECONDS
+              value: {{ $v.podApps.ready.timeoutSeconds | toString | quote }}
+            {{- end }}

@@ -92,3 +92,37 @@ def prepare_task_in_tx(
         raise
     db.refresh(db_task)
     return db_task
+
+
+def cancel_active_task(db: Session, deployment_id: uuid.UUID, task_type: TaskType) -> Task | None:
+    """End the deployment's active ``task_type`` task as CANCELLED, in the caller's transaction.
+
+    A PENDING task simply never runs; a RUNNING one is noticed by its worker
+    (pod deployments poll for it) which then cleans up after itself. Writes the
+    terminal event so the live stream ends. Returns the task, or None if there
+    was no such active task.
+    """
+    import json
+
+    from appstore_api.models import TaskEvent
+    from appstore_api.utils.time import utcnow
+    from appstore_shared.jobs import terminal_event
+
+    task = next(
+        (
+            t
+            for t in crud_tasks.get_tasks(db, deployment_id=deployment_id)
+            if t.status in (TaskStatus.PENDING, TaskStatus.RUNNING) and t.type == task_type
+        ),
+        None,
+    )
+    if task is None:
+        return None
+    task.status = TaskStatus.CANCELLED
+    task.finished_at = utcnow()
+    task.lease_until = None
+    task.payload = None
+    event_type, payload = terminal_event(task)
+    db.add(TaskEvent(taskId=task.taskId, type=event_type, payload=json.dumps(payload)))
+    db.flush()
+    return task

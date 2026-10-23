@@ -17,7 +17,7 @@ import {
  * Name, version, credential and course. Changing the course clears the teams,
  * since they were built from the previous course's students.
  */
-export function StepBasics({ state, set, app, versions, credentials, courses }) {
+export function StepBasics({ state, set, app, versions, credentials, courses, pods = false }) {
     const { t } = useTranslation();
     return (
         <Stack gap="md" maw={640}>
@@ -26,7 +26,9 @@ export function StepBasics({ state, set, app, versions, credentials, courses }) 
             <Select label={t('appstore.wizard.version')} required data={versions.map(v => ({ value: v.version, label: v.version }))}
                 value={state.version} onChange={(version) => set({ version })}
                 description={app?.is_private ? t('appstore.wizard.versionPrivate') : t('appstore.wizard.versionApproved')} />
-            {credentials.length === 0 ? (
+            {pods ? (
+                <Alert color="blue">{t('appstore.wizard.podsNoCredential')}</Alert>
+            ) : credentials.length === 0 ? (
                 <Alert color="yellow" title={t('appstore.wizard.noCredentialTitle')}>
                     {t('appstore.wizard.noCredentialMessage')} <Anchor component={Link} href="/credentials">{t('appstore.nav.credentials')}</Anchor>
                 </Alert>
@@ -47,8 +49,8 @@ export function StepBasics({ state, set, app, versions, credentials, courses }) 
 }
 
 /** Whether step 1 has everything it needs (name, version, credential, course). */
-export function basicsComplete(state) {
-    return Boolean(state.name.trim() && state.version && state.credentialId && state.course);
+export function basicsComplete(state, pods = false) {
+    return Boolean(state.name.trim() && state.version && (pods || state.credentialId) && state.course);
 }
 
 // ── 2. Teams ────────────────────────────────────────────────────────────
@@ -216,7 +218,7 @@ export function variablesComplete(state, variables) {
  * prepared request `body`, so defaults left alone do not appear), and what is
  * still missing.
  */
-export function StepSummary({ state, app, credentials, courses, variables, body }) {
+export function StepSummary({ state, app, credentials, courses, variables, body, pods = false }) {
     const { t } = useTranslation();
     const credential = credentials.find(c => c.credentialId === state.credentialId);
     const course = courses.find(c => c.course === state.course);
@@ -231,7 +233,8 @@ export function StepSummary({ state, app, credentials, courses, variables, body 
                 <Table.Tbody>
                     <Table.Tr><Table.Th w={200}>{t('appstore.wizard.name')}</Table.Th><Table.Td>{state.name}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>{t('appstore.wizard.app')}</Table.Th><Table.Td>{app?.name} <Code>{state.version}</Code></Table.Td></Table.Tr>
-                    <Table.Tr><Table.Th>{t('appstore.wizard.credential')}</Table.Th><Table.Td>{credential?.project_name || credential?.project_id}</Table.Td></Table.Tr>
+                    {!pods && <Table.Tr><Table.Th>{t('appstore.wizard.credential')}</Table.Th><Table.Td>{credential?.project_name || credential?.project_id}</Table.Td></Table.Tr>}
+                    {pods && <Table.Tr><Table.Th>{t('appstore.wizard.runtime')}</Table.Th><Table.Td>{t('appstore.wizard.runtimePods')}</Table.Td></Table.Tr>}
                     <Table.Tr><Table.Th>{t('appstore.wizard.course')}</Table.Th><Table.Td>{course?.display_name}</Table.Td></Table.Tr>
                     <Table.Tr>
                         <Table.Th>{t('appstore.wizard.teams')}</Table.Th>
