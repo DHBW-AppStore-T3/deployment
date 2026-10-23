@@ -7,9 +7,14 @@ env:
   branch: ""        # git branch Argo tracks for this environment
   host: ""          # public AppStore host (frontend, and the API under /api)
   ssoHost: ""       # public Keycloak host
+  selfServiceHost: ""  # public host of the self-service-ui (empty: none)
 # Values of the platform chart (k8s/manifests/platform/values.yaml):
 # demoUsers, publicRealms, publicAdmin.
 platform: {}
 # Values of our AppStore chart (k8s/charts/appstore/values.yaml), passed as
 # they are: api, podApps, network, ...
 appstore: {}
+# appstore-mcp (k8s/charts/appstore-mcp): enabled, host (one label below the
+# zone, the wildcard certificate covers *.<zone>) and zone.
+mcp:
+  enabled: false

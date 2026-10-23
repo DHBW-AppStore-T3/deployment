@@ -1,0 +1,113 @@
+{{- $comp := dict "context" . "component" "web" -}}
+# Moodle's web pod. One replica on purpose: moodledata is a ReadWriteOnce
+# volume and the init container installs or upgrades the database, which must
+# not run twice at once (hence Recreate).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moodle-data
+  labels: {{- include "moodle.labels" $comp | nindent 4 }}
+  annotations:
+    # The uploaded files live here: never pruned or deleted by Argo CD.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moodle-web
+  labels: {{- include "moodle.labels" $comp | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "moodle.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "moodle.labels" $comp | nindent 8 }}
+    spec:
+      {{- include "moodle.podDefaults" . | nindent 6 }}
+      initContainers:
+        # First start: install into the empty database; later: upgrade.
+        - name: init
+          image: {{ include "moodle.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [init.sh]
+          env:
+            {{- include "moodle.env" . | nindent 12 }}
+            - { name: MOODLE_SITE_NAME, value: {{ .Values.site.fullName | quote }} }
+            - { name: MOODLE_SITE_SHORTNAME, value: {{ .Values.site.shortName | quote }} }
+            - { name: MOODLE_ADMIN_USER, value: {{ .Values.site.adminUser | quote }} }
+            - { name: MOODLE_ADMIN_EMAIL, value: {{ .Values.site.adminEmail | quote }} }
+            - name: MOODLE_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.admin }}, key: password } }
+          securityContext: {{- include "moodle.containerSecurity" . | nindent 12 }}
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 1536Mi }
+          volumeMounts: {{- include "moodle.volumeMounts" . | nindent 12 }}
+      containers:
+        - name: moodle
+          image: {{ include "moodle.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080, protocol: TCP }
+          env:
+            {{- include "moodle.env" . | nindent 12 }}
+          securityContext: {{- include "moodle.containerSecurity" . | nindent 12 }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          # The Host header: Moodle redirects any other host to its wwwroot.
+          readinessProbe:
+            httpGet:
+              path: /login/index.php
+              port: http
+              httpHeaders: [{ name: Host, value: {{ .Values.host | quote }} }]
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts: {{- include "moodle.volumeMounts" . | nindent 12 }}
+      volumes: {{- include "moodle.volumes" . | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: moodle-web
+  labels: {{- include "moodle.labels" $comp | nindent 4 }}
+spec:
+  selector: {{- include "moodle.selectorLabels" $comp | nindent 4 }}
+  ports:
+    - { name: http, port: 8080, targetPort: http, protocol: TCP }
+---
+# TLS ends at the ingress controller; no secretName: its default certificate
+# (the cluster's wildcard certificate).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: moodle-web
+  labels: {{- include "moodle.labels" $comp | nindent 4 }}
+spec:
+  {{- with .Values.ingressClassName }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: moodle-web
+                port: { name: http }
+  tls:
+    - hosts: [{{ .Values.host }}]

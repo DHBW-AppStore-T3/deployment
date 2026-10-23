@@ -28,22 +28,12 @@
 DC_DEV  := docker compose -f docker-compose.dev.yml
 DC_PROD := docker compose -f docker-compose.prod.yml
 
-# Additive overlays on top of the prod stack (HARNESS.md Systems 2 and
-# the moodle_appstore promotion) — always combined with the base prod
+# Additive overlays on top of the prod stack (HARNESS.md Systems 2) — always combined with the base prod
 # compose file, never applied standalone, since both reference
 # backend-network-prod / frontend-network-prod as external networks
 # that only exist once docker-compose.prod.yml has created them.
-#
-# podman-mcp (deployment#49) is the exception: it no longer shares a
-# Docker network with anything, so it's combined with the base file
-# purely so `docker compose ps` shows the full picture on this VM, same
-# as DC_RUNNER below. MCP_ENV must be set in the environment (prod here;
-# staging/ci invoke the same overlay with their own MCP_ENV from their
-# own Makefile-equivalent / manual step).
-DC_PODMAN_MCP := MCP_ENV=prod docker compose -f docker-compose.prod.yml -f docker-compose.podman-mcp.yml
-DC_MOODLE     := docker compose -f docker-compose.prod.yml -f docker-compose.moodle.yml
 # Runner overlay joins no prod network at all (see docker-compose.runner.yml's
-# header), so unlike DC_PODMAN_MCP/DC_MOODLE it's fine standalone — kept combined
+# header), so it's fine standalone — kept combined
 # with the base file anyway, purely so `docker compose ps` from either
 # invocation shows the same full picture.
 DC_RUNNER := docker compose -f docker-compose.prod.yml -f docker-compose.runner.yml
@@ -76,8 +66,6 @@ PGADMIN_PORT       ?= 5050
         prod-up prod-down prod-stop prod-restart prod-pull prod-logs prod-ps \
         prod-migrate prod-seed prod-reset \
         prod-set-keycloak-urls \
-        podman-mcp-up podman-mcp-down podman-mcp-logs podman-mcp-ps \
-        moodle-up moodle-install moodle-down moodle-logs moodle-ps \
         runner-up runner-down runner-logs runner-ps \
         up down logs build
 
@@ -483,57 +471,6 @@ prod-ps: ## List prod containers + health
 	$(DC_PROD) ps
 
 # ----------------------------------------------------------------
-# podman-mcp (this VM only) — HARNESS.md Systems 2/3, deployment#49.
-# Hermes itself no longer runs here; see docker-compose.hermes.yml on
-# hermes-dhbw-appstore for that half.
-# ----------------------------------------------------------------
-podman-mcp-up: ## Start podman-mcp alongside the running prod stack
-	$(DC_PODMAN_MCP) up -d --build podman-mcp
-
-podman-mcp-down: ## Stop and remove podman-mcp only (prod untouched)
-	$(DC_PODMAN_MCP) rm -sf podman-mcp
-
-podman-mcp-logs: ## Follow podman-mcp logs
-	$(DC_PODMAN_MCP) logs -f podman-mcp
-
-podman-mcp-ps: ## List podman-mcp container + health
-	$(DC_PODMAN_MCP) ps podman-mcp
-
-# ----------------------------------------------------------------
-# Moodle stack (LTI prototype) — deploys the moodle_appstore fork,
-# checked out as a sibling directory to this repo (MOODLE_REPO_PATH
-# in .env). No image build: moodle-php-apache + the repo bind-mounted
-# as document root, same as moodle_appstore's own docker-compose.yml.
-# ----------------------------------------------------------------
-moodle-up: ## Start Moodle alongside the running prod stack (needs MOODLE_REPO_PATH cloned first)
-	$(DC_MOODLE) up -d --pull always moodle-db moodle
-	$(DC_MOODLE) up -d caddy
-
-moodle-install: ## One-time Moodle site install (run once after first moodle-up)
-	@# moodle_appstore currently tracks Moodle's unstable 5.3dev branch
-	@# (verified: `git log` shows "weekly release 5.3dev" as the base
-	@# commit) — install.php refuses without --allow-unstable, exiting
-	@# before touching the DB. This is a fork-of-upstream-Moodle-core
-	@# state, not something this repo's own history controls.
-	@set -a; . ./.env; set +a; \
-	if [ -z "$$MOODLE_WWWROOT" ] || [ -z "$$MOODLE_ADMIN_PASSWORD" ] || [ -z "$$MOODLE_ADMIN_EMAIL" ]; then \
-	  echo "❌ MOODLE_WWWROOT / MOODLE_ADMIN_PASSWORD / MOODLE_ADMIN_EMAIL fehlen in .env"; exit 1; \
-	fi; \
-	$(DC_MOODLE) exec -T -u www-data moodle php admin/cli/install.php \
-	  --non-interactive --agree-license --allow-unstable \
-	  --wwwroot="$$MOODLE_WWWROOT" \
-	  --dbtype=pgsql --dbhost=moodle-db --dbname=$${MOODLE_DB_NAME:-moodle} --dbuser=$${MOODLE_DB_USER:-moodle} --dbpass="$$MOODLE_DB_PASSWORD" \
-	  --fullname="$${MOODLE_SITE_NAME:-DHBW AppStore LTI Prototype}" --shortname=AppStoreLTI \
-	  --adminuser=$${MOODLE_ADMIN_USER:-admin} --adminpass="$$MOODLE_ADMIN_PASSWORD" --adminemail="$$MOODLE_ADMIN_EMAIL"
-
-moodle-down: ## Stop and remove the Moodle containers only (prod untouched)
-	$(DC_MOODLE) rm -sf moodle moodle-db
-
-moodle-logs: ## Follow Moodle container logs
-	$(DC_MOODLE) logs -f moodle
-
-moodle-ps: ## List Moodle containers + health
-	$(DC_MOODLE) ps moodle-db moodle
 
 # ----------------------------------------------------------------
 # Self-hosted GitHub Actions runner for staging.yml — see

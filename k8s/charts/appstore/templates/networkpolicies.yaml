@@ -75,9 +75,37 @@ spec:
         {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "api")) | nindent 8 }}
       ports:
         - { protocol: TCP, port: 8000 }
+{{- if and .Values.selfServiceUi.enabled (index .Values.images.tags "selfServiceUi") }}
 ---
-# The API: reached only through the gateway and by the VM executor
-# (OpenTofu's state backend), so X-Forwarded-* comes from nobody else. It
+# The self-service-ui: reached by the ingress controller; its oauth2-proxy
+# redeems the sign-in at Keycloak, its Caddy reaches the API (/api/app-store).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-self-service-ui
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "appstore.selectorLabels" (dict "context" . "component" "self-service-ui") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.podApps.ingressNamespace }} } }
+      ports:
+        - { protocol: TCP, port: 4180 }
+  egress:
+    - to:
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "api")) | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - to:
+        - podSelector: { matchLabels: {{ toJson $n.keycloakLabels }} }
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- end }}
+---
+# The API: reached only through the gateways (frontend, self-service-ui) and
+# by the VM executor (OpenTofu's state backend), so X-Forwarded-* comes from nobody else. It
 # reaches Keycloak, the Kubernetes API (live view) and the internet (Git
 # hosts, Keystone, the LTI platform's keys).
 apiVersion: networking.k8s.io/v1
@@ -91,7 +119,7 @@ spec:
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
-        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "frontend" "vm-executor")) | nindent 8 }}
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "frontend" "vm-executor" "self-service-ui")) | nindent 8 }}
       ports:
         - { protocol: TCP, port: 8000 }
   egress:

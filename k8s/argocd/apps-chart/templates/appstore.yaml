@@ -20,6 +20,7 @@ spec:
       valueFiles: [../../images/{{ .Values.env.name }}.yaml]
       values: |
         host: {{ .Values.env.host }}
+        selfServiceHost: {{ .Values.env.selfServiceHost | default "" | quote }}
         ssoHost: {{ .Values.env.ssoHost }}
         environment: {{ .Values.env.namespace }}
         {{- with .Values.appstore }}

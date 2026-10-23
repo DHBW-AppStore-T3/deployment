@@ -1,0 +1,7 @@
+apiVersion: v2
+name: appstore-mcp
+description: >-
+  Read-only remote MCP server (github.com/DHBW-AppStore-T3/appstore-mcp) that
+  lets agents judge staging rollouts: Argo CD, pods, CNPG, health, CI.
+type: application
+version: 0.1.0

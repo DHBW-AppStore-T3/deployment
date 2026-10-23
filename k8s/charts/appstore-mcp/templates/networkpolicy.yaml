@@ -1,0 +1,47 @@
+{{- if .Values.network.policies }}
+{{- $v4 := concat (include "mcp.privateV4" . | fromJsonArray) (list) -}}
+{{- $v6 := concat (include "mcp.privateV6" . | fromJsonArray) (list) -}}
+# Deny by default; then: DNS, the ingress controller in, the Kubernetes API
+# and the internet (GitHub, the public health endpoints) out. Internet means
+# everything except the private ranges (the cloud metadata service among them).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: appstore-mcp
+  labels: {{- include "mcp.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "mcp.selector" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.network.ingressNamespace }} } }
+      ports:
+        - { protocol: TCP, port: 8000 }
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    {{- if .Values.network.kubeApi.cidrs }}
+    - to:
+        {{- range .Values.network.kubeApi.cidrs }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports:
+        {{- range .Values.network.kubeApi.ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+    {{- end }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $v4 }}
+        - ipBlock:
+            cidr: ::/0
+            except: {{ toJson $v6 }}
+      ports:
+        - { protocol: TCP, port: 443 }
+{{- end }}

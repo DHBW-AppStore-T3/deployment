@@ -5,9 +5,18 @@ env:
   branch: dev
   host: appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  # The second UI; ONE label below the zone (the wildcard certificate).
+  selfServiceHost: self-service-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+# Read-only MCP server for agents (github.com/DHBW-AppStore-T3/appstore-mcp).
+mcp:
+  enabled: true
+  host: appstore-mcp-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 platform:
   demoUsers: true
 appstore:
+  selfServiceUi:
+    enabled: true
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
   images:
@@ -46,3 +55,11 @@ appstore:
         - fd00:43::1/128
         - 10.43.0.1/32
         - 2001:7c0:1b20:c913:1::10d/128
+moodle:
+  enabled: true
+  # Moodle (k8s/charts/moodle); one label below the wildcard certificate.
+  host: moodle-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  images:
+    pullSecrets: [ghcr-pull]
+  site:
+    adminEmail: max.rml@web.de

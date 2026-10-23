@@ -1,67 +1,40 @@
 ---
 name: verify-staging
-description: "Use after a PR is merged and staging has deployed — initiates Hermes' staging health check by posting a trigger comment on the merged PR, then reports the result. Triggered from /ship-feature Step 8. Triggers on: verify staging, check staging after deploy, did staging deploy correctly."
+description: "Use after a push or merged PR to a component's dev branch (backend, worker, frontend, deployment, appstore-mcp) to judge whether the automatic rollout to staging worked, using the appstore MCP server. Triggers on: verify staging, did staging deploy, check rollout, staging health."
 ---
 
 # /verify-staging
 
-Called from `/ship-feature` after a human-merged PR has triggered the
-staging deploy pipeline. Coordinates the staging verification via Hermes
-(HARNESS.md System 2 + System 3).
+Needs the MCP server `appstore` (see the appstore-mcp README: `claude mcp add --transport http appstore <url>/mcp`).
+If its tools are missing, say so; do not guess the state and do not use kubectl or SSH.
 
-## Kommunikationskanal: Dev-Agent → Hermes
+Pipeline: push to `dev` -> component CI (lint, test, scan, build, push) -> `k8s-bump.yml` commits the digest
+to `deployment` `k8s/images/staging.yaml` -> Argo CD `staging-appstore` rolls it out. Takes about 5-15 minutes.
 
-Der Coding-Agent (Claude Code) hat keine direkte Discord-Verbindung.
-Hermes hat Zugriff auf GitHub via `github-mcp-server` (aktuell noch
-commented out in `deployment/agent/config.yaml` — aktivierbar sobald
-`GITHUB_TOKEN` gesetzt ist). Bis dahin: Mensch fungiert als Relay.
+## Steps
 
-**Protokoll:**
+1. **CI and bump.** `github_runs(repo=<component>, branch="dev")` -> the push's CI run must be `completed/success`
+   (`in_progress`: wait). Then `github_runs(repo="deployment", branch="dev", workflow="k8s-bump.yml")`: the
+   newest run must be `success`.
+2. **Verdict.** `staging_verdict(env="staging")`.
+   - `healthy`: report success (step 5).
+   - `progressing`: a rollout is in flight (see `inProgress`). Wait about 60 s and call again; up to 10 times.
+   - `unhealthy`: step 3.
+3. **Diagnose** (only on `unhealthy`, or `progressing` that never settles after ~15 min):
+   - `rollout_status("staging")`: component `stale` means the new digest never reached the pods
+     (bump failed, Argo not synced, ImagePull); `rolling` with old pods means the new pod is not ready.
+   - `argocd_app("staging-appstore")`: sync/health message, unhealthy resources, history.
+   - `pods("appstore-staging")` then `events("appstore-staging")` and `logs("appstore-staging", <pod>, previous=true)`
+     for the pod in `problems` (CrashLoopBackOff: previous logs show why).
+   - `health("staging")` for what users see; `cnpg_clusters()` if the database is involved.
+4. Decide: a failure caused by your change -> fix forward on `dev` (or revert) and verify again. A failure that
+   is not yours (CI infrastructure, cluster, another agent's PR in `github_open_prs`) -> report it and stop.
+5. **Report** in the PR or to the human: verdict, the commit/digest verified (`rollout_status` shows the
+   committed digest), and the evidence (run URLs, pod states). Never claim staging is fine from one
+   `progressing` answer.
 
-### Wenn github-mcp bei Hermes aktiviert ist (Normalfall)
+## Rules
 
-Schritt 1 — Trigger-Comment auf den gemergten PR:
-```bash
-gh pr comment <PR-NUMBER> -R DHBW-AppStore-T3/<repo> \
-  --body "@hermes /verify-staging — PR #<number> wurde gemerged, bitte Staging-Status prüfen und im Discord posten"
-```
-
-Schritt 2 — Hermes liest den Comment via GitHub-MCP, führt `/verify-staging`
-auf Hermes-Seite aus, postet Ergebnis im Discord-Channel.
-
-Schritt 3 — Warte auf Discord-Bestätigung (oder Hermes' GitHub-Comment
-zurück auf den PR). Wenn nach 5 Minuten keine Antwort: Mensch bitten,
-Hermes manuell zu fragen.
-
-### Wenn github-mcp bei Hermes noch nicht aktiviert ist (aktueller Zustand)
-
-Schritt 1 — Trigger-Comment trotzdem setzen (als Audit-Trail):
-```bash
-gh pr comment <PR-NUMBER> -R DHBW-AppStore-T3/<repo> \
-  --body "Staging deploy ausgelöst. @hermes /verify-staging ausstehend — github-mcp noch nicht aktiviert, bitte manuell auf Discord anfragen."
-```
-
-Schritt 2 — Dem Menschen mitteilen:
-> "PR ist gemerged, Staging deployt gerade. github-mcp bei Hermes ist noch nicht aktiviert — bitte Hermes auf Discord manuell bitten: `/verify-staging`. Sobald Hermes antwortet, bin ich für Prod-Freigabe bereit."
-
-## Was Hermes beim /verify-staging prüft (Hermes-seitiger Skill)
-
-Hermes führt auf seiner Seite aus:
-1. `container_list` — alle Staging-Container running?
-2. `container_inspect` — Health-Status jedes Containers
-3. `container_logs --tail 50` — letzte Logs für jeden Container (nur wenn ein Container nicht `healthy`)
-4. Ergebnis als Discord-Nachricht: "✅ Staging OK" oder "⚠️ <Container> unhealthy: <letzte Fehlerzeile>"
-
-## Was dieser Skill NICHT tut
-
-- Kein direkter SSH zu appstore-prod-01 oder dem Staging-Host
-- Keine eigenständige Container-Inspektion (das ist Hermes' Job)
-- Kein Weiterleiten an Prod — nach positivem Staging-Verify ist das
-  System 5.2's zweites Gate: explizite menschliche Entscheidung
-
-## Aktivierung github-mcp bei Hermes
-
-Sobald `GITHUB_TOKEN` (PAT mit `repo` read access) in
-`deployment/.env` gesetzt ist, in `deployment/agent/config.yaml` den
-`github:` Block uncommentieren. Danach entfällt das manuelle
-Discord-Relay komplett.
+- Promotion to `main`/prod is a human decision (`k8s/promote.sh`); this skill never triggers it.
+- The tools are read-only. Output is bounded and secrets are redacted; do not try to work around that.
+- `dep-*` namespaces (student apps) are status-only on purpose.

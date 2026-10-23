@@ -1,5 +1,10 @@
 {{- define "platform.dhbwRealm" -}}
-{{- $realm := .Files.Get "files/dhbw-realm.json" | replace "__APP_HOST__" .Values.appHost | fromJson -}}
+{{- $realm := .Files.Get "files/dhbw-realm.json" | replace "__APP_HOST__" .Values.appHost | replace "__SSU_HOST__" (.Values.selfServiceHost | default .Values.appHost) | fromJson -}}
+{{- if not .Values.selfServiceHost -}}
+{{- $kept := list -}}
+{{- range $realm.clients -}}{{- if ne .clientId "appstore-self-service" -}}{{- $kept = append $kept . -}}{{- end -}}{{- end -}}
+{{- $_ := set $realm "clients" $kept -}}
+{{- end -}}
 {{- if .Values.demoUsers -}}
 {{- $_ := set $realm "users" (concat $realm.users (.Files.Get "files/dhbw-demo-users.json" | fromJsonArray)) -}}
 {{- end -}}
@@ -14,6 +19,8 @@
 #              a password policy, PKCE S256 and no password grant for the
 #              frontend, an audience mapper for the API, users cannot change
 #              their e-mail. Demo users only where demoUsers is set (staging).
+#              Client appstore-self-service (public, PKCE S256) for the
+#              self-service-ui, only where selfServiceHost is set.
 #
 # ${DEMO_PASSWORD}, ${BFF_CLIENT_SECRET} and ${APPSTORE_BACKEND_CLIENT_SECRET}
 # are substituted by Keycloak itself from the keycloak-secret Secret, so no

@@ -14,6 +14,9 @@ repository any more.
 | **prod** | `main` | `appstore-prod` | `appstore.<zone>` | `sso.<zone>` |
 | **staging** | `dev` | `appstore-staging` | `appstore-staging.<zone>` | `sso-staging.<zone>` |
 
+The second UI (self-service-ui, below) is on `self-service.<zone>` (prod) and `self-service-staging.<zone>` (staging): one label below the zone, for the wildcard certificate.
+Moodle: `moodle.<zone>` (prod) and `moodle-staging.<zone>` (staging).
+
 `<zone>` = `t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site`. Both
 share the one k3s node.
 
@@ -29,6 +32,13 @@ push to dev  of backend / worker / frontend            push to main of backend /
 push to dev of this repository (charts, policy, platform) -> staging; k8s/promote.sh: PR dev -> main -> prod
 ```
 
+`appstore-mcp` (`charts/appstore-mcp`, Application `<env>-mcp`, host
+`appstore-mcp[-staging].<zone>`): a read-only remote MCP server for agents
+(`staging_verdict` after a push to dev), image key `appstoreMcp`. Secret
+`appstore-mcp` is created by `bootstrap.sh`; a human adds the GitHub OAuth app
+credentials (see the appstore-mcp repo, docs/OPERATIONS.md). Off on prod until
+`main` has an image (`mcp.enabled` in `environments/prod.yaml`).
+
 Apps (the things students deploy) are not part of this: they are registered
 through the AppStore and run as pods; see the app-registry repository.
 
@@ -38,6 +48,7 @@ through the AppStore and run as pods; see the app-registry repository.
 | --- | --- | --- |
 | `<env>-platform` (wave 1) | `manifests/platform` | CloudNativePG cluster (databases `appstore_t3`, `keycloak`), Keycloak with realm `dhbw` (ours) and `appstore` (reference) |
 | `<env>-appstore` (wave 3) | `charts/appstore` | our services, below |
+| `<env>-moodle` (wave 3) | `charts/moodle` | Moodle, see Moodle below |
 
 `charts/appstore` (all names start with `appstore-t3-`):
 
@@ -95,9 +106,49 @@ through the AppStore and run as pods; see the app-registry repository.
   sync). Realm files are imported into a new database only; a running realm
   is changed in the admin console. Demo users only on staging.
 
+## The second UI: self-service-ui
+
+Repository `self-service-ui` (fork of pfisterer/self-service-ui) with its App
+Store section: catalog, one-click deploy, deployments and a student's own
+access data, against the same API. Templates in `charts/appstore`
+(`self-service-ui.yaml`), not a chart of its own: it shares the labels, the
+hardening, the image pull Secret and, above all, the NetworkPolicies of the
+API (which now admit it), and it is rolled out with the same Application.
+
+One pod, two containers, read-only root filesystem, UID 65532, no service
+account token: oauth2-proxy (`:4180`, the Ingress target) signs people in at
+Keycloak and forwards to Caddy (`:8080`: the SPA, and `/api/app-store/*` to the
+API with the prefix removed). The browser holds only the proxy's cookie.
+
+- **Login**: Keycloak realm `dhbw`, client `appstore-self-service`: public, PKCE
+  S256, redirect `https://<self-service host>/oauth2/callback`, audience mapper
+  `appstore-api`. oauth2-proxy insists on a client secret and gets a
+  placeholder that Keycloak ignores; the only secret is the proxy's cookie
+  secret (`self-service-cookie-secret` in Secret `appstore-t3`, added by
+  `bootstrap.sh`). The proxy forwards the **access token** as the Bearer; the
+  API accepts it because `OIDC_ALLOWED_CLIENTS` lists the client
+  (`keycloak.selfServiceClientId`, only while `selfServiceUi.enabled`).
+- **Image**: `images.tags.selfServiceUi` (`k8s-bump.yml`, component
+  `self-service-ui`). Empty: the component is not rendered.
+- **No CORS entry** is needed: browser and API talk same-origin through Caddy.
+- **A realm that already exists is not re-imported.** The client is in
+  `dhbw-realm.json` for new realms; for a running one, once per environment
+  (after the platform app has synced the change):
+
+      export KUBECONFIG=...; k8s/keycloak-self-service-client.sh staging   # or prod
+
+  It reads the client from the rendered realm (ConfigMap `keycloak-realm`),
+  takes the admin password from `keycloak-secret` into a shell variable (never
+  printed) and creates or updates the client through the admin REST API over
+  `kubectl port-forward` (local port 8080). Idempotent. The same in the admin
+  console: realm `dhbw`, Clients, Create (public, standard flow, PKCE S256).
+- **Prod** has `selfServiceUi.enabled: false` until the client exists in its
+  live realm; then set it and promote (`promote.sh`).
+
 ## Layout
 
 - `charts/appstore`: our services (values documented in `values.yaml`).
+- `charts/moodle`: Moodle (image from the `moodle_appstore` repository).
 - `manifests/platform` (Postgres + Keycloak): chart, parametrised by host.
 - `argocd/cluster/cnpg.yaml`: the CloudNativePG operator, shared by both
   environments (applied by `bootstrap.sh`).
@@ -112,6 +163,40 @@ through the AppStore and run as pods; see the app-registry repository.
 - `promote.sh`: PR dev -> main. `bootstrap.sh <env>`: namespace, all
   Secrets (none in git), root app; safe to run again (adds missing keys, never
   rotates). `show-credentials.sh <env>` prints the logins.
+
+## Moodle
+
+Moodle (the `moodle_appstore` fork) runs on the cluster; there is no Moodle VM
+or compose file any more.
+
+- **Image**: built from the `Dockerfile` of `moodle_appstore` (Apache + PHP 8.3,
+  UID 33, read-only root, port 8080). Its CI (`moodle-image.yml`) scans it with
+  Trivy, pushes `ghcr.io/dhbw-appstore-t3/moodle_appstore:sha-<commit>` and
+  dispatches `k8s-bump.yml` here with `component=moodle` (key `moodle` in
+  `images/<env>.yaml`), like backend, worker and frontend.
+- **`charts/moodle`**: Deployment `moodle-web` (1 replica, strategy Recreate),
+  Service, Ingress `moodle.<zone>` (wildcard certificate), PVC `moodle-data`
+  (`$CFG->dataroot`, never pruned by Argo CD), CronJob `moodle-cron` (every
+  minute), NetworkPolicies (deny by default; ingress controller, Postgres, DNS,
+  internet).
+- **config.php** is baked into the image and reads its environment: `wwwroot`
+  from `moodle.host`, database `moodle` on `postgres-cluster-rw` (CNPG role and
+  database in `manifests/platform`, login Secret `moodle-db`), `sslproxy` on
+  because TLS ends at Traefik.
+- **Install / upgrade**: the init container `init` of `moodle-web` runs
+  `docker/init.sh` of the image: an empty database gets
+  `admin/cli/install_database.php` (admin password from Secret `moodle-admin`),
+  an installed one `admin/cli/upgrade.php --non-interactive` on every new image.
+- **Secrets** (`bootstrap.sh`, idempotent): `moodle-db`, `moodle-admin`;
+  `show-credentials.sh` prints the admin login. Run `bootstrap.sh` (or create
+  the two Secrets) before the platform application syncs the `moodle` role.
+- **LTI 1.3** with the AppStore: in Moodle register the external tool with
+  `https://<appstore-host>/api/lti13/login` and `/launch`, then set
+  `appstore.api.lti` in `environments/<env>.yaml` (issuer =
+  `https://<moodle-host>`).
+- Not done: backups of the `moodle` database and of `moodle-data`; mail
+  (SMTP) settings; the data of the old VM Moodle was not migrated (it was
+  never installed on prod).
 
 ## Setting up an environment
 

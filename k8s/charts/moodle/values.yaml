@@ -1,0 +1,59 @@
+# Public host of Moodle (wwwroot = https://<host>); one label below the
+# cluster's wildcard certificate. Set per environment (environments/<env>.yaml).
+host: moodle.example.org
+
+images:
+  registry: ghcr.io/dhbw-appstore-t3
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  # Digest (sha256:...) or tag (sha-<commit>); CI writes it into k8s/images/<env>.yaml.
+  tags:
+    moodle: ""
+
+# Secrets created by k8s/bootstrap.sh (never in git).
+secrets:
+  # kubernetes.io/basic-auth of the CNPG role `moodle` (platform chart).
+  db: moodle-db
+  # key `password`: login of the Moodle admin, used by the first install only.
+  admin: moodle-admin
+
+db:
+  host: postgres-cluster-rw
+  port: 5432
+  name: moodle
+  user: moodle
+  sslmode: require
+
+site:
+  fullName: DHBW AppStore Moodle
+  shortName: moodle
+  adminUser: admin
+  adminEmail: admin@example.org
+
+ingressClassName: ""
+
+persistence:
+  # $CFG->dataroot (uploads, sessions, caches). One pod only: ReadWriteOnce.
+  size: 20Gi
+  storageClassName: ""
+
+resources:
+  requests: { cpu: 200m, memory: 512Mi }
+  limits: { memory: 1536Mi }
+# Scratch space of the pod: Apache runtime files and $CFG->tempdir (backups).
+tmpSizeLimit: 4Gi
+localcacheSizeLimit: 1Gi
+
+cron:
+  schedule: "* * * * *"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+network:
+  # Deny by default; then ingress controller -> web, Postgres, DNS, internet
+  # (LTI keys of the AppStore, mail) without private ranges.
+  policies: true
+  ingressNamespace: kube-system
+  postgresLabels:
+    cnpg.io/cluster: postgres-cluster

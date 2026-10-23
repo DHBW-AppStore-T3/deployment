@@ -5,9 +5,22 @@ env:
   branch: main
   host: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  # The second UI; ONE label below the zone (the wildcard certificate).
+  selfServiceHost: self-service.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+# Read-only MCP server for agents (github.com/DHBW-AppStore-T3/appstore-mcp).
+mcp:
+  # Off until the first CI run on `main` has pushed an image: set enabled: true
+  # together with images.tags.appstoreMcp in images/prod.yaml (promote.sh).
+  enabled: false
+  host: appstore-mcp.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 platform:
   demoUsers: false
 appstore:
+  # Off until the Keycloak client exists in the live realm (k8s/README.md,
+  # "self-service-ui") and the promotion from dev.
+  selfServiceUi:
+    enabled: false
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
   images:
@@ -46,3 +59,13 @@ appstore:
         - fd00:43::1/128
         - 10.43.0.1/32
         - 2001:7c0:1b20:c913:1::10d/128
+moodle:
+  # Off on prod until the first image of `main` is built (images/prod.yaml: moodle),
+  # the moodle-admin Secret exists and the LTI values are set.
+  enabled: false
+  # Moodle (k8s/charts/moodle); one label below the wildcard certificate.
+  host: moodle.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  images:
+    pullSecrets: [ghcr-pull]
+  site:
+    adminEmail: max.rml@web.de

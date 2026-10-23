@@ -9,3 +9,8 @@ images:
     worker: "sha256:1a3974802709bcc3298fcdc667a79ab192f64eab40b0926cb164f04cb4fdfcf5"  # sha-b1683d8
     workerPods: "sha256:de6348fdcb03f340a7db25b41ce502f840c9919b7c709141b863f574ab6f5410"  # sha-b1683d8
     frontend: "sha256:4398c24164e8b1407e290d65f0f0cb25d0b728c23a6eed255f6815daf095ab02"  # sha-c65eb2b
+    appstoreMcp: "latest"  # placeholder tag; the mcp application is disabled on prod until the first main CI run
+    # Empty until the first image of the self-service-ui repository is rolled out
+    # (the chart renders the component only with a digest).
+    selfServiceUi: ""
+    moodle: "sha-0000000"  # not built yet

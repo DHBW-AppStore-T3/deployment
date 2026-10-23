@@ -1,6 +1,6 @@
 name: K8s - roll out an image
 
-# Called by the CI of backend, worker and frontend after they pushed an image
+# Called by the CI of backend, worker, frontend, appstore-mcp and moodle (moodle_appstore) after they pushed an image
 # from `dev` (staging) or `main` (prod):
 #   gh workflow run k8s-bump.yml --ref <dev|main> \
 #     -f component=... -f tag=sha-<commit> -f digest=sha256:<64 hex>
@@ -14,10 +14,10 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: "backend | worker | worker-pods | frontend"
+        description: "backend | worker | worker-pods | frontend | appstore-mcp | self-service-ui | moodle"
         required: true
         type: choice
-        options: [backend, worker, worker-pods, frontend]
+        options: [backend, worker, worker-pods, frontend, appstore-mcp, self-service-ui, moodle]
       tag:
         description: "Image tag pushed by the component's CI (sha-<7 hex>)"
         required: true
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$COMPONENT" in
-            backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;;
+            backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;; appstore-mcp) KEY=appstoreMcp ;; self-service-ui) KEY=selfServiceUi ;; moodle) KEY=moodle ;;
           esac
           if [ "$BRANCH" = main ]; then ENV=prod; else ENV=staging; fi
           FILE="k8s/images/${ENV}.yaml"
@@ -73,7 +73,11 @@ jobs:
           git diff --cached --quiet && { echo "already at ${DIGEST}"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "env=${ENV}" >> "$GITHUB_OUTPUT"
-          git commit -m "chore(k8s): roll out ${COMPONENT} ${TAG} on ${ENV} [skip ci]"
+          # Staging commits go straight to dev and skip CI. A prod commit is the head of
+          # a pull request, so it must NOT carry [skip ci]: that suppresses the
+          # pull_request workflows and left the PR BLOCKED on the required check.
+          SKIP=""; [ "$ENV" = staging ] && SKIP=" [skip ci]"
+          git commit -m "chore(k8s): roll out ${COMPONENT} ${TAG} on ${ENV}${SKIP}"
       - name: Staging - push to dev
         if: steps.pin.outputs.changed == 'true' && github.ref_name == 'dev'
         run: |

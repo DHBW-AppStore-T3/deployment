@@ -44,6 +44,7 @@ NEW=()
 db_login keycloak-db keycloak
 db_login appstore-t3-db appstore_t3
 db_login appstore-worker-db appstore_worker
+db_login moodle-db moodle
 
 # --- Keycloak: admin, demo users (staging), clients
 if ! have keycloak-secret; then
@@ -69,6 +70,34 @@ if ! have appstore-t3; then
 fi
 # Task results have a key of their own (the pod deployer gets no other).
 add_key appstore-t3 results-encryption-key "$(fernet)"
+# The self-service-ui's oauth2-proxy: 32 characters = a 32-byte cookie secret.
+add_key appstore-t3 self-service-cookie-secret "$(rand 24)"
+
+# --- appstore-mcp (k8s/charts/appstore-mcp, secretName appstore-mcp). Only the token
+# signing key is generated here; the GitHub OAuth app credentials (and an optional
+# read-only GitHub PAT) are created by a human, see appstore-mcp docs/OPERATIONS.md:
+#   kubectl -n <ns> patch secret appstore-mcp --type merge -p '{"stringData":{"github-client-id":"<ID>","github-client-secret":"<SECRET>"}}'
+# Empty placeholders keep the keys visible; an existing Secret is never touched
+# (a missing signing key is added).
+if ! have appstore-mcp; then
+  kubectl -n "$NS" create secret generic appstore-mcp \
+    --from-literal=token-signing-key="$(fernet)" \
+    --from-literal=static-tokens="" \
+    --from-literal=github-client-id="" \
+    --from-literal=github-client-secret="" \
+    --from-literal=github-api-token="" >/dev/null
+  echo "Secret appstore-mcp created: still needs github-client-id and github-client-secret (appstore-mcp docs/OPERATIONS.md)"
+fi
+add_key appstore-mcp token-signing-key "$(fernet)"
+
+# --- Moodle (k8s/charts/moodle): the admin login of the first install. The
+# database login is moodle-db above. Changing this Secret later changes
+# nothing in Moodle (change the password there).
+if ! have moodle-admin; then
+  MOODLEPW=$(rand 18)
+  kubectl -n "$NS" create secret generic moodle-admin --from-literal=password="$MOODLEPW"
+  NEW+=("Moodle admin (user admin, https://$(awk '/^moodle:/{f=1} f&&/^  host:/{print $2; exit}' "environments/$ENV_NAME.yaml")): $MOODLEPW")
+fi
 
 # --- Pulling our private images (images.pullSecrets in environments/*.yaml).
 # The token goes from the file to kubectl's stdin, never into an argument.
