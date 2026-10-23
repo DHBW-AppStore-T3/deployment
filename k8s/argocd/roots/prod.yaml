@@ -1,0 +1,19 @@
+# Root Application of the prod environment. Applied once by bootstrap.sh prod.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prod-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
+    targetRevision: main
+    path: k8s/argocd/apps-chart
+    helm:
+      valueFiles: [../../environments/prod.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

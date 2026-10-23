@@ -159,8 +159,8 @@ created per-run and removed in the workflow's cleanup step.
    URIs match the deployed host.
 5. Generates a self-signed TLS certificate under `nginx/certs/` on first run (idempotent).
 6. Runs `community.docker.docker_compose_v2` with `pull: always` against
-   `docker-compose.staging.yml` — the full standalone stack (postgres, postgres-tfstate, rabbitmq,
-   redis, keycloak + its postgres, backend, worker, frontend, nginx). The explicit `files:` list
+   `docker-compose.staging.yml` — the full standalone stack (postgres, postgres-tfstate,
+   keycloak + its postgres, backend, worker, frontend, nginx). The explicit `files:` list
    keeps the local-dev `docker-compose.override.yml` from ever being applied to a server.
 7. Waits for the backend container, runs Alembic migrations as an explicit task, and reloads
    nginx as a safety net for bind-mounted config changes.
@@ -242,7 +242,7 @@ empty**, so the stack refuses to start half-configured:
 | TLS | `ACME_EMAIL`, `DNS_TSIG_KEY_NAME`, `DNS_TSIG_KEY` |
 | Backend | `SECRET_KEY`, `CREDENTIAL_ENCRYPTION_KEY`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` |
 | Keycloak | `KEYCLOAK_ADMIN_USER`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_DB_USER`, `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_DB_NAME` |
-| Broker | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` |
+| Worker DB role | `WORKER_DB_PASSWORD` (login of `appstore_worker`; the task queue is a Postgres table since .github#5) |
 | TF state | `TFSTATE_DB_USER`, `TFSTATE_DB_PASSWORD`, `TFSTATE_DB_NAME` |
 | GHCR | `GIT_ACCESS_TOKEN` (and `GIT_USER`, which the playbook reads directly and defaults to `x`) |
 

@@ -39,7 +39,7 @@ Hermes itself is `docker restart hermes-agent` on that host, outside
 this guardrail's scope.
 
 **Not** `postgres-prod`, `postgres-tfstate-prod`,
-`keycloak-postgres-prod`, `rabbitmq-prod`, `redis-prod`,
+`keycloak-postgres-prod`,
 `moodle-db-prod` — restarting a stateful data store is not a
 "restart the service" action, it risks in-flight transaction loss and
 needs its own explicit conversation, not this skill.

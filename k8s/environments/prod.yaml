@@ -1,0 +1,48 @@
+# Production: tracks the branch `main`; the component CIs roll their `main` images out here.
+env:
+  name: prod
+  namespace: appstore-prod
+  branch: main
+  host: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  ssoHost: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+platform:
+  demoUsers: false
+appstore:
+  # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
+  # this docker-registry Secret from a read:packages token.
+  images:
+    pullSecrets: [ghcr-pull]
+  api:
+    # The DHBW Keystone (OPENSTACK_ALLOWED_AUTH_URLS); empty: no OpenStack
+    # credential can be saved, so no VM app (the Windows desktop) runs.
+    # TODO before VM apps: the URL from the GitHub secret PROD_OS_AUTH_URL.
+    openstackAllowedAuthUrls: ""
+    # LTI 1.3 from Moodle (off while clientId is empty). Moodle's tool URLs:
+    # https://<host>/api/lti13/login and https://<host>/api/lti13/launch.
+    lti:
+      platformIssuer: ""
+      clientId: ""
+      deploymentId: ""
+      jwksUrl: ""
+  # Apps that run as pods: https://<workload>-<deployment>.<appDomain>.
+  podApps:
+    zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+    # The cluster's wildcard certificate covers *.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site: stay one label below it.
+    appDomain: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+    # The cluster's own ranges (pods fd00:42::/64 + 10.42.0.0/16, services
+    # fd00:43::/108, the node's public IPv6 address) are unreachable from
+    # student pods.
+    extraEgressExcept:
+      - 10.42.0.0/16
+      - fd00:42::/48
+      - fd00:43::/48
+      - 2001:7c0:1b20:c913:1::10d/128
+  network:
+    # The Kubernetes API as pods reach it: the "kubernetes" Service and, after
+    # DNAT, the API server on the node. Check with
+    #   kubectl get svc,endpoints kubernetes -n default
+    kubeApi:
+      cidrs:
+        - fd00:43::1/128
+        - 10.43.0.1/32
+        - 2001:7c0:1b20:c913:1::10d/128

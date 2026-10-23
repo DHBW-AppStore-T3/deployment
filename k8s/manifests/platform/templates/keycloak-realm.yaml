@@ -1,0 +1,28 @@
+{{- define "platform.dhbwRealm" -}}
+{{- $realm := .Files.Get "files/dhbw-realm.json" | replace "__APP_HOST__" .Values.appHost | fromJson -}}
+{{- if .Values.demoUsers -}}
+{{- $_ := set $realm "users" (concat $realm.users (.Files.Get "files/dhbw-demo-users.json" | fromJsonArray)) -}}
+{{- end -}}
+{{- $realm | toPrettyJson -}}
+{{- end }}
+# Realm import files. Keycloak imports a realm at start when it does not exist
+# yet and never changes or deletes an existing one: a change here applies to a
+# new realm only (or after deleting the realm by hand).
+#
+#   dhbw       the realm of our AppStore, hardened (.github#4 phase 4): short
+#              access tokens, refresh token rotation, brute-force protection,
+#              a password policy, PKCE S256 and no password grant for the
+#              frontend, an audience mapper for the API, users cannot change
+#              their e-mail. Demo users only where demoUsers is set (staging).
+#
+# ${DEMO_PASSWORD}, ${BFF_CLIENT_SECRET} and ${APPSTORE_BACKEND_CLIENT_SECRET}
+# are substituted by Keycloak itself from the keycloak-secret Secret, so no
+# secret is in git.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+data:
+  dhbw-realm.json: |-
+{{ include "platform.dhbwRealm" . | indent 4 }}

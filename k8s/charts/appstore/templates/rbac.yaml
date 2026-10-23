@@ -1,0 +1,132 @@
+{{- $ns := .Release.Namespace -}}
+{{- $api := include "appstore.name" (dict "context" . "component" "api") -}}
+{{- $deployerSa := include "appstore.name" (dict "context" . "component" "pod-deployer") -}}
+{{- $podDeployer := include "appstore.clusterName" (dict "context" . "component" "pod-deployer") -}}
+{{- $deployer := include "appstore.clusterName" (dict "context" . "component" "deployer") -}}
+{{- $reader := include "appstore.clusterName" (dict "context" . "component" "reader") -}}
+{{- $apiCluster := include "appstore.clusterName" (dict "context" . "component" "api") -}}
+# Who may do what in the cluster (.github#4, 2.4). Only the API and the pod
+# deployer talk to the Kubernetes API; every other pod of the chart runs
+# without a service account token.
+#
+#   pod deployer  creates and deletes the dep-* namespaces and binds two roles
+#                 in each: its own rights there (deployer) and read access for
+#                 the API (reader). It has no rights anywhere else; the
+#                 admission policy (admission-policy.yaml) confines what it may
+#                 create, also inside dep-*.
+#   API           reads namespaces, and inside a dep-* namespace only what the
+#                 reader role grants: never Secrets.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $api }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "api") | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $deployerSa }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+automountServiceAccountToken: false
+---
+# The pod deployer, cluster-wide: namespaces (server-side apply needs create
+# and patch), RoleBindings (only to the two roles below: bind), nothing else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $podDeployer }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "create", "patch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: [{{ $deployer | quote }}, {{ $reader | quote }}]
+    verbs: ["bind"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $podDeployer }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ $podDeployer }} }
+subjects:
+  - { kind: ServiceAccount, name: {{ $deployerSa }}, namespace: {{ $ns }} }
+---
+# Bound by the pod deployer in each dep-* namespace it creates: what applying,
+# scaling, restarting and resetting a deployment take (app/k8s/kube.py),
+# nothing more. The namespace itself is deleted as a whole, so single objects
+# are never deleted, except pods (restart) and volume claims (reset). Secrets
+# are written, never read.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $deployer }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch", "create", "patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "delete", "deletecollection"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets/scale"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "patch"]
+---
+# Bound by the pod deployer in each dep-* namespace for the API's account:
+# the live view of a deployment (app/services/k8s_status.py). No Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $reader }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "api") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events", "persistentvolumeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+---
+# The API, cluster-wide: the namespaces themselves (their labels say whose
+# they are), for the live view and the orphan check.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $apiCluster }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "api") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $apiCluster }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "api") | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ $apiCluster }} }
+subjects:
+  - { kind: ServiceAccount, name: {{ $api }}, namespace: {{ $ns }} }
