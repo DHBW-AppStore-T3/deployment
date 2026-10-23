@@ -5,10 +5,10 @@
 # comment behind a digest is the tag (sha-<commit>) it was built from.
 images:
   tags:
-    backend: "sha256:18716f03b9a4cbb799d3933b7a7dbe84c04694794542808ea12444df38fd7c7c"  # sha-794e9db
-    worker: "sha256:b9b1817fe1926e89e2decd3ed38dee8ab9279099849d5a24b3e9f3331fe3b204"  # sha-531c162
-    workerPods: "sha256:8372cfeef210fddb309997ffcf722d22ffebdf8b6142841bf9ada013088026e0"  # sha-531c162
-    frontend: "sha256:12dc27e46f871128f92a586d4b0b992381be3c8a0adce21c67f7b368ee54103f"  # sha-01d6b18
+    backend: "sha256:5f49cfcb28a182c76083df3e37296232ce256f1cd6ccfb8665c4c97cb0c841f2"  # sha-4784eb5
+    worker: "sha256:1a3974802709bcc3298fcdc667a79ab192f64eab40b0926cb164f04cb4fdfcf5"  # sha-b1683d8
+    workerPods: "sha256:de6348fdcb03f340a7db25b41ce502f840c9919b7c709141b863f574ab6f5410"  # sha-b1683d8
+    frontend: "sha256:4398c24164e8b1407e290d65f0f0cb25d0b728c23a6eed255f6815daf095ab02"  # sha-c65eb2b
     appstoreMcp: "latest"  # placeholder tag; the mcp application is disabled on prod until the first main CI run
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
