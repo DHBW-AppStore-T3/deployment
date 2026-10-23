@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ENV_NAME=${1:?usage: show-credentials.sh staging|prod}
 NS=$(awk '/^  namespace:/{print $2}' "environments/$ENV_NAME.yaml")
-HOST=$(awk '/^  host:/{print $2}' "environments/$ENV_NAME.yaml")
+HOST=$(awk '/^  host:/{print $2; exit}' "environments/$ENV_NAME.yaml")
 get() { kubectl -n "$NS" get secret keycloak-secret -o "jsonpath={.data.$1}" | base64 -d; }
 echo "AppStore:  https://$HOST"
 echo "Keycloak admin console (not on the public host):"
@@ -15,3 +15,6 @@ if [ "$ENV_NAME" = staging ]; then
   echo "Demo users of realm dhbw (dozent.demo = teacher, admin.demo = admin,"
   echo "            student1.demo ... student4.demo): password $(get demo-password)"
 fi
+MOODLE_HOST=$(awk '/^moodle:/{f=1} f&&/^  host:/{print $2; exit}' "environments/$ENV_NAME.yaml")
+echo "Moodle:    https://$MOODLE_HOST"
+echo "           user admin, password $(kubectl -n "$NS" get secret moodle-admin -o jsonpath='{.data.password}' | base64 -d)"

@@ -15,6 +15,7 @@ repository any more.
 | **staging** | `dev` | `appstore-staging` | `appstore-staging.<zone>` | `sso-staging.<zone>` |
 
 The second UI (self-service-ui, below) is on `self-service.<zone>` (prod) and `self-service-staging.<zone>` (staging): one label below the zone, for the wildcard certificate.
+Moodle: `moodle.<zone>` (prod) and `moodle-staging.<zone>` (staging).
 
 `<zone>` = `t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site`. Both
 share the one k3s node.
@@ -47,6 +48,7 @@ through the AppStore and run as pods; see the app-registry repository.
 | --- | --- | --- |
 | `<env>-platform` (wave 1) | `manifests/platform` | CloudNativePG cluster (databases `appstore_t3`, `keycloak`), Keycloak with realm `dhbw` (ours) and `appstore` (reference) |
 | `<env>-appstore` (wave 3) | `charts/appstore` | our services, below |
+| `<env>-moodle` (wave 3) | `charts/moodle` | Moodle, see Moodle below |
 
 `charts/appstore` (all names start with `appstore-t3-`):
 
@@ -146,6 +148,7 @@ API with the prefix removed). The browser holds only the proxy's cookie.
 ## Layout
 
 - `charts/appstore`: our services (values documented in `values.yaml`).
+- `charts/moodle`: Moodle (image from the `moodle_appstore` repository).
 - `manifests/platform` (Postgres + Keycloak): chart, parametrised by host.
 - `argocd/cluster/cnpg.yaml`: the CloudNativePG operator, shared by both
   environments (applied by `bootstrap.sh`).
@@ -160,6 +163,40 @@ API with the prefix removed). The browser holds only the proxy's cookie.
 - `promote.sh`: PR dev -> main. `bootstrap.sh <env>`: namespace, all
   Secrets (none in git), root app; safe to run again (adds missing keys, never
   rotates). `show-credentials.sh <env>` prints the logins.
+
+## Moodle
+
+Moodle (the `moodle_appstore` fork) runs on the cluster; there is no Moodle VM
+or compose file any more.
+
+- **Image**: built from the `Dockerfile` of `moodle_appstore` (Apache + PHP 8.3,
+  UID 33, read-only root, port 8080). Its CI (`moodle-image.yml`) scans it with
+  Trivy, pushes `ghcr.io/dhbw-appstore-t3/moodle_appstore:sha-<commit>` and
+  dispatches `k8s-bump.yml` here with `component=moodle` (key `moodle` in
+  `images/<env>.yaml`), like backend, worker and frontend.
+- **`charts/moodle`**: Deployment `moodle-web` (1 replica, strategy Recreate),
+  Service, Ingress `moodle.<zone>` (wildcard certificate), PVC `moodle-data`
+  (`$CFG->dataroot`, never pruned by Argo CD), CronJob `moodle-cron` (every
+  minute), NetworkPolicies (deny by default; ingress controller, Postgres, DNS,
+  internet).
+- **config.php** is baked into the image and reads its environment: `wwwroot`
+  from `moodle.host`, database `moodle` on `postgres-cluster-rw` (CNPG role and
+  database in `manifests/platform`, login Secret `moodle-db`), `sslproxy` on
+  because TLS ends at Traefik.
+- **Install / upgrade**: the init container `init` of `moodle-web` runs
+  `docker/init.sh` of the image: an empty database gets
+  `admin/cli/install_database.php` (admin password from Secret `moodle-admin`),
+  an installed one `admin/cli/upgrade.php --non-interactive` on every new image.
+- **Secrets** (`bootstrap.sh`, idempotent): `moodle-db`, `moodle-admin`;
+  `show-credentials.sh` prints the admin login. Run `bootstrap.sh` (or create
+  the two Secrets) before the platform application syncs the `moodle` role.
+- **LTI 1.3** with the AppStore: in Moodle register the external tool with
+  `https://<appstore-host>/api/lti13/login` and `/launch`, then set
+  `appstore.api.lti` in `environments/<env>.yaml` (issuer =
+  `https://<moodle-host>`).
+- Not done: backups of the `moodle` database and of `moodle-data`; mail
+  (SMTP) settings; the data of the old VM Moodle was not migrated (it was
+  never installed on prod).
 
 ## Setting up an environment
 

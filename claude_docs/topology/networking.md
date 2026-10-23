@@ -10,14 +10,9 @@ Vier Kern-Netzwerke in `docker-compose.prod.yml`
 | `worker-network` | postgres, postgres-tfstate, worker | Worker: Task-Queue, Events und Ergebnisse in `postgres` nur über die Rolle `appstore_worker` (keine Nutzer-, App- oder Credential-Tabellen; .github#5), Terraform-State in `postgres-tfstate` |
 | `keycloak-network` | caddy, keycloak-postgres, keycloak | Identity-Provider isoliert |
 
-## Ein zusätzliches Netzwerk aus den Overlays
+## Moodle
 
-- `moodle-network` (`docker-compose.moodle.yml`): `moodle-db` +
-  `moodle`, zusätzlich tritt `caddy` dem `moodle-network` bei (damit
-  der Reverse-Proxy `moodle` per Name auflösen kann) — **nicht** an
-  `backend-network`, `worker-network` oder `keycloak-network`.
-  Bewusste Isolation: Moodle hat keine Laufzeit-Abhängigkeit zum
-  AppStore-Backend.
+Moodle läuft auf Kubernetes (`k8s/charts/moodle`), nicht mehr als Compose-Overlay; es gibt kein `moodle-network` mehr.
 
 ## `podman-mcp` bekommt seit deployment#49 einen Host-Port
 

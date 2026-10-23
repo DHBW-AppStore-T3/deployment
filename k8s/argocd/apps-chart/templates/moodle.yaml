@@ -1,0 +1,28 @@
+# Moodle (our moodle_appstore fork): web, cron, volume, ingress. The image
+# digest comes from k8s/images/<env>.yaml (key moodle), the database from the
+# platform application (wave 1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.env.name }}-moodle
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "3" }
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.env.branch }}
+    path: k8s/charts/moodle
+    helm:
+      valueFiles: [../../images/{{ .Values.env.name }}.yaml]
+      values: |
+        {{- with .Values.moodle }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.env.namespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]
