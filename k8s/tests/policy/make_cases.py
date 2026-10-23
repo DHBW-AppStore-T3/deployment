@@ -98,6 +98,10 @@ netpols = [o for o in objects if o["kind"] == "NetworkPolicy"]
 internet = next(o for o in netpols if o["metadata"]["name"] == "allow-egress-internet")
 ingress_np = next(o for o in netpols if o["metadata"]["name"] == "allow-ingress-controller")
 dns_np = next(o for o in netpols if o["metadata"]["name"] == "allow-dns")
+# kube-apiserver defaults the pod template before admission; the policy sees this form.
+defaulted = mutated(sts, lambda s: s["spec"]["template"]["spec"].update(schedulerName="default-scheduler"))
+case("statefulset as kube-apiserver defaults it", "allow", defaulted)
+case("statefulset as kube-apiserver defaults it, re-apply", "allow", defaulted, "UPDATE", old=defaulted)
 scale = {"apiVersion": "autoscaling/v1", "kind": "Scale", "metadata": {"name": sts["metadata"]["name"], "namespace": DEP_NS},
          "spec": {"replicas": 0}}
 case("scale to 0", "allow", scale, "UPDATE", old=mutated(scale, lambda s: s["spec"].update(replicas=1)), kind="StatefulSet", sub="scale")
@@ -175,6 +179,7 @@ pod_variant("image by tag", lambda p: c0(p).update(image="ghcr.io/dhbw-appstore-
 pod_variant("lookalike registry", lambda p: c0(p).update(image=f"ghcr.io/dhbw-appstore-t3-evil/img@{DIGEST}"))
 pod_variant("pinned to a node", lambda p: p.update(nodeName="k3s-server"))
 pod_variant("priority class", lambda p: p.update(priorityClassName="system-node-critical"))
+pod_variant("another scheduler", lambda p: p.update(schedulerName="my-scheduler"))
 pod_variant("tolerates the control plane", lambda p: p.update(tolerations=[{"key": "node-role.kubernetes.io/control-plane", "operator": "Exists"}]))
 pod_variant("host port", lambda p: c0(p)["ports"][0].update(hostPort=8080))
 pod_variant("privileged init container", lambda p: p.update(initContainers=[dict(copy.deepcopy(c0(p)), name="init", securityContext={"privileged": True})]))

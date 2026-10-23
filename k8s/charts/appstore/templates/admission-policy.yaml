@@ -139,6 +139,8 @@ spec:
     - expression: "variables.resource != 'statefulsets' || request.operation == 'DELETE' || (!has(object.spec.replicas) || object.spec.replicas <= 1)"
       message: "a workload runs one pod or none"
     # --- pods (StatefulSet templates) -------------------------------------
+    # kube-apiserver defaults schedulerName to default-scheduler before
+    # admission, so the policy sees it on every pod template it checks.
     - expression: >-
         variables.podSpec == null || (
           (!has(variables.podSpec.hostNetwork) || !variables.podSpec.hostNetwork) &&
@@ -146,7 +148,8 @@ spec:
           (!has(variables.podSpec.hostIPC) || !variables.podSpec.hostIPC) &&
           has(variables.podSpec.automountServiceAccountToken) && !variables.podSpec.automountServiceAccountToken &&
           !has(variables.podSpec.nodeName) && !has(variables.podSpec.priorityClassName) &&
-          !has(variables.podSpec.schedulerName) && !has(variables.podSpec.runtimeClassName) &&
+          (!has(variables.podSpec.schedulerName) || variables.podSpec.schedulerName == 'default-scheduler') &&
+          !has(variables.podSpec.runtimeClassName) &&
           !has(variables.podSpec.hostAliases) && !has(variables.podSpec.serviceAccountName) &&
           has(variables.podSpec.securityContext) && has(variables.podSpec.securityContext.runAsNonRoot) &&
           variables.podSpec.securityContext.runAsNonRoot)
