@@ -1,21 +1,25 @@
 # ================================================================
-# Development Docker Compose Configuration
-# Builds from local Dockerfile.dev with hot reload
+# Local Development Stack (.github#6)
+#
+# Runs without OpenStack, Keycloak, Redis or RabbitMQ.
+# Pod-apps deploy against FakeKube (no cluster needed).
+#
+# Usage:
+#   make init           # first start: up + migrate + seed
+#   make dev-up         # subsequent starts
+#   make dev-down       # stop
 # ================================================================
 
 services:
-  # ----------------------------------------------------------------
-  # PostgreSQL Database (Backend)
-  # ----------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
-    container_name: postgres-dev
+    container_name: postgres-sim
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-backend_dev}
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - postgres_sim_data:/var/lib/postgresql/data
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:
@@ -24,338 +28,99 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - backend-network
-      - worker-network
-    restart: unless-stopped
+      - sim-network
 
-  # ----------------------------------------------------------------
-  # PostgreSQL Database (Backend Tests — Isolated)
-  # ----------------------------------------------------------------
-  # Dedicated Postgres for the backend test suite. The suite calls
-  # Base.metadata.drop_all() on tear-down, which would wipe the dev DB
-  # if we pointed tests at `postgres`. This service lives on its own
-  # volume and exposes a distinct host port (55433) so tests run via
-  # `TEST_DATABASE_URL=postgresql://...@localhost:55433/...` in parallel
-  # with a live dev environment.
-  postgres-test:
-    image: postgres:16-alpine
-    container_name: postgres-test-dev
-    environment:
-      POSTGRES_USER: ${TEST_DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${TEST_DB_NAME:-backend_test}
-    volumes:
-      - postgres_test_data:/var/lib/postgresql/data
-    ports:
-      - "${TEST_DB_PORT:-55433}:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TEST_DB_USER:-postgres}"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - backend-network
-    restart: unless-stopped
-
-  # ----------------------------------------------------------------
-  # PostgreSQL Database (Terraform Remote State)
-  # ----------------------------------------------------------------
-  # Worker-only Postgres for Terraform's `pg` backend. Deliberately
-  # isolated from the application DB: the worker must never reach the
-  # backend's data, only its own state store. One schema per deployment
-  # (`deployment_<uuid>`) keeps the locking/state surface tight.
-  postgres-tfstate:
-    image: postgres:16-alpine
-    container_name: postgres-tfstate-dev
-    environment:
-      POSTGRES_USER: ${TFSTATE_DB_USER:-terraform}
-      POSTGRES_PASSWORD: ${TFSTATE_DB_PASSWORD:-terraform}
-      POSTGRES_DB: ${TFSTATE_DB_NAME:-tfstate}
-    volumes:
-      - postgres_tfstate_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TFSTATE_DB_USER:-terraform}"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - worker-network
-    restart: unless-stopped
-
-  # ----------------------------------------------------------------
-  # PostgreSQL Database (Keycloak)
-  # ----------------------------------------------------------------
-  keycloak-postgres:
-    image: postgres:16-alpine
-    container_name: keycloak-postgres-dev
-    environment:
-      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
-      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
-      POSTGRES_DB: ${KEYCLOAK_DB_NAME:-keycloak}
-    volumes:
-      - keycloak_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER:-keycloak}"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - keycloak-network
-    restart: unless-stopped
-
-  # ----------------------------------------------------------------
-  # Keycloak (Identity & Access Management)
-  # ----------------------------------------------------------------
-  keycloak:
-    image: quay.io/keycloak/keycloak:23.0
-    container_name: keycloak-dev
-    environment:
-      # Database
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/${KEYCLOAK_DB_NAME:-keycloak}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
-      
-      # Admin Credentials
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      
-      # Development Settings
-      KC_HOSTNAME_STRICT: 'false'
-      KC_HTTP_ENABLED: 'true'
-    command:
-      - start-dev
-    ports:
-      - "${KEYCLOAK_PORT:-8080}:8080"
-    depends_on:
-      keycloak-postgres:
-        condition: service_healthy
-    networks:
-      - keycloak-network
-      - frontend-network
-      - backend-network
-    restart: unless-stopped
-
-  # ----------------------------------------------------------------
-  # Backend API (FastAPI) - Development with Hot Reload
-  # ----------------------------------------------------------------
   backend:
     build:
       context: ../backend
       dockerfile: Dockerfile.dev
-    container_name: backend-dev
+    container_name: backend-sim
     environment:
-      # Database
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
-      
-      # Security
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-12345}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-sim}
       ALGORITHM: ${ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
-      # Task results (optional; without it the credential key seals them)
-      RESULTS_ENCRYPTION_KEY: ${RESULTS_ENCRYPTION_KEY:-}
-      
-      # Celery broker (.github#5): the pgq transport on this database,
-      # derived from DATABASE_URL.
-      CELERY_BROKER_URL: ""
-      # Password of the worker's database role (make migrate-dev sets it).
-      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:-worker-dev-password}
-      
-      # Git
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
-      
-      # Keycloak
-      KEYCLOAK_SERVER_URL: ${KEYCLOAK_SERVER_URL:-http://keycloak:8080}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-dhbw}
-      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-appstore-backend}
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
-      KEYCLOAK_ENABLED: ${KEYCLOAK_ENABLED:-true}
-      
-      # CORS
-      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"]}'
-
-      # Email (Gmail SMTP) — used by the post-deploy notify hook in
-      # task_finalizer.py. SMTP_ENABLED is the explicit
-      # kill-switch (default false): even with SMTP_USER/SMTP_PASSWORD
-      # populated, mail delivery only happens when SMTP_ENABLED=true.
-      # Use it to keep credentials in .env for later but turn delivery
-      # off in dev / CI / on demo days without scrubbing the creds.
-      SMTP_ENABLED: ${SMTP_ENABLED:-false}
-      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Click-n-Deploy}
-
-      # Public base URL of the frontend, used in owner-summary mails
-      # to deep-link back to the deployment detail page.
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
-
-      # LTI 1.3 (Moodle launch) + Self-Service handoff — see backend#9.
-      # LTI13_PLATFORM_ISSUER defaults to host.docker.internal so a locally
-      # running moodle_appstore (outside this compose network) can be used
-      # as the LTI platform during development.
-      LTI13_PLATFORM_ISSUER: ${LTI13_PLATFORM_ISSUER:-http://host.docker.internal:8081}
-      LTI13_CLIENT_ID: ${LTI13_CLIENT_ID:-}
-      LTI13_SESSION_SECRET: ${LTI13_SESSION_SECRET:-change-me-in-production}
-      HANDOFF_SESSION_SECRET: ${HANDOFF_SESSION_SECRET:-change-me-in-production}
-
-      # Application
-      DEBUG: "True"
-      APP_NAME: ${APP_NAME:-Backend API Dev}
+      # Simulate mode: no Keycloak, no OpenStack
+      DEV_MODE: "true"
+      OPENSTACK_SIMULATE: "true"
+      # Stub values so Keycloak config does not fail validation
+      KEYCLOAK_SERVER_URL: "http://localhost:8080"
+      KEYCLOAK_REALM: "dhbw"
+      KEYCLOAK_CLIENT_ID: "appstore-backend"
+      KEYCLOAK_ENABLED: "false"
+      SMTP_ENABLED: "false"
+      LTI13_SESSION_SECRET: "change-me-in-dev"
+      HANDOFF_SESSION_SECRET: "change-me-in-dev"
+      DEBUG: "true"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      # Mount source code for hot reload
       - ../backend:/app
       - /app/.venv
-      - backend_git_repos:/tmp/repos
-      # Mount shared SSH key for Git operations
-      - ssh_keys:/root/.ssh:ro
+      - backend_sim_repos:/tmp/repos
     networks:
-      - frontend-network
-      - backend-network
-    restart: unless-stopped
+      - sim-network
 
-  # ----------------------------------------------------------------
-  # Worker Service (Celery) - Development
-  # ----------------------------------------------------------------
   worker:
     build:
       context: ../worker
       dockerfile: Dockerfile.dev
-    container_name: worker-dev
-    # Use host network to allow OpenStack API access
-    # Note: This disables container network isolation
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    container_name: worker-sim
     environment:
-      # Database (.github#5): its own role on the application DB (queue,
-      # task events, results only).
-      DATABASE_URL: postgresql://appstore_worker:${WORKER_DB_PASSWORD:-worker-dev-password}@postgres:5432/${DB_NAME:-backend_dev}
-
-      # OpenStack credential decryption (must match backend)
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
-      # Task results (optional; without it the credential key seals them)
-      RESULTS_ENCRYPTION_KEY: ${RESULTS_ENCRYPTION_KEY:-}
-
-      # Terraform pg backend — isolated DB, NOT the application DB.
-      # Worker uses one schema per deployment (deployment_<uuid>).
-      TFSTATE_DATABASE_URL: postgresql://${TFSTATE_DB_USER:-terraform}:${TFSTATE_DB_PASSWORD:-terraform}@postgres-tfstate:5432/${TFSTATE_DB_NAME:-tfstate}?sslmode=disable
-
-      # Git
+      RESULTS_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
+      APPSTORE_API_URL: http://backend:8000
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
-
-      # Application
-      DEBUG: "True"
+      APP_ENV: "development"
+      WORKER_SIMULATE: "true"
+      DEBUG: "true"
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-tfstate:
-        condition: service_healthy
     volumes:
-      # Mount source code for hot reload
       - ../worker:/app
       - /app/.venv
-      - worker_git_repos:/tmp/worker_repos
-      # Mount shared SSH key for Git operations
-      - ssh_keys:/root/.ssh:ro
     networks:
-      - worker-network
-    restart: unless-stopped
+      - sim-network
 
-  # ----------------------------------------------------------------
-  # Frontend (React/Next.js) - Development with Hot Reload
-  # ----------------------------------------------------------------
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile.dev
-    container_name: frontend-dev
+    container_name: frontend-sim
     environment:
       VITE_APP_URL: ${VITE_APP_URL:-http://localhost:5173}
-      VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8080}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # No Keycloak in sim mode
+      VITE_KEYCLOAK_URL: ""
       NODE_ENV: development
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
       - backend
     volumes:
-      # Mount source code for hot reload
       - ../frontend:/app
-      - /app/node_modules  # Prevent overwriting node_modules
-      - /app/.next         # Prevent overwriting .next build folder
+      - /app/node_modules
+      - /app/.next
     networks:
-      - frontend-network
-    restart: unless-stopped
+      - sim-network
 
-  # ----------------------------------------------------------------
-  # pgAdmin (Database Management UI) - Development Only
-  # ----------------------------------------------------------------
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: pgadmin-dev
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "${PGADMIN_PORT:-5050}:80"
-    depends_on:
-      - postgres
-    networks:
-      - backend-network
-      - worker-network
-    restart: unless-stopped
-
-# ----------------------------------------------------------------
-# Volumes
-# ----------------------------------------------------------------
 volumes:
-  postgres_dev_data:
+  postgres_sim_data:
     driver: local
-  postgres_test_data:
+  backend_sim_repos:
     driver: local
-  postgres_tfstate_data:
-    driver: local
-  keycloak_postgres_data:
-    driver: local
-  backend_git_repos:
-    driver: local
-  worker_git_repos:
-    driver: local
-  ssh_keys:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${SSH_KEY_PATH:-~/.ssh}
 
-# ----------------------------------------------------------------
-# Networks
-# ----------------------------------------------------------------
 networks:
-  frontend-network:
+  sim-network:
     driver: bridge
-    name: frontend-network-dev
-  backend-network:
-    driver: bridge
-    name: backend-network-dev
-  worker-network:
-    driver: bridge
-    name: worker-network-dev
-  keycloak-network:
-    driver: bridge
-    name: keycloak-network-dev
+    name: sim-network-dev
