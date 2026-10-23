@@ -131,14 +131,13 @@ spec:
     {{- include "appstore.kubeApi" $n.kubeApi | nindent 4 }}
     {{- end }}
     {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow) | nindent 4 }}
-    {{- if $n.httpsEgressAllow }}
-    # HTTPS only: Moodle's JWKS through the cluster's own public address.
+    {{- if .Values.api.hostAliases }}
+    # The ingress controller, for the host names of api.hostAliases (Moodle's keys).
     - to:
-        {{- range $n.httpsEgressAllow }}
-        - ipBlock: { cidr: {{ . }} }
-        {{- end }}
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.podApps.ingressNamespace }} } }
       ports:
         - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 8443 }
     {{- end }}
 ---
 # The pod deployer and the orphan check: the Kubernetes API, nothing else

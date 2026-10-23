@@ -22,6 +22,11 @@ appstore:
   images:
     pullSecrets: [ghcr-pull]
   api:
+    # Moodle's LTI keys: its public name -> the ingress controller's Service
+    # (kubectl -n kube-system get svc traefik); see values.yaml api.hostAliases.
+    hostAliases:
+      - ip: "fd00:43::2fb9"
+        hostnames: ["moodle-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"]
     # The DHBW Keystone (OPENSTACK_ALLOWED_AUTH_URLS); empty: no OpenStack
     # credential can be saved, so no VM app (the Windows desktop) runs.
     # TODO before VM apps: the URL from the GitHub secret STAGING_OS_AUTH_URL.
@@ -57,9 +62,6 @@ appstore:
         - fd00:43::1/128
         - 10.43.0.1/32
         - 2001:7c0:1b20:c913:1::10d/128
-    # The API fetches Moodle's LTI keys over the cluster's public address.
-    httpsEgressAllow:
-      - 2001:7c0:1b20:c913:1::10d/128
 moodle:
   enabled: true
   # Moodle (k8s/charts/moodle); one label below the wildcard certificate.
