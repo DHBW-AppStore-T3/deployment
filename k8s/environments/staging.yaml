@@ -5,6 +5,11 @@ env:
   branch: dev
   host: appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+# Read-only MCP server for agents (github.com/DHBW-AppStore-T3/appstore-mcp).
+mcp:
+  enabled: true
+  host: appstore-mcp-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 platform:
   demoUsers: true
 appstore:

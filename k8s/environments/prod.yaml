@@ -5,6 +5,13 @@ env:
   branch: main
   host: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+# Read-only MCP server for agents (github.com/DHBW-AppStore-T3/appstore-mcp).
+mcp:
+  # Off until the first CI run on `main` has pushed an image: set enabled: true
+  # together with images.tags.appstoreMcp in images/prod.yaml (promote.sh).
+  enabled: false
+  host: appstore-mcp.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 platform:
   demoUsers: false
 appstore:

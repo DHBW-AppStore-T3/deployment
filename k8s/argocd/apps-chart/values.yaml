@@ -13,3 +13,7 @@ platform: {}
 # Values of our AppStore chart (k8s/charts/appstore/values.yaml), passed as
 # they are: api, podApps, network, ...
 appstore: {}
+# appstore-mcp (k8s/charts/appstore-mcp): enabled, host (one label below the
+# zone, the wildcard certificate covers *.<zone>) and zone.
+mcp:
+  enabled: false

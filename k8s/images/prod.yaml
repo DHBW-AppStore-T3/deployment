@@ -9,3 +9,4 @@ images:
     worker: "sha256:b9b1817fe1926e89e2decd3ed38dee8ab9279099849d5a24b3e9f3331fe3b204"  # sha-531c162
     workerPods: "sha256:8372cfeef210fddb309997ffcf722d22ffebdf8b6142841bf9ada013088026e0"  # sha-531c162
     frontend: "sha256:12dc27e46f871128f92a586d4b0b992381be3c8a0adce21c67f7b368ee54103f"  # sha-01d6b18
+    appstoreMcp: "latest"  # placeholder tag; the mcp application is disabled on prod until the first main CI run
