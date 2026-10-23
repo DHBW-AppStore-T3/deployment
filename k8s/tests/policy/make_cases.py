@@ -102,8 +102,9 @@ dns_np = next(o for o in netpols if o["metadata"]["name"] == "allow-dns")
 defaulted = mutated(sts, lambda s: s["spec"]["template"]["spec"].update(schedulerName="default-scheduler"))
 case("statefulset as kube-apiserver defaults it", "allow", defaulted)
 case("statefulset as kube-apiserver defaults it, re-apply", "allow", defaulted, "UPDATE", old=defaulted)
+# A Scale to 0 as kube-apiserver passes it: replicas is omitempty in autoscaling/v1.
 scale = {"apiVersion": "autoscaling/v1", "kind": "Scale", "metadata": {"name": sts["metadata"]["name"], "namespace": DEP_NS},
-         "spec": {"replicas": 0}}
+         "spec": {}}
 case("scale to 0", "allow", scale, "UPDATE", old=mutated(scale, lambda s: s["spec"].update(replicas=1)), kind="StatefulSet", sub="scale")
 case("scale to 1", "allow", mutated(scale, lambda s: s["spec"].update(replicas=1)), "UPDATE", old=scale, kind="StatefulSet", sub="scale")
 pod = {"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "team-1-alice-0", "namespace": DEP_NS}, "spec": sts["spec"]["template"]["spec"]}

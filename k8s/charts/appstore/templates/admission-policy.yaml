@@ -134,7 +134,10 @@ spec:
           'services.nodeports' in object.spec.hard && string(object.spec.hard['services.nodeports']) == '0' &&
           'services.loadbalancers' in object.spec.hard && string(object.spec.hard['services.loadbalancers']) == '0')
       message: "the resource quota must cap pods, services, CPU, memory and storage and allow no node ports or load balancers"
-    - expression: "variables.resource != 'statefulsets/scale' || request.operation == 'DELETE' || object.spec.replicas <= 1"
+    # A Scale to 0 has no spec.replicas (omitempty in autoscaling/v1).
+    - expression: >-
+        variables.resource != 'statefulsets/scale' || request.operation == 'DELETE' ||
+        !has(object.spec.replicas) || object.spec.replicas <= 1
       message: "a workload runs one pod or none"
     - expression: "variables.resource != 'statefulsets' || request.operation == 'DELETE' || (!has(object.spec.replicas) || object.spec.replicas <= 1)"
       message: "a workload runs one pod or none"
