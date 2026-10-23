@@ -88,6 +88,44 @@
       ]
     },
     {
+      "clientId": "appstore-self-service",
+      "name": "AppStore self-service-ui (second UI)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "rootUrl": "https://__SSU_HOST__",
+      "baseUrl": "/",
+      "redirectUris": ["https://__SSU_HOST__/oauth2/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://__SSU_HOST__/",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      },
+      "defaultClientScopes": ["basic", "acr", "web-origins", "profile", "roles", "email"],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "audience appstore-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "appstore-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "appstore-backend",
       "name": "AppStore backend (user search)",
       "enabled": true,

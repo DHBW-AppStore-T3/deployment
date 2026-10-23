@@ -10,3 +10,6 @@ images:
     workerPods: "sha256:9929b96620789f7bdc259cfc55783c413640875a490bf69804863c0d37c928fb"  # sha-43d1b97
     frontend: "sha256:febc206a1bb714ce70e208d62c1b9dcc67a089befd171c829bb1317e09fb94a3"  # sha-164837e
     appstoreMcp: "sha256:4654a9581ca82b2005ca60a215694b07955828b210893ca3c4b21f773b99cb5d"  # sha-b239de2
+    # Empty until the first image of the self-service-ui repository is rolled out
+    # (the chart renders the component only with a digest).
+    selfServiceUi: ""

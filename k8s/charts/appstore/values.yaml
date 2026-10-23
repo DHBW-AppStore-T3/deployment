@@ -5,10 +5,11 @@
 # come from k8s/images/<env>.yaml, which CI writes. Nothing secret is in here:
 # k8s/bootstrap.sh creates the Secret named below.
 
-# Public hosts: the AppStore (the frontend, and the API under /api) and
-# Keycloak.
+# Public hosts: the AppStore (the frontend, and the API under /api), Keycloak
+# and the second UI (selfServiceUi, one label below the zone: wildcard cert).
 host: ""
 ssoHost: ""
+selfServiceHost: ""
 # The installation. Labels the pod namespaces it creates (staging and prod
 # share one cluster) and names its cluster-wide objects. Empty: the release
 # namespace.
@@ -26,12 +27,15 @@ images:
     worker: ""
     workerPods: ""
     frontend: ""
+    # Empty: the self-service-ui is not rolled out yet (no image to run).
+    selfServiceUi: ""
 
 # Created by k8s/bootstrap.sh. Keys: database-url (the owner role; API,
 # migrations, orphan check), worker-database-url (role appstore_worker; both
 # workers), credential-encryption-key (API, VM executor),
 # results-encryption-key (API, both workers), keycloak-client-secret,
-# lti13-session-secret.
+# lti13-session-secret, self-service-cookie-secret (oauth2-proxy of the
+# self-service-ui).
 secretName: appstore-t3
 
 keycloak:
@@ -40,6 +44,11 @@ keycloak:
   realm: dhbw
   frontendClientId: appstore-frontend
   backendClientId: appstore-backend
+  # Public client (PKCE S256) of the self-service-ui; the API accepts its tokens
+  # (OIDC_ALLOWED_CLIENTS) while selfServiceUi.enabled. Created in realm dhbw by
+  # k8s/manifests/platform/files/dhbw-realm.json, or for a running realm by
+  # k8s/keycloak-self-service-client.sh.
+  selfServiceClientId: appstore-self-service
   # The aud the realm's audience mapper puts into the frontend's tokens.
   audience: appstore-api
 
@@ -136,6 +145,28 @@ frontend:
   resources:
     requests: { cpu: 10m, memory: 32Mi }
     limits: { cpu: 200m, memory: 128Mi }
+
+# The second UI (repository self-service-ui): oauth2-proxy + Caddy in one pod,
+# behind an Ingress on selfServiceHost. Rendered when enabled and
+# images.tags.selfServiceUi is set.
+selfServiceUi:
+  enabled: false
+  replicas: 1
+  # Empty: the cluster's default IngressClass.
+  ingressClassName: ""
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+  proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy
+    tag: v7.15.5
+    # Hard end of a browser session (the access token is renewed every minute
+    # while the tab is in use).
+    cookieExpire: 8h
+    cookieName: _ssu_oauth2
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { cpu: 200m, memory: 64Mi }
 
 # alembic upgrade head before every sync (Helm pre-install/pre-upgrade hook,
 # an Argo CD PreSync hook).

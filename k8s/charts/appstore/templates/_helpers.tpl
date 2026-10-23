@@ -99,7 +99,7 @@ to start in production without them (.github#7 O).
 - { name: KEYCLOAK_ISSUER, value: {{ printf "https://%s/realms/%s" (required "ssoHost is required" .Values.ssoHost) $k.realm | quote }} }
 - { name: KEYCLOAK_CLIENT_ID, value: {{ $k.backendClientId | quote }} }
 {{ include "appstore.secretEnv" (dict "context" . "name" "KEYCLOAK_CLIENT_SECRET" "key" "keycloak-client-secret") }}
-- { name: OIDC_ALLOWED_CLIENTS, value: {{ $k.frontendClientId | quote }} }
+- { name: OIDC_ALLOWED_CLIENTS, value: {{ join "," (compact (list $k.frontendClientId (ternary $k.selfServiceClientId "" .Values.selfServiceUi.enabled))) | quote }} }
 - { name: OIDC_AUDIENCE, value: {{ $k.audience | quote }} }
 # Same origin: the frontend's nginx is the gateway for /api.
 - { name: CORS_ORIGINS, value: "[]" }

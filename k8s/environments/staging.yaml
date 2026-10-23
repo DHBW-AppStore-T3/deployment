@@ -5,6 +5,8 @@ env:
   branch: dev
   host: appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  # The second UI; ONE label below the zone (the wildcard certificate).
+  selfServiceHost: self-service-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 # Read-only MCP server for agents (github.com/DHBW-AppStore-T3/appstore-mcp).
 mcp:
   enabled: true
@@ -13,6 +15,8 @@ mcp:
 platform:
   demoUsers: true
 appstore:
+  selfServiceUi:
+    enabled: true
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
   images:

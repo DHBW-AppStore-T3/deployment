@@ -14,10 +14,10 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: "backend | worker | worker-pods | frontend | appstore-mcp"
+        description: "backend | worker | worker-pods | frontend | appstore-mcp | self-service-ui"
         required: true
         type: choice
-        options: [backend, worker, worker-pods, frontend, appstore-mcp]
+        options: [backend, worker, worker-pods, frontend, appstore-mcp, self-service-ui]
       tag:
         description: "Image tag pushed by the component's CI (sha-<7 hex>)"
         required: true
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$COMPONENT" in
-            backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;; appstore-mcp) KEY=appstoreMcp ;;
+            backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;; appstore-mcp) KEY=appstoreMcp ;; self-service-ui) KEY=selfServiceUi ;;
           esac
           if [ "$BRANCH" = main ]; then ENV=prod; else ENV=staging; fi
           FILE="k8s/images/${ENV}.yaml"
