@@ -100,9 +100,12 @@ podApps:
 podDeployer:
   replicas: 1
   concurrency: 4
+  # Measured on staging: ~125 MiB idle, and each worker process keeps ~130 MiB
+  # more after its first job (the Kubernetes client is loaded per process),
+  # so ~650 MiB once all four have worked. 512 MiB got it OOM-killed.
   resources:
-    requests: { cpu: 50m, memory: 192Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests: { cpu: 50m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 1Gi }
 
 # The VM executor: OpenTofu/Packer jobs of the apps that still run as VMs
 # (the Windows desktop). No Kubernetes rights.
