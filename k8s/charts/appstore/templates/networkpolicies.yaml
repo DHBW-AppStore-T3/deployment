@@ -131,15 +131,6 @@ spec:
     {{- include "appstore.kubeApi" $n.kubeApi | nindent 4 }}
     {{- end }}
     {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow) | nindent 4 }}
-    {{- if $n.httpsEgressAllow }}
-    # HTTPS only: Moodle's JWKS through the cluster's own public address.
-    - to:
-        {{- range $n.httpsEgressAllow }}
-        - ipBlock: { cidr: {{ . }} }
-        {{- end }}
-      ports:
-        - { protocol: TCP, port: 443 }
-    {{- end }}
 ---
 # The pod deployer and the orphan check: the Kubernetes API, nothing else
 # (the pod deployer never fetches anything from an app repository).
