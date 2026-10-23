@@ -2,7 +2,7 @@
 # One-time setup of one AppStore environment on the k3s cluster.
 # Creates the namespace and every Secret (nothing secret lives in git), then
 # applies the environment's Argo CD root application, which syncs the rest from
-# the environment's branch (staging: spike/dev, prod: spike/main).
+# the environment's branch (staging: dev, prod: main).
 #
 #   export KUBECONFIG=/path/to/kubeconfig-ma_wwi_24sea_appstore_g3.yaml
 #   [GHCR_PULL_TOKEN_FILE=/path/to/token] k8s/bootstrap.sh staging|prod
@@ -44,9 +44,6 @@ NEW=()
 db_login keycloak-db keycloak
 db_login appstore-t3-db appstore_t3
 db_login appstore-worker-db appstore_worker
-# The vendored reference stack's roles, declared in the same cluster.
-db_login appstore-db appstore
-db_login role-provider-db roleprovider
 
 # --- Keycloak: admin, demo users (staging), clients
 if ! have keycloak-secret; then
@@ -88,25 +85,6 @@ PY
   echo "image pull Secret ghcr-pull written"
 elif ! have ghcr-pull; then
   echo "WARNING: no Secret ghcr-pull; our images cannot be pulled. Run again with GHCR_PULL_TOKEN_FILE." >&2
-fi
-
-# --- The vendored reference stack (kept until it is retired; its apps are no
-# longer deployed by this branch, see k8s/README.md)
-if ! have appstore-secret; then
-  kubectl -n "$NS" create secret generic appstore-secret \
-    --from-literal=database-url="postgresql://appstore:$(key appstore-db password)@$DB_HOST/appstore" \
-    --from-literal=credential-encryption-key="$(fernet)" \
-    --from-literal=role-provider-api-token="$(rand 32)"
-fi
-if ! have role-provider-secret; then
-  kubectl -n "$NS" create secret generic role-provider-secret \
-    --from-literal=db-connection-string="host=postgres-cluster-rw user=roleprovider password=$(key role-provider-db password) dbname=roleprovider port=5432 sslmode=disable TimeZone=UTC" \
-    --from-literal=api-tokens="$(key appstore-secret role-provider-api-token)" --from-literal=api-write-tokens="$(rand 32)"
-fi
-if ! have oauth2-proxy-ui-secret; then
-  kubectl -n "$NS" create secret generic oauth2-proxy-ui-secret \
-    --from-literal=client-id=appstore --from-literal=client-secret="$(key keycloak-secret bff-client-secret)" \
-    --from-literal=cookie-secret="$(fernet)"
 fi
 
 kubectl apply -f "argocd/roots/$ENV_NAME.yaml"

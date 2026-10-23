@@ -9,8 +9,6 @@
 # yet and never changes or deletes an existing one: a change here applies to a
 # new realm only (or after deleting the realm by hand).
 #
-#   appstore   the reference realm of the vendored stack (unused once the
-#              environment runs our services; delete it by hand then)
 #   dhbw       the realm of our AppStore, hardened (.github#4 phase 4): short
 #              access tokens, refresh token rotation, brute-force protection,
 #              a password policy, PKCE S256 and no password grant for the
@@ -26,7 +24,5 @@ metadata:
   name: keycloak-realm
   annotations: { argocd.argoproj.io/sync-wave: "1" }
 data:
-  appstore-realm.json: |-
-{{ .Files.Get "files/appstore-realm.json" | replace "__APP_HOST__" .Values.appHost | indent 4 }}
   dhbw-realm.json: |-
 {{ include "platform.dhbwRealm" . | indent 4 }}

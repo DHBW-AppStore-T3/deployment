@@ -1,8 +1,8 @@
-# Staging: tracks spike/dev (analogous to dev -> staging of the compose stack).
+# Staging: tracks the branch `dev`; the component CIs roll their `dev` images out here.
 env:
   name: staging
   namespace: appstore-staging
-  branch: spike/dev
+  branch: dev
   host: appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 platform:

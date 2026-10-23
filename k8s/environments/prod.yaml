@@ -1,9 +1,8 @@
-# Production: tracks spike/main (analogous to main -> prod of the compose stack).
-# Reached only by promoting spike/dev (PR), never built from source here.
+# Production: tracks the branch `main`; the component CIs roll their `main` images out here.
 env:
   name: prod
   namespace: appstore-prod
-  branch: spike/main
+  branch: main
   host: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   ssoHost: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 platform:

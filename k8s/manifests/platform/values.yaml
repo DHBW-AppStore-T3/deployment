@@ -6,5 +6,5 @@ demoUsers: false
 # Realms routed on the public host; the master realm and the admin console
 # are reachable only through kubectl port-forward svc/keycloak 8080 (then
 # http://localhost:8080/admin/) unless publicAdmin is set.
-publicRealms: [dhbw, appstore]
+publicRealms: [dhbw]
 publicAdmin: false

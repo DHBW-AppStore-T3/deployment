@@ -2,7 +2,7 @@
 #
 # Set per environment by its Argo CD application (k8s/argocd/apps-chart,
 # templates/appstore.yaml) from k8s/environments/<env>.yaml; the image tags
-# come from k8s/env/appstore.yaml, which CI writes. Nothing secret is in here:
+# come from k8s/images/<env>.yaml, which CI writes. Nothing secret is in here:
 # k8s/bootstrap.sh creates the Secret named below.
 
 # Public hosts: the AppStore (the frontend, and the API under /api) and
@@ -20,7 +20,7 @@ images:
   # Names of image pull Secrets in the namespace, if the packages are private.
   pullSecrets: []
   # Tag (sha-<commit>) or digest (sha256:...) of each image; CI writes them
-  # into k8s/env/appstore.yaml.
+  # into k8s/images/<env>.yaml.
   tags:
     backend: ""
     worker: ""

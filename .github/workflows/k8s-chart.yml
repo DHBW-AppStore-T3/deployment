@@ -9,7 +9,7 @@ name: K8s - chart, admission policy and RBAC
 #            and the API do what the code does, and nothing more.
 on:
   push:
-    branches: ['spike/**']
+    branches: [main, dev]
     paths: ['k8s/**', '.github/workflows/k8s-chart.yml']
   pull_request:
     paths: ['k8s/**', '.github/workflows/k8s-chart.yml']

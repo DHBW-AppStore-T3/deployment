@@ -8,7 +8,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
-    targetRevision: spike/dev
+    targetRevision: dev
     path: k8s/argocd/apps-chart
     helm:
       valueFiles: [../../environments/staging.yaml]

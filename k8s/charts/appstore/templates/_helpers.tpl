@@ -34,7 +34,7 @@ app.kubernetes.io/component: {{ .component }}
 
 {{/* <registry>/<name>:<tag> or <registry>/<name>@<digest>; fails without a tag. */}}
 {{- define "appstore.image" -}}
-{{- $tag := required (printf "images.tags.%s is required (k8s/env/appstore.yaml)" .key) (index .context.Values.images.tags .key) -}}
+{{- $tag := required (printf "images.tags.%s is required (k8s/images/<env>.yaml)" .key) (index .context.Values.images.tags .key) -}}
 {{- if hasPrefix "sha256:" $tag -}}
 {{- printf "%s/%s@%s" .context.Values.images.registry .name $tag -}}
 {{- else -}}

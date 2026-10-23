@@ -1,45 +1,42 @@
 # The AppStore on Kubernetes
 
 Our AppStore (backend, worker, frontend) on the k3s cluster of OpenStack
-project `ma_wwi_24sea_appstore_g3`, deployed by Argo CD (.github#4, migration
-plan phase 4). Linux apps run as pods in a namespace `dep-<id>` per
-deployment; the Windows desktop still runs as OpenStack VMs, through the VM
-executor. The compose stack on `main` / `dev` (prod and staging VMs) is
-untouched: nothing here runs for `main` or `dev`.
+project `ma_wwi_24sea_appstore_g3`, deployed by Argo CD. Linux apps run as
+pods in a namespace `dep-<id>` per deployment; the Windows desktop still runs
+as OpenStack VMs, through the VM executor. This is the only deployment of the
+AppStore: there is no compose stack and no vendored third-party code in this
+repository any more.
 
 ## Environments
 
 | Environment | Git branch | Namespace | AppStore | Keycloak |
 | --- | --- | --- | --- | --- |
-| **prod** | `spike/main` | `appstore-prod` | `appstore.<zone>` | `sso.<zone>` |
-| **staging** | `spike/dev` | `appstore-staging` | `appstore-staging.<zone>` | `sso-staging.<zone>` |
-| **pfisterer** (reference, unmodified) | `spike/k8s` | `appstore` | `pfisterer.<zone>` | `sso-pfisterer.<zone>` |
+| **prod** | `main` | `appstore-prod` | `appstore.<zone>` | `sso.<zone>` |
+| **staging** | `dev` | `appstore-staging` | `appstore-staging.<zone>` | `sso-staging.<zone>` |
 
-`<zone>` = `t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site`. All
-three share the one k3s node. `pfisterer` is Pfisterer's vendored original
-(`k8s/src/`, kept as a reference, no longer built or deployed by this branch);
-its Argo apps live on `spike/k8s` (root app `root`, which also owns the
-cluster-wide `cnpg` operator).
+`<zone>` = `t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site`. Both
+share the one k3s node.
 
 ```
-backend / worker: push to spike/dev; frontend: push to spike/react-pods (the React
-frontend; spike/vue-pods, the Vue one, is frozen and no longer deployed)
-   └─ CI builds, scans and pushes the images (tags spike-dev / spike-react-pods and sha-<commit>)
-   └─ CI dispatches k8s-bump.yml here with the pushed digest: it goes into k8s/env/appstore.yaml [skip ci]
-                                        │ Argo CD (staging-root, tracks spike/dev)
-                                        ▼
-                                    STAGING  (appstore-staging.<zone>)
-        k8s/promote.sh: PR spike/main <- k8s/ of spike/dev (same digests, no rebuild)
-                                        │ Argo CD (prod-root, tracks spike/main)
-                                        ▼
-                                    PROD     (appstore.<zone>)
+push to dev  of backend / worker / frontend            push to main of backend / worker / frontend
+   └─ CI: lint, test, scan, build, push to ghcr.io        └─ the same
+   └─ k8s-bump.yml (ref dev): digest -> k8s/images/       └─ k8s-bump.yml (ref main): PR with the digest
+      staging.yaml, commit on dev                            -> k8s/images/prod.yaml, auto-merged after
+                  │ Argo CD (staging-root, tracks dev)       the required checks
+                  ▼                                                      │ Argo CD (prod-root, tracks main)
+              STAGING                                                    ▼
+                                                                       PROD
+push to dev of this repository (charts, policy, platform) -> staging; k8s/promote.sh: PR dev -> main -> prod
 ```
+
+Apps (the things students deploy) are not part of this: they are registered
+through the AppStore and run as pods; see the app-registry repository.
 
 ## What runs in an environment
 
 | Application | Path | What |
 | --- | --- | --- |
-| `<env>-platform` (wave 1) | `manifests/platform` | CloudNativePG cluster (databases `appstore_t3`, `keycloak`; the reference stack's `appstore`, `roleprovider`), Keycloak with realms `dhbw` (ours) and `appstore` (reference) |
+| `<env>-platform` (wave 1) | `manifests/platform` | CloudNativePG cluster (databases `appstore_t3`, `keycloak`), Keycloak with realm `dhbw` (ours) and `appstore` (reference) |
 | `<env>-appstore` (wave 3) | `charts/appstore` | our services, below |
 
 `charts/appstore` (all names start with `appstore-t3-`):
@@ -101,70 +98,38 @@ frontend; spike/vue-pods, the Vue one, is frozen and no longer deployed)
 ## Layout
 
 - `charts/appstore`: our services (values documented in `values.yaml`).
-- `manifests/platform` (Postgres + Keycloak) and `manifests/seed` (the
-  reference stack's demo roles; no longer deployed): charts, parametrised by host.
+- `manifests/platform` (Postgres + Keycloak): chart, parametrised by host.
 - `argocd/apps-chart`: renders every Argo Application of one environment from
   `environments/<env>.yaml`; `argocd/roots/<env>.yaml`: the environment's root.
-- `env/appstore.yaml`: the image digests, written by CI. `environments/`: the
-  per-environment values (the only difference between staging and prod).
+- `images/<env>.yaml`: the image digests, written by CI (dev writes staging,
+  main writes prod). `environments/`: the per-environment values.
 - `tests/`: `render_env.py` renders an environment as Argo CD does;
   `policy/` evaluates the admission policy with kube-apiserver's evaluator;
   `cluster_probe.py` checks RBAC and policy in a kind cluster. CI:
   `.github/workflows/k8s-chart.yml`.
-- `promote.sh`: staging -> prod PR. `bootstrap.sh <env>`: namespace, all
+- `promote.sh`: PR dev -> main. `bootstrap.sh <env>`: namespace, all
   Secrets (none in git), root app; safe to run again (adds missing keys, never
   rotates). `show-credentials.sh <env>` prints the logins.
 
-## Switching an environment to our stack
+## Setting up an environment
 
-The branch that brings this (`spike/pods-platform`) is not tracked by Argo CD.
-Staging first; prod the same way after a successful staging test, through
-`promote.sh`.
+Once per environment (the cluster has no other state that is not in git):
 
-1. **Destroy the pod deployments of the reference stack** in its UI (the
-   `dep-*` namespaces it created, e.g. `dep-cdab2d43`); our stack does not
-   know them.
-2. **Let the old Applications clean up after themselves.** They carry no
-   finalizer, so removing them from the apps-chart would leave their
-   Deployments, ClusterRoles and admission policy running:
-   ```bash
-   for app in appstore-api self-service-ui role-provider-service role-provider-seed; do
-     kubectl -n argocd patch application "staging-$app" --type merge \
-       -p '{"metadata":{"finalizers":["resources-finalizer.argocd.argoproj.io"]}}'
-   done
-   ```
-3. **Secrets**: `GHCR_PULL_TOKEN_FILE=<file> k8s/bootstrap.sh staging` (from
-   this branch). It adds the logins of `appstore_t3` and `appstore_worker`,
-   the Secret `appstore-t3` (database URLs, two new Fernet keys, the Keycloak
-   client secret of `appstore-backend`, the LTI session secret), the key
-   `appstore-backend-client-secret` of `keycloak-secret` and the image pull
-   Secret `ghcr-pull` (the file holds a token with `read:packages` only; our
-   packages are private). Keycloak does not start without that key, by
-   design. Run it again whenever this branch gains a key (e.g.
-   `results-encryption-key`): pods do not start without their keys.
-4. **Images**: push `spike/dev` of backend and worker and `spike/react-pods` of
-   the frontend; their CI pins the new images in `k8s/env/appstore.yaml`.
-   Until then the chart uses the moving `spike-dev` / `spike-react-pods` tags.
-5. **Settings** in `environments/staging.yaml`: `appstore.api.openstackAllowedAuthUrls`
+1. `GHCR_PULL_TOKEN_FILE=<file> k8s/bootstrap.sh staging|prod`. It creates the
+   namespace and every Secret (database logins, Fernet keys, Keycloak client
+   secrets, the image pull Secret `ghcr-pull`; the token needs `read:packages`
+   only) and applies the environment's root Application. Run it again whenever
+   the chart gains a Secret key; it never rotates existing ones. The generated
+   logins are printed once (`show-credentials.sh <env>` prints them later).
+2. Settings in `environments/<env>.yaml`: `appstore.api.openstackAllowedAuthUrls`
    (the DHBW Keystone, from the GitHub secrets; without it no VM app runs),
    the LTI settings if Moodle should launch the AppStore, and check
    `appstore.network.kubeApi` with `kubectl get svc,endpoints kubernetes -n default`.
-6. **Merge** `spike/pods-platform` into `spike/dev`. Argo CD prunes the old
-   Applications (and, through the finalizer, what they deployed), creates the
-   database `appstore_t3`, imports realm `dhbw` (Keycloak restarts once, its
-   settings change), sets the master realm's frontend URL (job
-   `keycloak-admin-url`), migrates and starts our services.
-7. **Check**: `kubectl -n argocd get applications | grep staging`; then the
-   staging test of the migration plan (phase 7): every app with two teams of
-   two people, access checked per person, pause/resume, restart/reset,
-   destroy, cancel; the Windows app as a VM; the user search in the wizard
-   (it uses Keycloak's admin API through the internal URL).
-8. **Afterwards**: delete realm `appstore` and the reference stack's Secrets
-   and databases by hand once nothing needs them (`--import-realm` never
-   deletes a realm; CNPG keeps a database when its declaration goes).
+3. Check: `kubectl -n argocd get applications | grep <env>`.
 
-Rolling back: revert the merge on `spike/dev`; the reference stack's
-Applications come back (their data is still there).
+Rolling back an image: set its digest in `images/<env>.yaml` back (commit on
+`dev`, or a PR on `main`); Argo CD follows. Rolling back anything else: revert
+the commit.
 
 ## Operating notes
 

@@ -1,6 +1,6 @@
 # Our AppStore (k8s/charts/appstore): API, pod deployer, VM executor and
 # frontend, with their RBAC, admission policy and network policies. Image
-# tags come from k8s/env/appstore.yaml, written by the k8s-bump workflow.
+# tags come from k8s/images/<env>.yaml, written by the k8s-bump workflow.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,7 +17,7 @@ spec:
     targetRevision: {{ .Values.env.branch }}
     path: k8s/charts/appstore
     helm:
-      valueFiles: [../../env/appstore.yaml]
+      valueFiles: [../../images/{{ .Values.env.name }}.yaml]
       values: |
         host: {{ .Values.env.host }}
         ssoHost: {{ .Values.env.ssoHost }}

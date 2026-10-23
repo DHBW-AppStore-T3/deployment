@@ -1,5 +1,4 @@
-# Keycloak as the OIDC issuer of this environment (realms "dhbw" and, for the
-# vendored reference stack, "appstore").
+# Keycloak as the OIDC issuer of this environment (realm "dhbw").
 # Env substitution in the realm files (${DEMO_PASSWORD}, ${BFF_CLIENT_SECRET},
 # ${APPSTORE_BACKEND_CLIENT_SECRET}) is done by Keycloak from the keycloak-secret
 # Secret, so no secret is in git.

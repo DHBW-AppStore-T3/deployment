@@ -1,12 +1,14 @@
-name: K8s - roll out an image (staging)
+name: K8s - roll out an image
 
-# Called by the CI of backend and worker (spike/dev) and of the frontend
-# (spike/react-pods) after they pushed an image:
-#   gh workflow run k8s-bump.yml --ref spike/dev #     -f component=... -f tag=sha-<commit> -f digest=sha256:<64 hex>
-# Writes the digest into k8s/env/appstore.yaml on spike/dev; Argo CD's staging
-# follows. The caller passes the digest it pushed, so this workflow needs no
-# read access to the components' (private) packages. Production gets it only
-# through k8s/promote.sh (a PR into spike/main).
+# Called by the CI of backend, worker and frontend after they pushed an image
+# from `dev` (staging) or `main` (prod):
+#   gh workflow run k8s-bump.yml --ref <dev|main> \
+#     -f component=... -f tag=sha-<commit> -f digest=sha256:<64 hex>
+# Writes the digest into k8s/images/<staging|prod>.yaml of that branch; Argo CD
+# of that environment follows. The caller passes the digest it pushed, so this
+# workflow needs no read access to the components' (private) packages.
+#   dev   a commit on dev                       -> staging
+#   main  a pull request with auto-merge on main -> prod (main requires checks)
 on:
   workflow_dispatch:
     inputs:
@@ -23,23 +25,18 @@ on:
         description: "Digest of that image (sha256:<64 hex>)"
         required: true
         type: string
-  # Only so that GitHub knows this workflow: it is not on the default branch,
-  # and a dispatch-only workflow that never ran cannot be dispatched. The job
-  # does not run for this event.
-  push:
-    branches: [spike/dev]
-    paths: ['.github/workflows/k8s-bump.yml']
 
 concurrency:
-  group: k8s-bump
+  group: k8s-bump-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
-  contents: write   # the commit to k8s/env/appstore.yaml
+  contents: write
+  pull-requests: write
 
 jobs:
   bump:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/spike/dev'
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Check the inputs
@@ -50,27 +47,52 @@ jobs:
           [[ "$TAG" =~ ^sha-[0-9a-f]{7,40}$ ]] || { echo "tag must be sha-<hex>, got '$TAG'" >&2; exit 1; }
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "digest must be sha256:<64 hex>, got '$DIGEST'" >&2; exit 1; }
       - uses: actions/checkout@v4
-        with: { ref: spike/dev }
+        with:
+          ref: ${{ github.ref_name }}
+          # A PAT, so that the pull request for prod runs the required checks
+          # (a GITHUB_TOKEN pull request does not).
+          token: ${{ secrets.DEPLOYMENT_PAT }}
       - name: Pin the image by its digest
+        id: pin
         env:
           COMPONENT: ${{ inputs.component }}
           TAG: ${{ inputs.tag }}
           DIGEST: ${{ inputs.digest }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           case "$COMPONENT" in
             backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;;
           esac
-          sed -i -E "s|^(    ${KEY}:).*|\1 \"${DIGEST}\"  # ${TAG}|" k8s/env/appstore.yaml
-          grep -q "${DIGEST}" k8s/env/appstore.yaml || { echo "k8s/env/appstore.yaml has no key ${KEY}" >&2; exit 1; }
+          if [ "$BRANCH" = main ]; then ENV=prod; else ENV=staging; fi
+          FILE="k8s/images/${ENV}.yaml"
+          sed -i -E "s|^(    ${KEY}:).*|\1 \"${DIGEST}\"  # ${TAG}|" "$FILE"
+          grep -q "${DIGEST}" "$FILE" || { echo "${FILE} has no key ${KEY}" >&2; exit 1; }
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add k8s/env/appstore.yaml
-          git diff --cached --quiet && { echo "already at ${DIGEST}"; exit 0; }
-          # GITHUB_TOKEN pushes do not trigger workflows, so this cannot loop.
-          git commit -m "chore(k8s): roll out ${COMPONENT} ${TAG} on staging [skip ci]"
+          git add "$FILE"
+          git diff --cached --quiet && { echo "already at ${DIGEST}"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "env=${ENV}" >> "$GITHUB_OUTPUT"
+          git commit -m "chore(k8s): roll out ${COMPONENT} ${TAG} on ${ENV} [skip ci]"
+      - name: Staging - push to dev
+        if: steps.pin.outputs.changed == 'true' && github.ref_name == 'dev'
+        run: |
           for attempt in 1 2 3; do
-            git pull --rebase origin spike/dev && git push origin HEAD:spike/dev && exit 0
+            git pull --rebase origin dev && git push origin HEAD:dev && exit 0
             sleep 5
           done
           exit 1
+      - name: Prod - pull request into main, merged when the checks pass
+        if: steps.pin.outputs.changed == 'true' && github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOYMENT_PAT }}
+          COMPONENT: ${{ inputs.component }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          BR="bump/prod-${COMPONENT}-${TAG}"
+          git push origin "HEAD:refs/heads/${BR}"
+          gh pr create --base main --head "$BR" \
+            --title "chore(k8s): roll out ${COMPONENT} ${TAG} on prod" \
+            --body "Written by k8s-bump.yml after the CI of ${COMPONENT} pushed ${TAG} from main. Merging rolls it out on prod."
+          gh pr merge "$BR" --auto --squash --delete-branch
