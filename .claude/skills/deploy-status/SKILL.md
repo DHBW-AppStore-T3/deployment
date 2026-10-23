@@ -1,49 +1,42 @@
 ---
 name: deploy-status
-description: "Use when the user asks whether staging/prod is in sync with main, what the latest deploy was, or whether it's safe to promote staging to prod. Triggers on: is staging up to date, what's the last deploy, can we promote to prod, deploy status."
+description: "Use when the user asks whether staging/prod is in sync with dev/main, what the latest deploy was, or whether it's safe to promote staging to prod. Triggers on: is staging up to date, what's the last deploy, can we promote to prod, deploy status."
 ---
 
 # /deploy-status
 
-Answers "is what's running the same as what's in `main`" — for
-staging (auto-deployed) and prod (manually promoted) separately, per
-HARNESS.md System 5.1's chain.
+Answers "is what's running the same as what's in git" for staging
+(`dev`, automatic) and prod (`main`, via bump PRs and promotion PRs).
+Everything runs on Kubernetes with Argo CD; use the `appstore` MCP
+server (read-only, see `/verify-staging`). If its tools are missing,
+say so and do not guess.
 
 ## Staging
 
-Staging deploys automatically on every push to `main`
-(`.github/workflows/staging.yml` / `.forgejo/workflows/staging.yml`).
-So "is staging current" is really "did the last workflow run
-succeed":
+A push to a component's `dev` triggers CI, then `k8s-bump.yml` writes
+the image digest to `k8s/images/staging.yaml`, then Argo CD
+(`staging-appstore`) rolls it out. So "is staging current" means:
 
-```bash
-gh run list --repo DHBW-AppStore-T3/deployment --workflow staging.yml --limit 5
-```
+- `github_runs(repo=<component>, branch="dev")` and
+  `github_runs(repo="deployment", branch="dev", workflow="k8s-bump.yml")`: latest runs `success`?
+- `rollout_status("staging")`: component `stale` means the pods still run an older digest than committed.
+- `argocd_app("staging-appstore")`: Synced/Healthy?
 
-A `failure` on the most recent run means staging is running whatever
-the *previous* successful run deployed, not `main` HEAD — say that
-explicitly, don't just report the run status.
+A failed latest run means staging runs the *previous* successful
+digest, not `dev` HEAD. Say that explicitly.
 
 ## Prod
 
-No automatic trigger exists for prod (deliberate, HARNESS.md 5.1) — so
-"is prod current" means comparing the deployed commit against `main`
-by hand:
+Prod tracks `main`. `k8s-bump.yml` opens a bump PR (auto-merge) per
+component digest in `k8s/images/prod.yaml`; chart/config changes reach
+prod through a `dev` -> `main` promotion PR (`k8s/promote.sh`). To compare:
 
-```bash
-ssh appstore-vm "cd /opt/app-store/deployment && sudo git log --oneline -1"
-git -C deployment log --oneline origin/main -1
-```
-
-If these differ, prod is behind `main` by however many commits sit
-between them — list them (`git log --oneline <prod-sha>..origin/main`)
-so the user sees what would actually change on a promotion, not just
-that a gap exists.
+- `rollout_status("prod")` and `argocd_app("prod-appstore")` for what runs,
+- `github_open_prs(repo="deployment")` for pending bump/promotion PRs,
+- `git log --oneline origin/main..origin/dev` in `deployment` for what a promotion would bring.
 
 ## "Is it safe to promote staging to prod"
 
-Not this skill's call to make alone — report the facts
-(staging's last successful deploy commit, whether that commit's CI
-was fully green, how far behind prod currently is) and let the human
-decide. HARNESS.md 5.2: prod promotion is a human-freigabe point,
-this skill informs that decision, it doesn't replace it.
+Not this skill's call. Report the facts (last healthy staging verdict
+and its commit, CI state, open PRs, diff between `dev` and `main`)
+and let the human decide. Prod promotion is a human-approval point.
