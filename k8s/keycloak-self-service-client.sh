@@ -33,9 +33,10 @@ for i in $(seq 1 30); do
 done
 
 ADMIN_PW=$(kubectl -n "$NS" get secret keycloak-secret -o 'jsonpath={.data.admin-password}' | base64 -d)
-# The password goes over stdin of curl (--data-urlencode @-), not into argv.
-TOKEN=$(printf 'password=%s' "$ADMIN_PW" | curl -fsS "http://localhost:$PORT/realms/master/protocol/openid-connect/token" \
-  -d client_id=admin-cli -d grant_type=password -d username=admin --data-urlencode @- |
+# The password goes over stdin of curl (--data-urlencode password@-), not into argv.
+# `name@-` is required: a bare `@-` would url-encode the whole input including the name.
+TOKEN=$(printf '%s' "$ADMIN_PW" | curl -fsS "http://localhost:$PORT/realms/master/protocol/openid-connect/token" \
+  -d client_id=admin-cli -d grant_type=password -d username=admin --data-urlencode password@- |
   python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
 unset ADMIN_PW
 
