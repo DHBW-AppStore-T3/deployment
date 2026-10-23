@@ -29,6 +29,11 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
+      {{- with .Values.api.hostAliases }}
+      # Moodle's public name, resolved to the ingress controller: a pod cannot
+      # reach the node's public address (LTI keys, values.yaml).
+      hostAliases: {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: api
           image: {{ include "appstore.image" (dict "context" . "key" "backend" "name" "backend") }}
