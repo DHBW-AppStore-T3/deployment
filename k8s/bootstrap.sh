@@ -69,6 +69,8 @@ if ! have appstore-t3; then
 fi
 # Task results have a key of their own (the pod deployer gets no other).
 add_key appstore-t3 results-encryption-key "$(fernet)"
+# The self-service-ui's oauth2-proxy: 32 characters = a 32-byte cookie secret.
+add_key appstore-t3 self-service-cookie-secret "$(rand 24)"
 
 # --- appstore-mcp (k8s/charts/appstore-mcp, secretName appstore-mcp). Only the token
 # signing key is generated here; the GitHub OAuth app credentials (and an optional

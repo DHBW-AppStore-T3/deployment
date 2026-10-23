@@ -14,6 +14,8 @@ repository any more.
 | **prod** | `main` | `appstore-prod` | `appstore.<zone>` | `sso.<zone>` |
 | **staging** | `dev` | `appstore-staging` | `appstore-staging.<zone>` | `sso-staging.<zone>` |
 
+The second UI (self-service-ui, below) is on `self-service.<zone>` (prod) and `self-service-staging.<zone>` (staging): one label below the zone, for the wildcard certificate.
+
 `<zone>` = `t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site`. Both
 share the one k3s node.
 
@@ -101,6 +103,45 @@ through the AppStore and run as pods; see the app-registry repository.
   `keycloak-admin-url` gives the master realm that frontend URL after each
   sync). Realm files are imported into a new database only; a running realm
   is changed in the admin console. Demo users only on staging.
+
+## The second UI: self-service-ui
+
+Repository `self-service-ui` (fork of pfisterer/self-service-ui) with its App
+Store section: catalog, one-click deploy, deployments and a student's own
+access data, against the same API. Templates in `charts/appstore`
+(`self-service-ui.yaml`), not a chart of its own: it shares the labels, the
+hardening, the image pull Secret and, above all, the NetworkPolicies of the
+API (which now admit it), and it is rolled out with the same Application.
+
+One pod, two containers, read-only root filesystem, UID 65532, no service
+account token: oauth2-proxy (`:4180`, the Ingress target) signs people in at
+Keycloak and forwards to Caddy (`:8080`: the SPA, and `/api/app-store/*` to the
+API with the prefix removed). The browser holds only the proxy's cookie.
+
+- **Login**: Keycloak realm `dhbw`, client `appstore-self-service`: public, PKCE
+  S256, redirect `https://<self-service host>/oauth2/callback`, audience mapper
+  `appstore-api`. oauth2-proxy insists on a client secret and gets a
+  placeholder that Keycloak ignores; the only secret is the proxy's cookie
+  secret (`self-service-cookie-secret` in Secret `appstore-t3`, added by
+  `bootstrap.sh`). The proxy forwards the **access token** as the Bearer; the
+  API accepts it because `OIDC_ALLOWED_CLIENTS` lists the client
+  (`keycloak.selfServiceClientId`, only while `selfServiceUi.enabled`).
+- **Image**: `images.tags.selfServiceUi` (`k8s-bump.yml`, component
+  `self-service-ui`). Empty: the component is not rendered.
+- **No CORS entry** is needed: browser and API talk same-origin through Caddy.
+- **A realm that already exists is not re-imported.** The client is in
+  `dhbw-realm.json` for new realms; for a running one, once per environment
+  (after the platform app has synced the change):
+
+      export KUBECONFIG=...; k8s/keycloak-self-service-client.sh staging   # or prod
+
+  It reads the client from the rendered realm (ConfigMap `keycloak-realm`),
+  takes the admin password from `keycloak-secret` into a shell variable (never
+  printed) and creates or updates the client through the admin REST API over
+  `kubectl port-forward` (local port 8080). Idempotent. The same in the admin
+  console: realm `dhbw`, Clients, Create (public, standard flow, PKCE S256).
+- **Prod** has `selfServiceUi.enabled: false` until the client exists in its
+  live realm; then set it and promote (`promote.sh`).
 
 ## Layout
 
