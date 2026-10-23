@@ -4,7 +4,13 @@ kind: Application
 metadata:
   name: {{ .Values.env.name }}-platform
   namespace: argocd
-  annotations: { argocd.argoproj.io/sync-wave: "1" }
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # CNPG's admission webhook defaults spec.managed.roles[*] (connectionLimit,
+    # ensure, inherit). Argo's client-side diff sees a list-item mismatch and
+    # reports OutOfSync forever; the server-side dry-run diff does not, and
+    # still shows every real change.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: default
   source:
