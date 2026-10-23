@@ -13,4 +13,4 @@ images:
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
     selfServiceUi: "sha256:54f797baf060b6c9ea8d541a0993480e4c87ad6d68b31aff17cad2a1f7466f82"  # sha-085b80e
-    moodle: "sha-0000000"  # not built yet
+    moodle: "sha256:24d8de30a0f73e15b08ed19638106017deaf72a2304e84c33fa1ed82cebfccbf"  # sha-64b86cb
