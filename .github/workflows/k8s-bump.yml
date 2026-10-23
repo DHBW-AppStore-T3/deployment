@@ -73,7 +73,11 @@ jobs:
           git diff --cached --quiet && { echo "already at ${DIGEST}"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "env=${ENV}" >> "$GITHUB_OUTPUT"
-          git commit -m "chore(k8s): roll out ${COMPONENT} ${TAG} on ${ENV} [skip ci]"
+          # Staging commits go straight to dev and skip CI. A prod commit is the head of
+          # a pull request, so it must NOT carry [skip ci]: that suppresses the
+          # pull_request workflows and left the PR BLOCKED on the required check.
+          SKIP=""; [ "$ENV" = staging ] && SKIP=" [skip ci]"
+          git commit -m "chore(k8s): roll out ${COMPONENT} ${TAG} on ${ENV}${SKIP}"
       - name: Staging - push to dev
         if: steps.pin.outputs.changed == 'true' && github.ref_name == 'dev'
         run: |
