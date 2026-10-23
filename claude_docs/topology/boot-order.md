@@ -21,7 +21,7 @@ app.worker_db_role`, danach `docker restart worker-prod`). Bis dahin
 versucht Celery die Verbindung erneut; der Neustart nach dem Rollen-Schritt
 macht das sofort.
 
-## podman-mcp-/Moodle-Overlays — eigene, spätere Reihenfolge
+## podman-mcp-Overlay — eigene, spätere Reihenfolge
 
 `docker-compose.podman-mcp.yml` (auf `appstore-prod-01`,
 `staging-dhbw-appstore` und `ci-dhbw-appstore`, je einzeln):
@@ -37,15 +37,7 @@ ausdrücken — Hermes' eigenes "verbindet nur beim Start, parkt nach 3
 Fehlversuchen"-Verhalten (siehe unten) ist die einzige noch bestehende
 Absicherung, pro podman-mcp-Instanz einzeln.
 
-`docker-compose.moodle.yml`:
-```
-moodle-db (healthy)
-  → moodle
-  → caddy (Override: MOODLE_HOSTNAME + moodle-network, neu
-           gestartet für das zweite Site-Block-Zertifikat)
-```
-
-Beide Overlays sind additiv — sie starten **nach** dem laufenden
+Das Overlay ist additiv — es startet **nach** dem laufenden
 Prod-Stack, nie davor, und ändern nichts an der obigen Kern-Reihenfolge.
 
 ## Bekannter, tatsächlich aufgetretener Fehler in dieser Kette

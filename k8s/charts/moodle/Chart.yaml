@@ -1,0 +1,8 @@
+apiVersion: v2
+name: moodle
+description: >-
+  Moodle (our moodle_appstore fork) of one environment on Kubernetes: web pod
+  with install/upgrade init container, cron, volume for moodledata, ingress.
+  The database `moodle` is created by manifests/platform (CloudNativePG).
+type: application
+version: 0.1.0

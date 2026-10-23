@@ -24,12 +24,12 @@ skill does not attempt to route around.
 ## Allowed restart targets and command
 
 Only these service names, matching `docker-compose.prod.yml` /
-`docker-compose.podman-mcp.yml` / `docker-compose.moodle.yml` container
+`docker-compose.podman-mcp.yml` container
 names:
 
 ```
 backend-prod, worker-prod, frontend-prod, caddy-prod, keycloak-prod,
-podman-mcp-prod, moodle-prod
+podman-mcp-prod
 ```
 
 `hermes-agent-prod` is no longer a valid target here — since
@@ -39,8 +39,7 @@ Hermes itself is `docker restart hermes-agent` on that host, outside
 this guardrail's scope.
 
 **Not** `postgres-prod`, `postgres-tfstate-prod`,
-`keycloak-postgres-prod`,
-`moodle-db-prod` — restarting a stateful data store is not a
+`keycloak-postgres-prod` — restarting a stateful data store is not a
 "restart the service" action, it risks in-flight transaction loss and
 needs its own explicit conversation, not this skill.
 

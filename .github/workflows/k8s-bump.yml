@@ -1,6 +1,6 @@
 name: K8s - roll out an image
 
-# Called by the CI of backend, worker, frontend and appstore-mcp after they pushed an image
+# Called by the CI of backend, worker, frontend, appstore-mcp and moodle (moodle_appstore) after they pushed an image
 # from `dev` (staging) or `main` (prod):
 #   gh workflow run k8s-bump.yml --ref <dev|main> \
 #     -f component=... -f tag=sha-<commit> -f digest=sha256:<64 hex>
@@ -14,10 +14,10 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: "backend | worker | worker-pods | frontend | appstore-mcp | self-service-ui"
+        description: "backend | worker | worker-pods | frontend | appstore-mcp | self-service-ui | moodle"
         required: true
         type: choice
-        options: [backend, worker, worker-pods, frontend, appstore-mcp, self-service-ui]
+        options: [backend, worker, worker-pods, frontend, appstore-mcp, self-service-ui, moodle]
       tag:
         description: "Image tag pushed by the component's CI (sha-<7 hex>)"
         required: true
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$COMPONENT" in
-            backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;; appstore-mcp) KEY=appstoreMcp ;; self-service-ui) KEY=selfServiceUi ;;
+            backend) KEY=backend ;; worker) KEY=worker ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;; appstore-mcp) KEY=appstoreMcp ;; self-service-ui) KEY=selfServiceUi ;; moodle) KEY=moodle ;;
           esac
           if [ "$BRANCH" = main ]; then ENV=prod; else ENV=staging; fi
           FILE="k8s/images/${ENV}.yaml"

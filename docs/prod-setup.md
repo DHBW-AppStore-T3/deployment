@@ -206,22 +206,15 @@ SMTP_FROM_EMAIL=
 SMTP_FROM_NAME=Click-n-Deploy
 ```
 
-### 2k. Moodle- und Runner-Overlays (optional)
+### 2k. Runner-Overlay (optional)
 
-Nur nötig, wenn `make moodle-up` bzw. `make runner-up` verwendet werden
-(siehe [Optional: Moodle-Stack](#optional-moodle-stack-lti-prototyp)
-und [Optional: Self-Hosted Runner](#optional-self-hosted-runner-für-stagingyml)
+Nur nötig, wenn `make runner-up` verwendet wird
+(siehe [Optional: Self-Hosted Runner](#optional-self-hosted-runner-für-stagingyml)
 unten). `GEMINI_API_KEY`/`DISCORD_BOT_TOKEN`/`DISCORD_ALLOWED_USERS`
 gehören seit deployment#49 in die `.env` von `hermes-dhbw-appstore`,
 nicht mehr hierher — siehe [Optional: podman-mcp](#optional-podman-mcp-hermes-läuft-auf-einer-eigenen-vm).
 
 ```
-MOODLE_REPO_PATH=/opt/app-store/moodle_appstore
-MOODLE_DB_PASSWORD=<random>
-MOODLE_ADMIN_PASSWORD=<random>
-MOODLE_ADMIN_EMAIL=admin@dhbw.de
-MOODLE_WWWROOT=https://<VM-IP>:8443
-
 GITHUB_ACCESS_TOKEN=<fine-grained-pat-nur-fuer-deployment-repo,-Administration:-Read-and-write>
 ```
 
@@ -361,44 +354,11 @@ sind abgelöst durch den read-only MCP-Server `appstore-mcp`
 `infrastructure/terraform/envs/hermes` (VM `hermes-dhbw-appstore`) bleibt, bis
 die VM separat abgebaut wird.
 
-## Optional: Moodle-Stack (LTI-Prototyp)
+## Moodle
 
-Deployt den echten `moodle_appstore`-Fork
-(github.com/DHBW-AppStore-T3/moodle_appstore), nicht ein separates
-`moodle/`-Verzeichnis — eine frühere Revision dieser Anleitung und von
-`docker-compose.moodle.yml` nahm fälschlich einen eigenen
-`moodle/Dockerfile`-Build mit Env-Var-gesteuerter Auto-Installation an;
-beides existiert nicht. `moodle_appstore` bringt sein eigenes
-`docker-compose.yml` mit (`moodlehq/moodle-php-apache:8.3` +
-Repo-Bind-Mount als Document Root, keine Custom-Image), das hier nur
-mit produktionstauglichen Secrets statt Dev-Defaults nachgebaut wird.
-Läuft auf einem eigenen Port, weil die VM keine Domain hat (siehe
-`docker-compose.moodle.yml`-Kommentarkopf für die Begründung):
-
-1. `moodle_appstore` neben `deployment/` auf die VM klonen (z. B.
-   `/opt/app-store/moodle_appstore`) — ohne diesen Checkout hat
-   `moodle`-Service in `docker-compose.moodle.yml` keinen Document
-   Root zum Mounten.
-2. In `.env`: `MOODLE_REPO_PATH=/opt/app-store/moodle_appstore`,
-   `MOODLE_DB_PASSWORD`, `MOODLE_ADMIN_PASSWORD`, `MOODLE_ADMIN_EMAIL`,
-   `MOODLE_WWWROOT=https://<VM-IP>:8443` eintragen.
-3. `make moodle-up` startet `moodle-db` + `moodle` (kein Build, pullt
-   nur das offizielle Image), danach lädt es `caddy` neu, damit der
-   neue 8443-Listener aktiv wird.
-4. `make moodle-install` — **einmalig**, nach dem ersten `moodle-up`:
-   `moodlehq/moodle-php-apache` hat keinen Auto-Installer, das ist ein
-   echter `admin/cli/install.php --non-interactive`-Lauf gegen die
-   leere DB. Ohne diesen Schritt zeigt Port 8443 nur Moodles eigenen
-   Installations-Wizard, keine fertige Seite.
-5. `https://<VM-IP>:8443` im Browser öffnen (Cert-Warnung wie beim
-   Haupt-Host akzeptieren — dasselbe selbstsignierte Zertifikat, kein
-   zweites nötig).
-6. `make moodle-down` entfernt nur die Moodle-Container, nicht den
-   Rest des Stacks. Der DB-Inhalt bleibt im `moodle_db_prod_data`-Volume
-   erhalten, `moodle-install` ist bei einem erneuten `moodle-up` also
-   nicht nochmal nötig, solange das Volume nicht gelöscht wurde.
-
-`moodle-network` hat keinen Zugriff auf `backend-network`, `worker-network` oder `keycloak-network` — die Instanz ist bewusst vom AppStore-Kern isoliert, bis eine echte LTI-Integration das rechtfertigt.
+Moodle läuft nicht mehr auf dieser VM, sondern auf Kubernetes
+(`k8s/charts/moodle`, siehe `k8s/README.md`, Abschnitt Moodle). Die frühere
+Compose-Variante (`docker-compose.moodle.yml`, `make moodle-*`) wurde entfernt.
 
 ## Optional: Self-Hosted Runner (für `staging.yml`)
 

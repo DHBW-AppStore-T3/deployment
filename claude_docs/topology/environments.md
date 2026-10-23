@@ -4,7 +4,7 @@
 |---|---|---|---|
 | dev | `docker-compose.dev.yml` | keiner, direkte Ports | `make dev-up` lokal |
 | staging | `docker-compose.staging.yml` | Caddy, dns-01-Zertifikat | Forgejo-Workflow (`.forgejo/workflows/staging.yml`), pinnable Image-Versionen (`${BACKEND_VERSION:-latest}`) |
-| prod | `docker-compose.prod.yml` | caddy, ACME-Zertifikat (DHBW/HARICA) via DNS-01 | manuell via `make podman-mcp-up`/`make moodle-up`/`prod-up`, Images hart auf `:latest` |
+| prod | `docker-compose.prod.yml` | caddy, ACME-Zertifikat (DHBW/HARICA) via DNS-01 | manuell via `make podman-mcp-up`/`prod-up`, Images hart auf `:latest` |
 
 ## Warum prod nicht pinnbar ist
 
@@ -20,8 +20,7 @@ staging auf einer separaten VM — prod kann das architektonisch nicht.
 `appstore-prod-01` läuft mit **einer** IPv6-Adresse, **keiner
 DNS-Domain**. Das selbstsignierte Zertifikat trägt CN/SAN direkt auf
 diese IP. Konsequenzen: kein Let's-Encrypt-Flow möglich (bräuchte eine
-Domain), Moodle bekommt deshalb einen eigenen Port (8443) statt einer
-Subdomain (siehe `docker-compose.moodle.yml`-Kommentarkopf).
+Domain), (Moodle läuft inzwischen auf Kubernetes mit eigener Subdomain, `k8s/charts/moodle`.)
 
 Die konkrete Adresse hier absichtlich nicht mehr hartkodiert — eine
 frühere Version dieser Datei nannte `2001:7c0:1b20:c913:1::15a`, was

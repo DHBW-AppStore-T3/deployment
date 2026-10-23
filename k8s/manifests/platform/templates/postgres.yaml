@@ -4,6 +4,7 @@
 #                 migrations); role appstore_worker (both workers) gets only
 #                 the rights the migrations grant it.
 #   keycloak      Keycloak.
+#   moodle        Moodle (k8s/charts/moodle). Owner moodle.
 # The login secrets are created by bootstrap.sh, never committed.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -20,6 +21,7 @@ spec:
       # Queue, task events and task results only (migration 5e1f0c2a9b7d);
       # no CREATEROLE needed anywhere, CNPG gives it its login.
       - { name: appstore_worker, login: true, passwordSecret: { name: appstore-worker-db } }
+      - { name: moodle, login: true, passwordSecret: { name: moodle-db } }
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: Database
@@ -40,3 +42,13 @@ spec:
   cluster: { name: postgres-cluster }
   name: appstore_t3
   owner: appstore_t3
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: moodle
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+spec:
+  cluster: { name: postgres-cluster }
+  name: moodle
+  owner: moodle

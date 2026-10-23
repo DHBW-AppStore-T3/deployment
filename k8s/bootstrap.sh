@@ -44,6 +44,7 @@ NEW=()
 db_login keycloak-db keycloak
 db_login appstore-t3-db appstore_t3
 db_login appstore-worker-db appstore_worker
+db_login moodle-db moodle
 
 # --- Keycloak: admin, demo users (staging), clients
 if ! have keycloak-secret; then
@@ -88,6 +89,15 @@ if ! have appstore-mcp; then
   echo "Secret appstore-mcp created: still needs github-client-id and github-client-secret (appstore-mcp docs/OPERATIONS.md)"
 fi
 add_key appstore-mcp token-signing-key "$(fernet)"
+
+# --- Moodle (k8s/charts/moodle): the admin login of the first install. The
+# database login is moodle-db above. Changing this Secret later changes
+# nothing in Moodle (change the password there).
+if ! have moodle-admin; then
+  MOODLEPW=$(rand 18)
+  kubectl -n "$NS" create secret generic moodle-admin --from-literal=password="$MOODLEPW"
+  NEW+=("Moodle admin (user admin, https://$(awk '/^moodle:/{f=1} f&&/^  host:/{print $2; exit}' "environments/$ENV_NAME.yaml")): $MOODLEPW")
+fi
 
 # --- Pulling our private images (images.pullSecrets in environments/*.yaml).
 # The token goes from the file to kubectl's stdin, never into an argument.
