@@ -49,9 +49,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-          # A PAT, so that the pull request for prod runs the required checks
-          # (a GITHUB_TOKEN pull request does not).
-          token: ${{ secrets.DEPLOYMENT_PAT }}
+          # Staging only needs the GITHUB_TOKEN. For prod the secret
+          # DEPLOYMENT_PAT (repo + workflow scope) is required: a pull request
+          # opened with the GITHUB_TOKEN does not run the required checks.
+          token: ${{ secrets.DEPLOYMENT_PAT || github.token }}
       - name: Pin the image by its digest
         id: pin
         env:
@@ -90,6 +91,7 @@ jobs:
           COMPONENT: ${{ inputs.component }}
           TAG: ${{ inputs.tag }}
         run: |
+          [ -n "$GH_TOKEN" ] || { echo "secret DEPLOYMENT_PAT is missing: prod cannot be rolled out automatically" >&2; exit 1; }
           BR="bump/prod-${COMPONENT}-${TAG}"
           git push origin "HEAD:refs/heads/${BR}"
           gh pr create --base main --head "$BR" \

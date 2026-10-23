@@ -1,0 +1,21 @@
+# The CloudNativePG operator: cluster-wide, shared by staging and prod (their
+# Postgres clusters are CRs of it), so it belongs to neither environment root.
+# Applied by bootstrap.sh; Argo CD then keeps it in sync from the chart repo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "0" }
+spec:
+  project: default
+  source:
+    repoURL: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    targetRevision: 0.*
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]
