@@ -29,10 +29,12 @@ appstore:
     # LTI 1.3 from Moodle (off while clientId is empty). Moodle's tool URLs:
     # https://<host>/api/lti13/login and https://<host>/api/lti13/launch.
     lti:
-      platformIssuer: ""
-      clientId: ""
-      deploymentId: ""
-      jwksUrl: ""
+      # Moodle (moodle-staging): issuer = wwwroot; the tool is the mod_lti type
+      # "DHBW AppStore" (client and deployment id are public identifiers).
+      platformIssuer: "https://moodle-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
+      clientId: "igUs9thTxg8FE2S"
+      deploymentId: "1"
+      jwksUrl: "https://moodle-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/mod/lti/certs.php"
   # Apps that run as pods: https://<workload>-<deployment>.<appDomain>.
   podApps:
     zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
