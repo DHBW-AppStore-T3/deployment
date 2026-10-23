@@ -1,0 +1,14 @@
+# The chart with student node placement configured (podApps.studentNodeSelector
+# and studentTolerations), for the placement cases of the admission policy.
+host: appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+ssoHost: sso-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+environment: appstore-staging
+images:
+  tags: { backend: sha-0000000, worker: sha-0000000, workerPods: sha-0000000, frontend: sha-0000000 }
+podApps:
+  zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  appDomain: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  extraEgressExcept: [10.42.0.0/16, "fd00:42::/48", "fd00:43::/48", "2001:7c0:1b20:c913:1::10d/128"]
+  studentNodeSelector: { "appstore.dhbw/workload": student }
+  studentTolerations:
+    - { key: appstore.dhbw/workload, operator: Equal, value: student, effect: NoSchedule }

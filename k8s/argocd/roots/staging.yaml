@@ -1,0 +1,19 @@
+# Root Application of the staging environment. Applied once by bootstrap.sh staging.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
+    targetRevision: dev
+    path: k8s/argocd/apps-chart
+    helm:
+      valueFiles: [../../environments/staging.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

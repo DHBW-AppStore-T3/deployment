@@ -1,0 +1,15 @@
+# Per-environment values live in k8s/environments/<env>.yaml and are passed by
+# the environment's root Application (k8s/argocd/roots/<env>.yaml).
+repoURL: https://github.com/DHBW-AppStore-T3/deployment.git
+env:
+  name: ""          # staging | prod; prefixes every Application name
+  namespace: ""     # target namespace of the whole environment
+  branch: ""        # git branch Argo tracks for this environment
+  host: ""          # public AppStore host (frontend, and the API under /api)
+  ssoHost: ""       # public Keycloak host
+# Values of the platform chart (k8s/manifests/platform/values.yaml):
+# demoUsers, publicRealms, publicAdmin.
+platform: {}
+# Values of our AppStore chart (k8s/charts/appstore/values.yaml), passed as
+# they are: api, podApps, network, ...
+appstore: {}

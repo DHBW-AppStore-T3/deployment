@@ -1,0 +1,77 @@
+{{- $comp := dict "context" . "component" "pod-deployer" -}}
+{{- $name := include "appstore.name" $comp -}}
+{{- $p := .Values.podApps -}}
+{{- $v := .Values.podDeployer -}}
+# The pod deployer (.github#4): the jobs of pod apps (queue "pods"). It renders
+# every Kubernetes object itself from the app's validated appstore.yaml and
+# runs nothing from the app repositories: image worker-pods, no OpenTofu,
+# Packer or OpenStack CLI, no root. Its account may act only in the dep-*
+# namespaces it creates (rbac.yaml, admission-policy.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  replicas: {{ $v.replicas }}
+  selector:
+    matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "appstore.labels" $comp | nindent 8 }}
+    spec:
+      {{- include "appstore.podDefaults" . | nindent 6 }}
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: true
+      # Waits for a deploy to become ready for at most readyTimeoutSeconds;
+      # a rollout lets the running ones finish.
+      terminationGracePeriodSeconds: {{ add $p.readyTimeoutSeconds 120 }}
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pod-deployer
+          image: {{ include "appstore.image" (dict "context" . "key" "workerPods" "name" "worker-pods") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args:
+            - celery
+            - -A
+            - app.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency={{ $v.concurrency }}
+            - -Q
+            - pods
+            - --without-gossip
+            - --without-mingle
+            - --without-heartbeat
+          env:
+            {{- include "appstore.workerEnv" . | nindent 12 }}
+            {{- include "appstore.podLimitsEnv" . | nindent 12 }}
+            - { name: K8S_INGRESS_CLASS, value: {{ $p.ingressClass | quote }} }
+            - { name: K8S_INGRESS_NAMESPACE, value: {{ $p.ingressNamespace | quote }} }
+            - { name: K8S_TLS_SECRET, value: {{ $p.tlsSecret | quote }} }
+            - { name: K8S_CLUSTER_ISSUER, value: {{ $p.clusterIssuer | quote }} }
+            - { name: K8S_STORAGE_CLASS, value: {{ $p.storageClass | quote }} }
+            - { name: K8S_STUDENT_NODE_SELECTOR, value: {{ $p.studentNodeSelector | toJson | quote }} }
+            - { name: K8S_STUDENT_TOLERATIONS, value: {{ $p.studentTolerations | toJson | quote }} }
+            - { name: K8S_EXTRA_EGRESS_EXCEPT, value: {{ join "," $p.extraEgressExcept | quote }} }
+            - { name: K8S_READY_TIMEOUT_SECONDS, value: {{ $p.readyTimeoutSeconds | quote }} }
+            # Its rights in each namespace it creates, and read access there
+            # for the API (rbac.yaml).
+            - { name: K8S_DEPLOYER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "deployer") | quote }} }
+            - { name: K8S_READER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "reader") | quote }} }
+            - { name: K8S_WORKER_SERVICE_ACCOUNT, value: {{ $name | quote }} }
+            - { name: K8S_WORKER_NAMESPACE, value: {{ .Release.Namespace | quote }} }
+            - { name: K8S_API_SERVICE_ACCOUNT, value: {{ include "appstore.name" (dict "context" . "component" "api") | quote }} }
+            - { name: K8S_API_NAMESPACE, value: {{ .Release.Namespace | quote }} }
+          securityContext: {{- include "appstore.restricted" . | nindent 12 }}
+          resources: {{- toYaml $v.resources | nindent 12 }}
+          {{- include "appstore.workerProbe" . | nindent 10 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }

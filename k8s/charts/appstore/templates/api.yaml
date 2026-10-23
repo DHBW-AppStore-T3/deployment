@@ -1,0 +1,85 @@
+{{- $comp := dict "context" . "component" "api" -}}
+{{- $name := include "appstore.name" $comp -}}
+{{- $v := .Values.api -}}
+# The API (FastAPI). Several replicas are fine: the job queue, the live
+# stream and the follow-up work of a task go through the database
+# (.github#5). Only the frontend's /api gateway and the VM executor (OpenTofu
+# state backend) reach it (networkpolicies.yaml); there is no Ingress of its
+# own, so /api/internal/ is never routed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  replicas: {{ $v.replicas }}
+  selector:
+    matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "appstore.labels" $comp | nindent 8 }}
+    spec:
+      {{- include "appstore.podDefaults" . | nindent 6 }}
+      # Reads the pod namespaces for the live view (rbac.yaml).
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: true
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: {{ include "appstore.image" (dict "context" . "key" "backend" "name" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8000, protocol: TCP }
+          env:
+            {{- include "appstore.backendEnv" . | nindent 12 }}
+            # IPv6-primary cluster: bind ::. Forwarded headers come only from
+            # the gateway (and the VM executor): nothing else reaches the port.
+            - { name: HOST, value: "::" }
+            - { name: PORT, value: "8000" }
+            - { name: WORKERS, value: {{ $v.workers | quote }} }
+            - { name: FORWARDED_ALLOW_IPS, value: "*" }
+            # The live view of pod deployments, read from the cluster.
+            - { name: K8S_STATUS_ENABLED, value: "true" }
+            {{- with $v.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext: {{- include "appstore.restricted" . | nindent 12 }}
+          resources: {{- toYaml $v.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: {{ $v.tmpSizeLimit }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  selector: {{- include "appstore.selectorLabels" $comp | nindent 4 }}
+  ports:
+    - { name: http, port: 8000, targetPort: http, protocol: TCP }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
