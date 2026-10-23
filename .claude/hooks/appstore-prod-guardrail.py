@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""PreToolUse guardrail for appstore-prod-01 (HARNESS.md System 3.2/5.4).
+"""PreToolUse guardrail for the legacy VM host appstore-prod-01 (HARNESS.md System 3.2/5.4).
 
-Hermes' own boundary is the MCP tool filter in agent/config.yaml — this
-hook covers the other access path: a human or a Claude Code agent
-working directly over SSH via the ubuntu login. It mirrors the same
-allowlist Hermes gets through podman-mcp (container_list/inspect/logs
-only), so both entry points to the same host enforce one rule instead
-of two that could drift apart.
+LEGACY: the app now runs on Kubernetes (read-only visibility via the
+appstore-mcp server) and the VM has been decommissioned, so this hook
+normally never matches. It stays as a harmless safety net: it blocks
+state-changing docker/podman calls over SSH to that old host name/IP
+and only allows read-only container inspection.
 
 Almost entirely read-only, with one deliberate write exception: a
 `docker restart <name>` for a specific, named, non-stateful container
@@ -25,10 +24,7 @@ import json
 import re
 import sys
 
-# Mirrors agent/config.yaml's mcp_servers.podman.tools.include exactly —
-# read-only container inspection. Update both together if this ever
-# changes; drifting was exactly what a single shared allowlist across
-# Hermes and direct-SSH access is meant to prevent.
+# Read-only container inspection (legacy VM allowlist).
 ALLOWED_SUBCOMMANDS = {
     "ps",
     "inspect",
@@ -75,11 +71,8 @@ BLOCKED_SUBCOMMANDS = {
 # /diagnose-production, a restart of one of these specific containers
 # is the one write action this host permits. Anything not in this
 # exact list — including the stateful data stores — stays blocked.
-# Keep this in sync with deployment/.claude/skills/restart-service/SKILL.md.
 #
-# hermes-agent-prod removed (deployment#49): hermes-agent no longer
-# runs on this host, only on the dedicated hermes-dhbw-appstore VM —
-# there is nothing left here by that name to restart.
+# Legacy names; Hermes was replaced by appstore-mcp and the VMs are gone.
 RESTART_ALLOWLIST = {
     "backend-prod",
     "worker-prod",
@@ -158,7 +151,7 @@ def main() -> int:
             f"HARNESS.md System 3.2 allowlist ({', '.join(sorted(ALLOWED_SUBCOMMANDS))}). "
             "This host runs production infrastructure — state-changing docker/podman "
             "commands need a human to run them directly, not through an automated tool call. "
-            "See deployment/agent/config.yaml for the matching MCP-side allowlist.",
+            "The app runs on Kubernetes now; use the appstore MCP server for read-only inspection.",
             file=sys.stderr,
         )
         return 2

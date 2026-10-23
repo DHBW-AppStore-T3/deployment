@@ -50,15 +50,15 @@ and System 3.1 (branch protection, already enforced server-side).
 **Why dev is autonomous:** staging can be rebuilt from scratch if
 something goes wrong — no persistent user state, no live traffic impact.
 
-**Why main requires a human:** `appstore-prod-01` has live user state
-(Keycloak realm, running deployments). A mistake here costs real
-downtime, not just a container restart.
+**Why main requires a human:** the prod namespace `appstore-prod` has live user state
+(Keycloak realm, databases, running deployments). A mistake here costs real
+downtime, not just a pod restart.
 
 ## After a human merges — you may resume
 
-Once merged, staging deploys automatically
-(`deployment/.github/workflows/staging.yml` — no action needed from
-you).
+Once merged, staging deploys automatically (component CI ->
+`k8s-bump.yml` -> `k8s/images/staging.yaml` -> Argo CD; no action
+needed from you).
 
 ### Stufe 8 — Staging-Verify (appstore MCP)
 
