@@ -6,6 +6,6 @@
 images:
   tags:
     backend: "sha256:18716f03b9a4cbb799d3933b7a7dbe84c04694794542808ea12444df38fd7c7c"  # sha-794e9db
-    worker: "sha256:b9b1817fe1926e89e2decd3ed38dee8ab9279099849d5a24b3e9f3331fe3b204"  # sha-531c162
+    worker: "sha256:1a3974802709bcc3298fcdc667a79ab192f64eab40b0926cb164f04cb4fdfcf5"  # sha-b1683d8
     workerPods: "sha256:8372cfeef210fddb309997ffcf722d22ffebdf8b6142841bf9ada013088026e0"  # sha-531c162
     frontend: "sha256:12dc27e46f871128f92a586d4b0b992381be3c8a0adce21c67f7b368ee54103f"  # sha-01d6b18
