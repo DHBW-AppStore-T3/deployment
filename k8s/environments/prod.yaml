@@ -20,9 +20,11 @@ appstore:
   # keycloak-config job (k8s/keycloak-self-service-client.sh does the same by hand).
   selfServiceUi:
     enabled: true
-  # Demo course and catalog apps after every sync (charts/appstore/files/seed.py).
+  # No demo seeding in prod: the catalog is reviewed by admins, and course
+  # membership is decided by teachers (charts/appstore/templates/seed-job.yaml).
+  # A new app version is submitted and approved in the UI.
   seed:
-    enabled: true
+    enabled: false
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
   images:

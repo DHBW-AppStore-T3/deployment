@@ -179,10 +179,12 @@ selfServiceUi:
 migrations:
   enabled: true
 
-# Demo data after every sync (files/seed.py): the realm's users in the database,
-# a demo course (realm teachers = its teachers, students without a course join
-# it) and public catalog apps (registered, v2.0.0 submitted and approved as the
-# first admin, through the API handlers in the pod). Idempotent, adds only.
+# Demo data after every sync (templates/seed-job.yaml, the backend's
+# `python -m app.cli seed`): the realm's users in the database, a demo course
+# (of the users it provisions: teachers teach it, students join it) and public
+# catalog apps (registered, owned by the first admin; a version without any
+# review is submitted and approved). Adds only what is missing and never undoes
+# a review or a course membership. Demo environments only: off in prod.
 seed:
   enabled: false
   courseName: Demo-Kurs
