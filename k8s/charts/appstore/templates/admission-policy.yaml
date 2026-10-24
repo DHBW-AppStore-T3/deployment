@@ -175,6 +175,28 @@ spec:
           {{ toJson $p.imageRegistryAllowlist }}.exists(prefix, c.image.startsWith(prefix)) &&
           c.image.matches('@sha256:[0-9a-f]{64}$'))
       message: "images only from the allowed registries and pinned by digest"
+    # Within the platform's ceilings (review S13): the renderer never asks for
+    # more, so a misused token cannot give a namespace more than the largest
+    # deployment may have. Each container's limits at most maxCpu/maxMemory,
+    # each claim at most maxStorage, and (below) at most
+    # maxWorkloadsPerDeployment pods, services and claims per namespace.
+    - expression: >-
+        variables.containers.all(c,
+          has(c.resources) && has(c.resources.limits) && 'cpu' in c.resources.limits && 'memory' in c.resources.limits &&
+          quantity(string(c.resources.limits['cpu'])).compareTo(quantity({{ $p.maxCpu | toString | squote }})) <= 0 &&
+          quantity(string(c.resources.limits['memory'])).compareTo(quantity({{ $p.maxMemory | toString | squote }})) <= 0)
+      message: "{{ printf "containers: cpu and memory limits set, at most %v and %v" $p.maxCpu $p.maxMemory }}"
+    - expression: >-
+        variables.resource != 'statefulsets' || request.operation == 'DELETE' || !has(object.spec.volumeClaimTemplates) ||
+        object.spec.volumeClaimTemplates.all(t,
+          has(t.spec.resources) && has(t.spec.resources.requests) && 'storage' in t.spec.resources.requests &&
+          quantity(string(t.spec.resources.requests['storage'])).compareTo(quantity({{ $p.maxStorage | toString | squote }})) <= 0)
+      message: "{{ printf "volume claims of at most %v" $p.maxStorage }}"
+    - expression: >-
+        variables.resource != 'resourcequotas' || request.operation == 'DELETE' || !has(object.spec.hard) ||
+        ['pods', 'services', 'persistentvolumeclaims'].all(k, !(k in object.spec.hard) ||
+          int(string(object.spec.hard[k])) <= {{ int $p.maxWorkloadsPerDeployment }})
+      message: "{{ printf "the resource quota allows at most %v pods, services and volume claims" $p.maxWorkloadsPerDeployment }}"
 {{- with $p.studentNodeSelector }}
     - expression: >-
         variables.podSpec == null || (has(variables.podSpec.nodeSelector) &&

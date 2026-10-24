@@ -84,9 +84,11 @@ podApps:
   zone: ""
   # Hosts are <workload>-<deployment>.<appDomain>; empty: apps.<zone>.
   appDomain: ""
-  # Images must be pinned by digest and start with one of these prefixes.
+  # Images must be pinned by digest and start with one of these prefixes:
+  # the apps' packages (app-registry builds them as apps/<name>), not every
+  # package of the organisation (backend, worker, ...).
   imageRegistryAllowlist:
-    - ghcr.io/dhbw-appstore-t3/
+    - ghcr.io/dhbw-appstore-t3/apps/
   # Ceilings per container and volume. An app can offer people a range up to
   # these (resourceBounds in appstore.yaml); the node has 4 vCPU and 16 GiB.
   maxCpu: "4"
