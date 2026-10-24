@@ -1,6 +1,6 @@
 # Lokales Dev Setup
 
-Der AppStore läuft lokal vollständig ohne OpenStack, Keycloak oder Kubernetes-Cluster. Alle Cloud-Aufrufe werden durch statische Dummy-Daten ersetzt (Simulation Mode, `.github#6`). Authentifizierung erfolgt über einen simplen HTTP-Header — kein Token, kein Identity Provider.
+Der AppStore läuft lokal mit echtem Keycloak (Realm `dhbw`) und echter OIDC-Authentifizierung — so nah wie möglich an Prod. OpenStack-Aufrufe werden simuliert (Dummy-Daten), Kubernetes-Deployments laufen über FakeKube (In-Memory).
 
 ## Voraussetzungen
 
@@ -10,7 +10,7 @@ Der AppStore läuft lokal vollständig ohne OpenStack, Keycloak oder Kubernetes-
 | Git | 2.x | |
 | Python 3 | 3.11+ | Einmalig zum Generieren des Fernet-Keys |
 | GNU Make | beliebig | Alle Schritte sind als `make`-Targets ausgelegt |
-| Freie Ports | 5173, 8000, 5432 | Bei Konflikt in `.env` überschreiben |
+| Freie Ports | 5173, 8000, 5432, 8081 | Bei Konflikt in `.env` überschreiben |
 
 ## Schritt 1: Repos klonen
 
@@ -29,7 +29,7 @@ Verzeichnislayout nach dem Klonen:
 
 ```
 appstore/
-├── frontend/     # Next.js / Vite
+├── frontend/     # React + Vite
 ├── backend/      # FastAPI + Alembic
 ├── worker/       # Celery + FakeKube
 └── deployment/   # docker-compose.dev.yml, Makefile, .env.example, seed/
@@ -57,19 +57,18 @@ make init
 
 `make init` macht alles auf einmal:
 1. Baut alle Images
-2. Startet die 4 Container (postgres, backend, worker, frontend)
-3. Wartet bis Postgres bereit ist
+2. Startet die 5 Container (postgres, keycloak, backend, worker, frontend)
+3. Wartet bis Postgres und Keycloak bereit sind
 4. Führt Alembic-Migrationen aus
-5. Spielt Seed-Daten ein (3 User, 1 Kurs, 3 Apps)
+5. Spielt Seed-Daten ein (1 Kurs, 3 Apps)
 
-Beim ersten Start dauert das 3–5 Minuten (Image-Build). Danach:
+Beim ersten Start dauert das 3–5 Minuten (Image-Build + Keycloak-Start). Danach:
 
 ```
 ✓ Dev stack bereit.
-  Backend API Docs: http://localhost:8000/docs
   Frontend:         http://localhost:5173
-
-  Auth: X-Dev-User Header — prof@dhbw.de / student@dhbw.de / admin@dhbw.de
+  Backend API Docs: http://localhost:8000/docs
+  Keycloak Admin:   http://localhost:8081  (admin / admin)
 ```
 
 ## Danach: Stack starten und stoppen
@@ -83,13 +82,21 @@ make dev-down   # Stack stoppen (Daten bleiben)
 
 ## Login
 
-Es gibt keine Passwörter und keinen Identity Provider. Das Frontend schickt einen `X-Dev-User`-Header mit der E-Mail-Adresse. Das Backend gibt dazu den passenden Datenbank-User zurück.
+Authentifizierung läuft über echtes Keycloak (Realm `dhbw`, Port 8081). Im Browser auf „Mit DHBW anmelden" klicken — Keycloak-Loginseite erscheint.
 
-| E-Mail | Rolle |
-|---|---|
-| `prof@dhbw.de` | TEACHER |
-| `student@dhbw.de` | STUDENT |
-| `admin@dhbw.de` | ADMIN |
+| Username | Rolle | Passwort |
+|---|---|---|
+| `test-teacher` | teacher | `TestTeacher12` |
+| `dozent.demo` | teacher | `DevLocal1234!` |
+| `admin.demo` | admin | `DevLocal1234!` |
+| `student1.demo` | student | `DevLocal1234!` |
+| `student2.demo` | student | `DevLocal1234!` |
+| `student3.demo` | student | `DevLocal1234!` |
+| `student4.demo` | student | `DevLocal1234!` |
+
+### Keycloak Admin Console
+
+Über `http://localhost:8081` erreichbar (admin / admin). Neue User anlegen: Realm `dhbw` → Users → Add user. Passwort muss mind. 12 Zeichen haben und darf nicht gleich Username oder E-Mail sein (Policy wie Prod).
 
 ## Verifikation
 
@@ -104,6 +111,7 @@ Oder im Browser:
 | Frontend | http://localhost:5173 |
 | Backend API Docs | http://localhost:8000/docs |
 | Backend Health | http://localhost:8000/health |
+| Keycloak | http://localhost:8081 |
 
 ## Alle verfügbaren Make-Targets
 
@@ -215,14 +223,27 @@ Oder im Browser:
 
 ## Was ist Simulation Mode?
 
-Lokal laufen drei Subsysteme als Fake:
+Lokal laufen zwei Subsysteme als Fake — Keycloak läuft jetzt echt:
 
 | Produktions-Dienst | Lokal |
 |---|---|
-| Keycloak (JWT-Auth) | `X-Dev-User`-Header |
+| Keycloak (JWT-Auth) | **Echter Keycloak** auf Port 8081, Realm `dhbw` |
 | OpenStack (Credential-Validierung + Ressourcen) | Statische Dummy-Daten |
 | Kubernetes-Cluster (Pod-Deployments) | `FakeKube` (In-Memory) |
 
-Der komplette Code-Pfad von HTTP-Request bis zum Worker-Task läuft durch — nur die letzten Netzwerkaufrufe gegen die Cloud-Dienste werden abgefangen. Das macht Bugs in der eigentlichen Logik lokal gut reproduzierbar.
+Der komplette Code-Pfad von HTTP-Request bis zum Worker-Task läuft durch — nur die letzten Netzwerkaufrufe gegen OpenStack und Kubernetes werden abgefangen.
 
-Pod-Deployments über `FakeKube` generieren echte `terraform_outputs` mit Zugangsdaten, sodass "Meine Zugänge" im Frontend auch lokal funktioniert. Der In-Memory-State von FakeKube ist nach einem Worker-Neustart weg.
+Pod-Deployments über `FakeKube` generieren echte `terraform_outputs` mit Zugangsdaten, sodass „Meine Zugänge" im Frontend auch lokal funktioniert. Der In-Memory-State von FakeKube ist nach einem Worker-Neustart weg.
+
+## Keycloak Realm — Hinweise
+
+Der Realm wird beim allerersten Start aus `keycloak/dhbw-realm.json` importiert (Strategy: `IGNORE_EXISTING`). Änderungen an der Datei greifen erst nach `make clean-dev && make init`, da Keycloak einen vorhandenen Realm nicht überschreibt.
+
+Wer den Realm manuell geändert hat (z.B. neuen User über die Admin Console angelegt) und den Stand in die JSON-Datei zurückschreiben will:
+
+```bash
+# Realm aus laufendem Keycloak exportieren
+docker exec keycloak-sim /opt/keycloak/bin/kc.sh export \
+  --file /tmp/dhbw-realm-export.json --realm dhbw
+docker cp keycloak-sim:/tmp/dhbw-realm-export.json keycloak/dhbw-realm.json
+```

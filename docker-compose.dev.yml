@@ -11,6 +11,28 @@
 # ================================================================
 
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    container_name: keycloak-sim
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8081
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8081"
+    volumes:
+      - ../deployment/keycloak/dhbw-realm.json:/opt/keycloak/data/import/dhbw-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q 'UP' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - sim-network
+
   postgres:
     image: postgres:16-alpine
     container_name: postgres-sim
@@ -40,19 +62,23 @@ services:
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
-      # Simulate mode: no Keycloak, no OpenStack
       APP_ENV: "development"
       OPENSTACK_SIMULATE: "true"
-      # Stub values so Keycloak config passes validation
-      KEYCLOAK_SERVER_URL: "http://localhost:8080"
+      KEYCLOAK_SERVER_URL: "http://keycloak-sim:8081"
+      KEYCLOAK_ISSUER: "http://localhost:8081/realms/dhbw"
       KEYCLOAK_REALM: "dhbw"
       KEYCLOAK_CLIENT_ID: "appstore-backend"
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-dev-local-secret}
+      OIDC_ALLOWED_CLIENTS: "appstore-frontend"
+      OIDC_AUDIENCE: "appstore-api"
       LTI13_SESSION_SECRET: "change-me-in-dev"
       HANDOFF_SESSION_SECRET: "change-me-in-dev"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     volumes:
       - ../backend:/app
@@ -93,8 +119,9 @@ services:
       VITE_APP_URL: ${VITE_APP_URL:-http://localhost:5173}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      # No Keycloak in sim mode
-      VITE_KEYCLOAK_URL: ""
+      VITE_KEYCLOAK_URL: "http://localhost:8081"
+      VITE_KEYCLOAK_REALM: "dhbw"
+      VITE_KEYCLOAK_CLIENT_ID: "appstore-frontend"
       NODE_ENV: development
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
