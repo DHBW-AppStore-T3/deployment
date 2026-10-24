@@ -143,13 +143,11 @@
     }
     .lang-switcher button:hover { background: var(--lang-hover); }
 
-    /* ── Main content — absolutely positioned, bounded above features ── */
+    /* ── Main content — absolutely positioned ── */
     .main {
       position: absolute;
       top: 27.3%;
-      bottom: calc(8.7svh + 100 * var(--u));
       width: 100%;
-      overflow: visible;
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
@@ -262,26 +260,6 @@
       font-size: calc(13 * var(--u));
       line-height: 1.5;
     }
-
-    /* ── Feature strip — absolutely positioned at bottom ── */
-    .features {
-      position: absolute;
-      bottom: 8.7svh;
-      width: 100%;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: calc(46 * var(--u));
-      padding-top: calc(28 * var(--u));
-      border-top: 1px solid var(--divider);
-    }
-    .feature {
-      display: flex;
-      flex-direction: column;
-      gap: calc(13 * var(--u));
-      color: var(--icon);
-    }
-    .feature svg { width: calc(23 * var(--u)); height: calc(23 * var(--u)); stroke-width: 1.5; }
-    .feature span { color: var(--muted); font-size: calc(13 * var(--u)); line-height: 1.35; }
 
     /* ═══════════════════════════════════════════════════════════
        WORKFLOW CARDS — absolutely positioned, right side
@@ -414,18 +392,7 @@
       .btn-primary svg { width: 18px; height: 18px; }
       .help { font-size: 0.8125rem; margin-top: 18px; }
 
-      /* Features sit at the very bottom — pushed there by flex */
-      .features {
-        position: static;
-        flex-shrink: 0;
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        padding-top: 24px;
-        border-top: 1px solid var(--divider);
-        margin-top: auto;
-      }
-      .feature svg  { width: 20px; height: 20px; }
+      .features { position: static; display: none; }
       .feature span { font-size: 0.75rem; overflow-wrap: anywhere; }
     }
   </style>
@@ -519,27 +486,6 @@
       <p class="help" id="help">Kein Account? Wenden Sie sich an Ihren Administrator.</p>
     </main>
 
-    <footer class="features" aria-hidden="true">
-      <div class="feature">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-        </svg>
-        <span id="feat-0">Vielfältige Anwendungen</span>
-      </div>
-      <div class="feature">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
-        </svg>
-        <span id="feat-1">Vorkonfigurierte Umgebungen</span>
-      </div>
-      <div class="feature">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-        <span id="feat-2">Sicher &amp; Hochschulintern</span>
-      </div>
-    </footer>
-
   </div><!-- .left -->
 
   <!-- Decorative workflow cards -->
@@ -580,7 +526,6 @@ var t = {
     desc:'Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.',
     btn:'Mit DHBW anmelden', help:'Kein Account? Wenden Sie sich an Ihren Administrator.',
     labelUser:'Benutzername', labelPw:'Passwort', forgot:'Passwort vergessen?',
-    feat:['Vielfältige Anwendungen','Vorkonfigurierte Umgebungen','Sicher & Hochschulintern'],
     steps:['App konfigurieren','Umgebung bereitstellen','Direkt loslegen']
   },
   en: {
@@ -588,7 +533,6 @@ var t = {
     desc:'The DHBW AppStore provides preconfigured applications and environments for teaching, research, and administration.',
     btn:'Sign in with DHBW', help:'No account? Contact your administrator.',
     labelUser:'Username', labelPw:'Password', forgot:'Forgot password?',
-    feat:['Diverse Applications','Preconfigured Environments','Secure & University-Internal'],
     steps:['Configure app','Deploy environment','Get started']
   }
 };
@@ -626,8 +570,6 @@ function setLang(l) {
   var lf = document.getElementById('link-forgot');
   if (lf) lf.textContent = d.forgot;
   for (var i=0; i<3; i++) {
-    var f = document.getElementById('feat-'+i);
-    if (f) f.textContent = d.feat[i];
     var s = document.getElementById('step-'+i);
     if (s) s.textContent = d.steps[i];
   }
