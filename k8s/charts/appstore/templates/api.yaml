@@ -43,7 +43,10 @@ spec:
           env:
             {{- include "appstore.backendEnv" . | nindent 12 }}
             # IPv6-primary cluster: bind ::. Forwarded headers come only from
-            # the gateway (and the VM executor): nothing else reaches the port.
+            # the gateway (and the VM executor): nothing else reaches the port
+            # (networkpolicies.yaml). Nothing reads the client address today;
+            # before anything does (audit log, rate limit), narrow this to the
+            # gateways' pod ranges.
             - { name: HOST, value: "::" }
             - { name: PORT, value: "8000" }
             - { name: WORKERS, value: {{ $v.workers | quote }} }
