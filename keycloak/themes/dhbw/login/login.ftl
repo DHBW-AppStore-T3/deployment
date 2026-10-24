@@ -107,12 +107,12 @@
       -webkit-mask: url('${url.resourcesPath}/img/logo.png') center / contain no-repeat;
     }
 
-    /* ── Language switcher ── */
+    /* ── Language switcher — fixed top-right, independent of content column ── */
     .lang-switcher {
-      position: absolute;
-      z-index: 3;
+      position: fixed;
+      z-index: 10;
       top: 4.4%;
-      left: 32.1%;
+      right: calc(32 * var(--u));
       display: flex;
       overflow: hidden;
       border: 1px solid var(--lang-border);
@@ -343,7 +343,7 @@
       .brand      { font-size: 0.8125rem; gap: 6px; }
       .logo-mark  { width: 56px; }
 
-      .lang-switcher        { position: static; border-radius: 9px; }
+      .lang-switcher        { position: fixed; top: 16px; right: 16px; border-radius: 9px; }
       .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
 
       .main {
