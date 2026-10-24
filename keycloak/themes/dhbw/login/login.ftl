@@ -147,7 +147,7 @@
     .main {
       position: absolute;
       top: 27.3%;
-      bottom: calc(8.7% + 120 * var(--u));
+      bottom: calc(8.7svh + 100 * var(--u));
       width: 100%;
       overflow: visible;
       display: flex;
@@ -266,7 +266,7 @@
     /* ── Feature strip — absolutely positioned at bottom ── */
     .features {
       position: absolute;
-      bottom: 8.7%;
+      bottom: 8.7svh;
       width: 100%;
       display: grid;
       grid-template-columns: repeat(3, 1fr);
