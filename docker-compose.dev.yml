@@ -45,7 +45,7 @@ services:
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
       # Simulate mode: no Keycloak, no OpenStack
-      DEV_MODE: "true"
+      APP_ENV: "development"
       OPENSTACK_SIMULATE: "true"
       # Stub values so Keycloak config does not fail validation
       KEYCLOAK_SERVER_URL: "http://localhost:8080"
