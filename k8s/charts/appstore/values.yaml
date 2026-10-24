@@ -189,16 +189,17 @@ seed:
   enabled: false
   courseName: Demo-Kurs
   # name, description, gitLink (public repository), versions: tags that are submitted
-  # and approved. Needs the tag on a commit with appstore.yaml (runtime pods).
+  # and approved. Needs the tag on a commit with appstore.yaml (runtime pods). The
+  # newest release of each app: those pin the images the Trivy gate passed.
   apps:
     - name: Online-IDE
       description: Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person.
       gitLink: https://github.com/DHBW-AppStore-T3/Online-IDE
-      versions: [v2.0.0]
+      versions: [v2.0.1]
     - name: Web-LaTeX
       description: LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person.
       gitLink: https://github.com/DHBW-AppStore-T3/Web-LaTeX
-      versions: [v2.0.0]
+      versions: [v2.0.2]
     - name: Jupyter-Notebook
       description: JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person.
       gitLink: https://github.com/DHBW-AppStore-T3/Jupyter-Notebook
@@ -206,11 +207,11 @@ seed:
     - name: pgAdmin
       description: pgAdmin mit PostgreSQL und Pagila-Beispieldatenbank, ein Pod pro Team.
       gitLink: https://github.com/DHBW-AppStore-T3/pgAdmin
-      versions: [v2.0.0]
+      versions: [v2.0.1]
     - name: template-app
       description: Vorlage fuer neue AppStore-Apps (nginx-Pod).
       gitLink: https://github.com/DHBW-AppStore-T3/template-app
-      versions: [v2.0.0]
+      versions: [v2.0.1]
 
 # Hourly report of dep-* namespaces without a live deployment (the Job fails
 # when it finds one).
