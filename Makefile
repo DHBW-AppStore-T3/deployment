@@ -45,16 +45,18 @@ help: ## Show this help message
 # ----------------------------------------------------------------
 # Environment Setup
 # ----------------------------------------------------------------
-env: ## Create .env from template
+env: ## Create .env from template (auto-generates CREDENTIAL_ENCRYPTION_KEY if empty)
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
-		echo "✓ .env created from template — set CREDENTIAL_ENCRYPTION_KEY"; \
+		KEY=$$(python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"); \
+		python3 -c "from pathlib import Path; p = Path('.env'); p.write_text(p.read_text().replace('CREDENTIAL_ENCRYPTION_KEY=\n', f'CREDENTIAL_ENCRYPTION_KEY={\"$$KEY\"}\n', 1))"; \
+		echo "✓ .env created from template (CREDENTIAL_ENCRYPTION_KEY auto-generated)"; \
 	else \
 		echo ".env already exists"; \
 	fi
 
 secret: ## Generate a new Fernet key (for CREDENTIAL_ENCRYPTION_KEY)
-	@python3 -c "from cryptography.fernet import Fernet; print('CREDENTIAL_ENCRYPTION_KEY=' + Fernet.generate_key().decode())"
+	@python3 -c "import base64, os; print('CREDENTIAL_ENCRYPTION_KEY=' + base64.urlsafe_b64encode(os.urandom(32)).decode())"
 
 # ----------------------------------------------------------------
 # Bootstrap
@@ -214,19 +216,19 @@ prune: ## ⚠️  docker system prune -af --volumes
 # Testing & Quality (Backend)
 # ----------------------------------------------------------------
 test-backend: ## Run backend pytest
-	$(DC_DEV) exec backend pytest
+	$(DC_DEV) exec backend poetry run pytest
 
 test-backend-cov: ## Run backend pytest with HTML coverage
-	$(DC_DEV) exec backend pytest --cov=. --cov-report=html
+	$(DC_DEV) exec backend poetry run pytest --cov=. --cov-report=html
 
 lint-backend: ## ruff check
-	$(DC_DEV) exec backend ruff check .
+	$(DC_DEV) exec backend poetry run ruff check .
 
 lint-backend-fix: ## ruff check --fix
-	$(DC_DEV) exec backend ruff check --fix .
+	$(DC_DEV) exec backend poetry run ruff check --fix .
 
 format-backend: ## ruff format
-	$(DC_DEV) exec backend ruff format .
+	$(DC_DEV) exec backend poetry run ruff format .
 
 # ----------------------------------------------------------------
 # Aliases

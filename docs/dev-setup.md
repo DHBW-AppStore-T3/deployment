@@ -60,7 +60,7 @@ make init
 2. Startet die 5 Container (postgres, keycloak, backend, worker, frontend)
 3. Wartet bis Postgres und Keycloak bereit sind
 4. Führt Alembic-Migrationen aus
-5. Spielt Seed-Daten ein (1 Kurs, 3 Apps)
+5. Spielt Seed-Daten ein (Keycloak-User, 1 Kurs, 5 Pod-Apps)
 
 Beim ersten Start dauert das 3–5 Minuten (Image-Build + Keycloak-Start). Danach:
 
