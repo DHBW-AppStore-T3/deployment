@@ -356,13 +356,14 @@
         transform: rotate(-35deg);
       }
 
+      /* Full-height flex column, centred horizontally */
       .left {
         position: static;
         width: 100%;
         max-width: 488px;
         min-height: 100svh;
         margin: 0 auto;
-        padding: 32px 24px;
+        padding: 32px 24px 40px;
         display: flex;
         flex-direction: column;
       }
@@ -378,12 +379,10 @@
       .brand { font-size: 0.8125rem; gap: 6px; }
       .logo-mark { width: 56px; }
 
-      .lang-switcher {
-        position: static;
-        border-radius: 9px;
-      }
+      .lang-switcher { position: static; border-radius: 9px; }
       .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
 
+      /* Main grows to fill available space, form content top-aligned with gap from header */
       .main {
         position: static;
         width: 100%;
@@ -391,22 +390,29 @@
         display: flex;
         flex-direction: column;
         justify-content: center;
-        margin: 60px 0;
+        padding: 40px 0 24px;
       }
 
-      .eyebrow  { font-size: 0.8125rem; margin-bottom: 14px; }
-      .title    { font-size: clamp(34px, 8.5vw, 58px); margin-bottom: 10px; letter-spacing: -.035em; }
+      .eyebrow     { font-size: 0.8125rem; margin-bottom: 14px; }
+      .title       { font-size: clamp(34px, 8.5vw, 58px); margin-bottom: 10px; letter-spacing: -.035em; }
       .description { font-size: 0.9375rem; margin-bottom: 24px; }
-      label     { font-size: 0.875rem; }
+      label        { font-size: 0.875rem; margin-bottom: 6px; }
+      .form-group  { margin-bottom: 12px; }
+
       input[type="text"], input[type="email"], input[type="password"] {
         height: 44px; font-size: 0.875rem; border-radius: 8px; padding: 0 12px;
       }
-      .btn-primary { min-height: 44px; font-size: 0.875rem; border-radius: 13px; padding: 11px 18px; margin-top: 8px; }
+      .btn-primary {
+        min-height: 44px; font-size: 0.875rem; border-radius: 13px;
+        padding: 11px 18px; margin-top: 8px;
+      }
       .btn-primary svg { width: 18px; height: 18px; }
       .help { font-size: 0.8125rem; margin-top: 18px; }
 
+      /* Features sit at the very bottom — pushed there by flex */
       .features {
         position: static;
+        flex-shrink: 0;
         display: grid;
         grid-template-columns: repeat(3, 1fr);
         gap: 16px;
@@ -414,7 +420,7 @@
         border-top: 1px solid var(--divider);
         margin-top: auto;
       }
-      .feature svg { width: 20px; height: 20px; }
+      .feature svg  { width: 20px; height: 20px; }
       .feature span { font-size: 0.75rem; overflow-wrap: anywhere; }
     }
   </style>
