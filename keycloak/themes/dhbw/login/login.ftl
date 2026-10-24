@@ -526,7 +526,7 @@ function applyLang(l) {
   var h1     = document.getElementById('title-h1');
   var accent = document.getElementById('title-accent');
   while (h1.firstChild !== accent) h1.removeChild(h1.firstChild);
-  d.lead.split('\n').reverse().forEach(function(line) {
+  d.lead.split('\n').forEach(function(line) {
     var span = document.createElement('span');
     span.textContent = line;
     h1.insertBefore(span, accent);
