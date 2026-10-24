@@ -6,7 +6,7 @@
 // (chart values, ConfigMap moodle-setup), MOODLE_DEMO_PASSWORD (Secret, optional).
 //
 //   - site defaults: language, time zone, start page, no registration wizard,
-//     no user tours
+//     no user tours, e-mail addresses that people cannot change themselves
 //   - LTI 1.3 tool "DHBW AppStore" with a fixed client id (the AppStore's
 //     LTI13_CLIENT_ID); the deployment id is Moodle's id of the tool
 //   - example course with an LTI activity that launches the AppStore
@@ -63,6 +63,10 @@ $step('site', function () use ($setup, $say, $CFG) {
     // The "register your site" wizard that an admin gets after the first login.
     set_config('registrationpending', 0);
     set_config('site_is_public', 0);
+    // The AppStore links a person's first LTI launch to the AppStore account
+    // of their e-mail address (review S9): people may not change their own
+    // address (manual accounts; admins still can).
+    set_config('field_lock_email', 'locked', 'auth_manual');
     // User tours (the pop-up guides at the first visit of each page).
     if (!empty($s['disableTours'] ?? true)) {
         $GLOBALS['DB']->set_field('tool_usertours_tours', 'enabled', 0);

@@ -152,6 +152,9 @@ case("service external IPs", "deny", mutated(service, lambda s: s["spec"].update
 case("service ExternalName", "deny", mutated(service, lambda s: s["spec"].update(type="ExternalName", externalName="evil.example")))
 case("quota with node ports", "deny", mutated(quota, lambda q: q["spec"]["hard"].update({"services.nodeports": "5"})))
 case("quota without a pod cap", "deny", mutated(quota, lambda q: q["spec"]["hard"].pop("pods")))
+case("quota above the workload limit", "deny", mutated(quota, lambda q: q["spec"]["hard"].update(pods="1000")))
+case("quota with a quantity suffix", "deny", mutated(quota, lambda q: q["spec"]["hard"].update(pods="1k")))
+case("quota with many claims", "deny", mutated(quota, lambda q: q["spec"]["hard"].update(persistentvolumeclaims="500")))
 case("scale to 5", "deny", mutated(scale, lambda s: s["spec"].update(replicas=5)), "UPDATE", old=scale, kind="StatefulSet", sub="scale")
 case("statefulset with 5 replicas", "deny", mutated(sts, lambda s: s["spec"].update(replicas=5)))
 
@@ -178,6 +181,11 @@ pod_variant("service account", lambda p: p.update(serviceAccountName="appstore-t
 pod_variant("image from docker.io", lambda p: c0(p).update(image=f"docker.io/evil/img@{DIGEST}"))
 pod_variant("image by tag", lambda p: c0(p).update(image="ghcr.io/dhbw-appstore-t3/apps/online-ide:latest"))
 pod_variant("lookalike registry", lambda p: c0(p).update(image=f"ghcr.io/dhbw-appstore-t3-evil/img@{DIGEST}"))
+pod_variant("a platform image, not an app's", lambda p: c0(p).update(image=f"ghcr.io/dhbw-appstore-t3/backend@{DIGEST}"))
+pod_variant("cpu above the ceiling", lambda p: c0(p)["resources"]["limits"].update(cpu="64"))
+pod_variant("memory above the ceiling", lambda p: c0(p)["resources"]["limits"].update(memory="512Gi"))
+pod_variant("no limits", lambda p: c0(p)["resources"].pop("limits"))
+pod_variant("no cpu limit", lambda p: c0(p)["resources"]["limits"].pop("cpu"))
 pod_variant("pinned to a node", lambda p: p.update(nodeName="k3s-server"))
 pod_variant("priority class", lambda p: p.update(priorityClassName="system-node-critical"))
 pod_variant("another scheduler", lambda p: p.update(schedulerName="my-scheduler"))
@@ -187,6 +195,10 @@ pod_variant("privileged init container", lambda p: p.update(initContainers=[dict
 pod_variant("runtime class", lambda p: p.update(runtimeClassName="runc-unsafe"))
 case("statefulset: other storage class", "deny",
      mutated(sts, lambda s: s["spec"]["volumeClaimTemplates"][0]["spec"].update(storageClassName="fast-hostpath")))
+case("statefulset: volume above the ceiling", "deny",
+     mutated(sts, lambda s: s["spec"]["volumeClaimTemplates"][0]["spec"]["resources"]["requests"].update(storage="10Ti")))
+case("statefulset: volume without a size", "deny",
+     mutated(sts, lambda s: s["spec"]["volumeClaimTemplates"][0]["spec"].pop("resources")))
 
 
 # ---------------------------------------------------------------- ingress
