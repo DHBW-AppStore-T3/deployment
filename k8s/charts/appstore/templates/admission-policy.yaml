@@ -235,13 +235,13 @@ spec:
               (object.metadata.name == 'allow-intra-namespace' && rule.from.size() == 1 &&
                has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
                rule.from[0].podSelector == {} &&
-               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, !has(port.protocol) || port.protocol == 'TCP'))))) &&
+               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort)))))) &&
           (!has(object.spec.egress) || object.spec.egress.all(rule,
             has(rule.to) && rule.to.size() > 0 && (
               (object.metadata.name == 'allow-intra-namespace' && rule.to.size() == 1 &&
                has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
                rule.to[0].podSelector == {} &&
-               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, !has(port.protocol) || port.protocol == 'TCP')) ||
+               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort))) ||
               rule.to.all(peer,
               (has(peer.namespaceSelector) && has(peer.podSelector) && !has(peer.ipBlock) &&
                peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}} &&
