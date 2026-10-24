@@ -414,8 +414,8 @@
     <main class="main">
       <p class="eyebrow" id="eyebrow">CLICK'N DEPLOY</p>
 
-      <h1 class="title">
-        <span id="title-lead">Anwendungen einfach</span>
+      <h1 class="title" id="title-h1">
+        <span>Anwendungen einfach</span>
         <span class="title-accent" id="title-accent">bereitstellen</span>
       </h1>
 
@@ -551,8 +551,21 @@ function setLang(l) {
   try { localStorage.setItem('kc-lang', l); } catch(e) {}
   var d = t[l];
   document.getElementById('eyebrow').textContent      = d.eyebrow;
-  document.getElementById('title-lead').textContent   = d.lead;
-  document.getElementById('title-accent').textContent = d.accent;
+
+  // Split lead on \n — same logic as React's titleLeadLines.map()
+  var h1 = document.getElementById('title-h1');
+  // Remove old lead spans (all but last child which is title-accent)
+  var accent = document.getElementById('title-accent');
+  while (h1.firstChild !== accent) h1.removeChild(h1.firstChild);
+  // Insert new lead spans before accent
+  var lines = d.lead.split('\n');
+  for (var i = lines.length - 1; i >= 0; i--) {
+    var s = document.createElement('span');
+    s.textContent = lines[i];
+    h1.insertBefore(s, accent);
+  }
+  accent.textContent = d.accent;
+
   document.getElementById('desc').textContent         = d.desc;
   document.getElementById('btn-label').textContent    = d.btn;
   document.getElementById('help').textContent         = d.help;
