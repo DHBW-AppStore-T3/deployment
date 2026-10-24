@@ -15,42 +15,41 @@
       font-weight: 100 900; font-style: normal; font-display: swap;
     }
 
+    /* T3 auth palette — values from frontend/src/theme/themes/t3.ts */
     :root {
       --accent:       rgb(180 0 37);
       --accent-hover: rgb(148 0 30);
       --muted:        rgb(116 123 138);
       --surface:      rgb(250 250 250);
       --heading:      rgb(15 27 48);
-      --divider:      rgb(233 233 237);
-      --icon:         rgb(55 65 81);
+      --label:        rgb(31 46 68);
+      --input-border: rgb(228 233 239);
       --lang-border:  rgb(231 231 235);
       --lang-text:    rgb(100 107 120);
       --lang-sel:     rgb(247 224 229);
       --lang-hover:   rgb(244 233 236);
-      --card-bg:      rgba(255 255 255 / .878);
-      --card-border:  rgba(255 255 255 / .251);
-      --card-shadow:  rgba(23 32 43 / .051);
-      --card-text:    rgb(57 67 75);
-      --connector:    rgba(255 255 255 / .439);
-      --line:         rgba(255 255 255 / .565);
-      --status-ring:  rgb(216 82 106);
       --fold:         rgb(238 238 239);
-      --input-border: rgb(228 233 239);
-      --label:        rgb(31 46 68);
+      --card-bg:      rgb(255 255 255 / .878);
+      --card-border:  rgb(255 255 255 / .251);
+      --card-shadow:  rgb(23 32 43 / .051);
+      --card-text:    rgb(57 67 75);
+      --connector:    rgb(255 255 255 / .439);
+      --line:         rgb(255 255 255 / .565);
+      --status-ring:  rgb(216 82 106);
     }
 
     html, body { height: 100%; }
-
     body {
       font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
       background: var(--surface);
       color: var(--heading);
     }
 
-    /* ═══════════════════════════════════════════════════════════
-       SCALING UNIT — identical to React's --auth-unit
-       min(100vw/1672, 100svh/941)
-    ═══════════════════════════════════════════════════════════ */
+    /* ── Page shell ─────────────────────────────────────────────
+       --u mirrors React's --auth-unit: min(100vw/1672, 100svh/941)
+       All sizes scale proportionally so the layout matches the
+       frontend AuthLayout pixel-for-pixel at every viewport size.
+    ─────────────────────────────────────────────────────────── */
     .page {
       --u: min(calc(100vw / 1672), calc(100svh / 941));
       position: relative;
@@ -59,7 +58,6 @@
       overflow: hidden;
     }
 
-    /* Background photo */
     .page-bg {
       position: absolute;
       inset: 0;
@@ -70,7 +68,6 @@
       z-index: 0;
     }
 
-    /* SVG diagonal white panel */
     .page-panel {
       position: absolute;
       inset: 0;
@@ -78,25 +75,20 @@
       z-index: 1;
       pointer-events: none;
     }
-    .panel-surface { fill: var(--surface); }
+    .panel-surface   { fill: var(--surface); }
     .panel-fold-stop { stop-color: var(--fold); }
 
-    /* Content column — absolutely positioned, same as React auth-content */
+    /* ── Content column ── */
     .left {
       position: absolute;
       z-index: 2;
       top: 0; left: 0; bottom: 0;
       width: calc(370 * var(--u));
       margin-left: 6.95%;
-      display: flex;
-      flex-direction: column;
     }
 
-    /* ── Header ── */
-    .hdr {
-      padding-top: var(--auth-header-top, 9.7svh);
-      flex-shrink: 0;
-    }
+    /* ── Header (logo) ── */
+    .hdr { padding-top: 9.7svh; }
 
     .brand {
       display: inline-flex;
@@ -115,7 +107,7 @@
       -webkit-mask: url('${url.resourcesPath}/img/logo.png') center / contain no-repeat;
     }
 
-    /* Language switcher — absolutely positioned like React */
+    /* ── Language switcher ── */
     .lang-switcher {
       position: absolute;
       z-index: 3;
@@ -137,20 +129,14 @@
       transition: background .15s;
       min-height: calc(32 * var(--u));
     }
-    .lang-switcher button[aria-pressed='true'] {
-      color: var(--accent);
-      background: var(--lang-sel);
-    }
-    .lang-switcher button:hover { background: var(--lang-hover); }
+    .lang-switcher button[aria-pressed='true'] { color: var(--accent); background: var(--lang-sel); }
+    .lang-switcher button:hover               { background: var(--lang-hover); }
 
-    /* ── Main content — absolutely positioned ── */
+    /* ── Main content ── */
     .main {
       position: absolute;
       top: 27.3%;
       width: 100%;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
     }
 
     .eyebrow {
@@ -168,8 +154,8 @@
       line-height: 1.03;
       letter-spacing: -.005em;
     }
-    .title span { display: block; }
-    .title-accent { color: var(--accent); }
+    .title span        { display: block; }
+    .title-accent      { color: var(--accent); }
 
     .description {
       margin: 0 0 calc(32 * var(--u));
@@ -178,11 +164,11 @@
       line-height: 1.5;
     }
 
-    /* ── Alert ── */
+    /* ── Keycloak alert messages ── */
     .alert {
       border-radius: 8px;
       padding: 10px 14px;
-      margin-bottom: 16px;
+      margin-bottom: calc(16 * var(--u));
       font-size: calc(14 * var(--u));
       line-height: 1.4;
     }
@@ -231,7 +217,6 @@
       box-shadow: 0 0 0 3px rgb(180 0 37 / .12);
     }
 
-    /* Primary button */
     .btn-primary {
       display: flex;
       align-items: center;
@@ -252,7 +237,7 @@
       margin-top: calc(8 * var(--u));
     }
     .btn-primary:hover { background: var(--accent-hover); }
-    .btn-primary svg { width: calc(20 * var(--u)); height: calc(20 * var(--u)); flex-shrink: 0; }
+    .btn-primary svg   { width: calc(20 * var(--u)); height: calc(20 * var(--u)); flex-shrink: 0; }
 
     .help {
       margin-top: calc(20 * var(--u));
@@ -261,9 +246,7 @@
       line-height: 1.5;
     }
 
-    /* ═══════════════════════════════════════════════════════════
-       WORKFLOW CARDS — absolutely positioned, right side
-    ═══════════════════════════════════════════════════════════ */
+    /* ── Decorative workflow cards (right side) ── */
     .workflow {
       position: absolute;
       z-index: 2;
@@ -279,26 +262,26 @@
       content: '';
       position: absolute;
       z-index: -1;
-      right: -24%;
-      top: -30%; bottom: -20%;
+      top: -30%; right: -24%; bottom: -20%;
       width: 75%;
       border: 1px solid var(--connector);
       border-left: 0;
       border-radius: 0 24px 24px 0;
     }
+
     .step {
+      position: relative;
       display: flex;
       align-items: center;
       gap: calc(8 * var(--u));
       height: calc(64 * var(--u));
       padding: calc(16 * var(--u));
+      background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: calc(13 * var(--u));
-      background: var(--card-bg);
       color: var(--card-text);
       box-shadow: 0 12px 36px var(--card-shadow);
       backdrop-filter: blur(10px);
-      position: relative;
     }
     .step::after {
       content: '';
@@ -307,21 +290,22 @@
       width: 24%;
       border-top: 1px solid var(--line);
     }
-    .step span { font-size: calc(11.5 * var(--u)); white-space: nowrap; }
-    .step svg  { flex-shrink: 0; width: calc(20 * var(--u)); height: calc(20 * var(--u)); stroke-width: 1.5; }
-    .step-check { margin-left: auto; }
+    .step span      { font-size: calc(11.5 * var(--u)); white-space: nowrap; }
+    .step svg       { flex-shrink: 0; width: calc(20 * var(--u)); height: calc(20 * var(--u)); stroke-width: 1.5; }
+    .step-check     { margin-left: auto; }
     .step-circle {
       margin-left: auto;
+      flex-shrink: 0;
       width: calc(17 * var(--u));
       height: calc(17 * var(--u));
       border: 1px solid var(--status-ring);
       border-radius: 50%;
-      flex-shrink: 0;
     }
 
-    /* ═══════════════════════════════════════════════════════════
-       MOBILE  (< 1024px or short viewport)
-    ═══════════════════════════════════════════════════════════ */
+    /* ── Mobile (narrow or short viewport) ─────────────────────
+       Below 1024px wide or 650px tall: switch to a simple
+       single-column flow, hide photo/panel/cards.
+    ─────────────────────────────────────────────────────────── */
     @media (max-width: 1023px), (max-height: 650px) {
       .page {
         height: auto;
@@ -329,7 +313,6 @@
         overflow: visible;
       }
       .page-bg, .page-panel, .workflow { display: none; }
-
       .page::before {
         content: '';
         position: fixed;
@@ -339,7 +322,6 @@
         transform: rotate(-35deg);
       }
 
-      /* Full-height flex column, centred horizontally */
       .left {
         position: static;
         width: 100%;
@@ -358,42 +340,31 @@
         padding-top: 0;
         flex-shrink: 0;
       }
+      .brand      { font-size: 0.8125rem; gap: 6px; }
+      .logo-mark  { width: 56px; }
 
-      .brand { font-size: 0.8125rem; gap: 6px; }
-      .logo-mark { width: 56px; }
-
-      .lang-switcher { position: static; border-radius: 9px; }
+      .lang-switcher        { position: static; border-radius: 9px; }
       .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
 
-      /* Main grows to fill available space, form content top-aligned with gap from header */
       .main {
         position: static;
-        width: 100%;
         flex: 1;
         display: flex;
         flex-direction: column;
         justify-content: center;
         padding: 40px 0 24px;
       }
-
       .eyebrow     { font-size: 0.8125rem; margin-bottom: 14px; }
       .title       { font-size: clamp(34px, 8.5vw, 58px); margin-bottom: 10px; letter-spacing: -.035em; }
       .description { font-size: 0.9375rem; margin-bottom: 24px; }
       label        { font-size: 0.875rem; margin-bottom: 6px; }
       .form-group  { margin-bottom: 12px; }
-
       input[type="text"], input[type="email"], input[type="password"] {
         height: 44px; font-size: 0.875rem; border-radius: 8px; padding: 0 12px;
       }
-      .btn-primary {
-        min-height: 44px; font-size: 0.875rem; border-radius: 13px;
-        padding: 11px 18px; margin-top: 8px;
-      }
+      .btn-primary     { min-height: 44px; font-size: 0.875rem; border-radius: 13px; padding: 11px 18px; margin-top: 8px; }
       .btn-primary svg { width: 18px; height: 18px; }
-      .help { font-size: 0.8125rem; margin-top: 18px; }
-
-      .features { position: static; display: none; }
-      .feature span { font-size: 0.75rem; overflow-wrap: anywhere; }
+      .help            { font-size: 0.8125rem; margin-top: 18px; }
     }
   </style>
 </head>
@@ -402,7 +373,6 @@
 
   <div class="page-bg" aria-hidden="true"></div>
 
-  <!-- Diagonal white SVG panel -->
   <svg class="page-panel" viewBox="0 0 1672 941" preserveAspectRatio="none" aria-hidden="true">
     <defs>
       <linearGradient id="fold-grad" x1="0" y1="0" x2="1" y2="1">
@@ -411,10 +381,9 @@
       </linearGradient>
     </defs>
     <path class="panel-surface" d="M0 0H737L555 743Q548 765 568 781L800 941H0Z"/>
-    <path fill="url(#fold-grad)"  d="M0 625L303 900Q317 914 320 941H0Z"/>
+    <path fill="url(#fold-grad)"   d="M0 625L303 900Q317 914 320 941H0Z"/>
   </svg>
 
-  <!-- Left column -->
   <div class="left">
 
     <header class="hdr">
@@ -422,11 +391,12 @@
         <div class="logo-mark" role="img" aria-label="T3 AppStore"></div>
         <span>AppStore</span>
       </div>
-      <div class="lang-switcher" role="group" aria-label="Language">
-        <button type="button" lang="de" id="btn-de" onclick="setLang('de')">DE</button>
-        <button type="button" lang="en" id="btn-en" onclick="setLang('en')">EN</button>
-      </div>
     </header>
+
+    <div class="lang-switcher" role="group" aria-label="Language">
+      <button type="button" lang="de" id="btn-de" onclick="setLang('de')">DE</button>
+      <button type="button" lang="en" id="btn-en" onclick="setLang('en')">EN</button>
+    </div>
 
     <main class="main">
       <p class="eyebrow" id="eyebrow">CLICK'N DEPLOY</p>
@@ -438,27 +408,20 @@
 
       <p class="description" id="desc">Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.</p>
 
-      <!-- Keycloak error/info messages -->
       <#if displayMessage?? && message?has_content>
-        <div class="alert alert-${message.type}">
-          ${kcSanitize(message.summary)?no_esc}
-        </div>
+        <div class="alert alert-${message.type}">${kcSanitize(message.summary)?no_esc}</div>
       </#if>
 
-      <!-- Login form -->
       <#if realm.password>
         <form id="kc-form-login" action="${url.loginAction}" method="post">
-          <input type="hidden" name="credentialId"
-            <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
+          <input type="hidden" name="credentialId" <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
 
           <div class="form-group">
             <label for="username" id="label-username">Benutzername</label>
             <input type="text" id="username" name="username"
               value="${(login.username!'')}"
-              autocomplete="username"
-              autofocus
-              <#if usernameEditDisabled??>disabled</#if>
-            />
+              autocomplete="username" autofocus
+              <#if usernameEditDisabled??>disabled</#if>/>
           </div>
 
           <div class="form-group">
@@ -486,9 +449,8 @@
       <p class="help" id="help">Kein Account? Wenden Sie sich an Ihren Administrator.</p>
     </main>
 
-  </div><!-- .left -->
+  </div>
 
-  <!-- Decorative workflow cards -->
   <div class="workflow" aria-hidden="true">
     <div class="step">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -517,68 +479,79 @@
     </div>
   </div>
 
-</div><!-- .page -->
+</div>
 
 <script>
-var t = {
+var STRINGS = {
   de: {
-    eyebrow:'CLICK\'N DEPLOY', lead:'Anwendungen einfach', accent:'bereitstellen',
-    desc:'Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.',
-    btn:'Mit DHBW anmelden', help:'Kein Account? Wenden Sie sich an Ihren Administrator.',
-    labelUser:'Benutzername', labelPw:'Passwort', forgot:'Passwort vergessen?',
-    steps:['App konfigurieren','Umgebung bereitstellen','Direkt loslegen']
+    eyebrow: 'CLICK\'N DEPLOY',
+    lead:    'Anwendungen einfach',
+    accent:  'bereitstellen',
+    desc:    'Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.',
+    btn:     'Mit DHBW anmelden',
+    help:    'Kein Account? Wenden Sie sich an Ihren Administrator.',
+    labelUser: 'Benutzername',
+    labelPw:   'Passwort',
+    forgot:    'Passwort vergessen?',
+    steps:   ['App konfigurieren', 'Umgebung bereitstellen', 'Direkt loslegen']
   },
   en: {
-    eyebrow:'CLICK\'N DEPLOY', lead:'Deploy\napplications with', accent:'ease',
-    desc:'The DHBW AppStore provides preconfigured applications and environments for teaching, research, and administration.',
-    btn:'Sign in with DHBW', help:'No account? Contact your administrator.',
-    labelUser:'Username', labelPw:'Password', forgot:'Forgot password?',
-    steps:['Configure app','Deploy environment','Get started']
+    eyebrow: 'CLICK\'N DEPLOY',
+    lead:    'Deploy\napplications with',
+    accent:  'ease',
+    desc:    'The DHBW AppStore provides preconfigured applications and environments for teaching, research, and administration.',
+    btn:     'Sign in with DHBW',
+    help:    'No account? Contact your administrator.',
+    labelUser: 'Username',
+    labelPw:   'Password',
+    forgot:    'Forgot password?',
+    steps:   ['Configure app', 'Deploy environment', 'Get started']
   }
 };
 
-var lang = 'de';
-try { var s = localStorage.getItem('kc-lang'); if (s==='en'||s==='de') lang=s; } catch(e){}
+function applyLang(l) {
+  var d = STRINGS[l];
 
-function setLang(l) {
-  lang = l;
-  try { localStorage.setItem('kc-lang', l); } catch(e) {}
-  var d = t[l];
-  document.getElementById('eyebrow').textContent      = d.eyebrow;
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('desc').textContent    = d.desc;
+  document.getElementById('btn-label').textContent = d.btn;
+  document.getElementById('help').textContent    = d.help;
 
-  // Split lead on \n — same logic as React's titleLeadLines.map()
-  var h1 = document.getElementById('title-h1');
-  // Remove old lead spans (all but last child which is title-accent)
+  var el;
+  if ((el = document.getElementById('label-username'))) el.textContent = d.labelUser;
+  if ((el = document.getElementById('label-password'))) el.textContent = d.labelPw;
+  if ((el = document.getElementById('link-forgot')))    el.textContent = d.forgot;
+
+  /* Rebuild title lead spans — mirrors React's titleLeadLines.map() */
+  var h1     = document.getElementById('title-h1');
   var accent = document.getElementById('title-accent');
   while (h1.firstChild !== accent) h1.removeChild(h1.firstChild);
-  // Insert new lead spans before accent
-  var lines = d.lead.split('\n');
-  for (var i = lines.length - 1; i >= 0; i--) {
-    var s = document.createElement('span');
-    s.textContent = lines[i];
-    h1.insertBefore(s, accent);
-  }
+  d.lead.split('\n').reverse().forEach(function(line) {
+    var span = document.createElement('span');
+    span.textContent = line;
+    h1.insertBefore(span, accent);
+  });
   accent.textContent = d.accent;
 
-  document.getElementById('desc').textContent         = d.desc;
-  document.getElementById('btn-label').textContent    = d.btn;
-  document.getElementById('help').textContent         = d.help;
-  var lu = document.getElementById('label-username');
-  if (lu) lu.textContent = d.labelUser;
-  var lp = document.getElementById('label-password');
-  if (lp) lp.textContent = d.labelPw;
-  var lf = document.getElementById('link-forgot');
-  if (lf) lf.textContent = d.forgot;
-  for (var i=0; i<3; i++) {
-    var s = document.getElementById('step-'+i);
-    if (s) s.textContent = d.steps[i];
+  for (var i = 0; i < 3; i++) {
+    if ((el = document.getElementById('step-' + i))) el.textContent = d.steps[i];
   }
-  document.getElementById('btn-de').setAttribute('aria-pressed', l==='de'?'true':'false');
-  document.getElementById('btn-en').setAttribute('aria-pressed', l==='en'?'true':'false');
+
+  document.getElementById('btn-de').setAttribute('aria-pressed', l === 'de' ? 'true' : 'false');
+  document.getElementById('btn-en').setAttribute('aria-pressed', l === 'en' ? 'true' : 'false');
   document.documentElement.lang = l;
 }
 
-setLang(lang);
+function setLang(l) {
+  try { localStorage.setItem('kc-lang', l); } catch (e) {}
+  applyLang(l);
+}
+
+(function init() {
+  var saved;
+  try { saved = localStorage.getItem('kc-lang'); } catch (e) {}
+  applyLang(saved === 'en' ? 'en' : 'de');
+}());
 </script>
 </body>
 </html>
