@@ -117,7 +117,27 @@ func toObject(m map[string]interface{}) runtime.Object {
 	if m == nil {
 		return nil
 	}
-	return &unstructured.Unstructured{Object: m}
+	return &unstructured.Unstructured{Object: intify(m).(map[string]interface{})}
+}
+
+// intify turns whole JSON numbers into int64, as kube-apiserver's decoder does
+// (encoding/json gives float64, which CEL would see as double, not int).
+func intify(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		for k, x := range t {
+			t[k] = intify(x)
+		}
+	case []interface{}:
+		for i, x := range t {
+			t[i] = intify(x)
+		}
+	case float64:
+		if t == float64(int64(t)) {
+			return int64(t)
+		}
+	}
+	return v
 }
 
 func run(validator validating.Validator, c testCase) (string, string) {
@@ -169,7 +189,11 @@ func main() {
 		}
 		fmt.Printf("%s %-5s %s", status, got, c.Name)
 		if message != "" {
-			m := strings.Join(strings.Fields(message), " "); if len(m) > 160 { m = m[:160] + "..." }; fmt.Printf("   [%s]", m)
+			m := strings.Join(strings.Fields(message), " ")
+			if len(m) > 160 {
+				m = m[:160] + "..."
+			}
+			fmt.Printf("   [%s]", m)
 		}
 		fmt.Println()
 	}

@@ -221,23 +221,35 @@ spec:
     # --- network policies -------------------------------------------------
     # Ingress only from the ingress controller's namespace; egress only to
     # kube-dns, or to "internet" that still excludes every private and
-    # cluster range. A rule without peers (= everything) is refused.
+    # cluster range. A rule without peers (= everything) is refused. The one
+    # podSelector peer allowed is the empty selector, alone in its rule, TCP
+    # only, in the policy named allow-intra-namespace (pods of the own namespace).
     - expression: >-
         variables.resource != 'networkpolicies' || request.operation == 'DELETE' || (
           !has(object.spec.podSelector.matchLabels) && !has(object.spec.podSelector.matchExpressions) &&
           (!has(object.spec.ingress) || object.spec.ingress.all(rule,
-            has(rule.from) && rule.from.size() > 0 && rule.from.all(peer,
-              !has(peer.ipBlock) && !has(peer.podSelector) && has(peer.namespaceSelector) &&
-              peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': {{ $p.ingressNamespace | squote }}}}))) &&
+            has(rule.from) && rule.from.size() > 0 && (
+              rule.from.all(peer,
+                !has(peer.ipBlock) && !has(peer.podSelector) && has(peer.namespaceSelector) &&
+                peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': {{ $p.ingressNamespace | squote }}}}) ||
+              (object.metadata.name == 'allow-intra-namespace' && rule.from.size() == 1 &&
+               has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
+               rule.from[0].podSelector == {} &&
+               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort)))))) &&
           (!has(object.spec.egress) || object.spec.egress.all(rule,
-            has(rule.to) && rule.to.size() > 0 && rule.to.all(peer,
+            has(rule.to) && rule.to.size() > 0 && (
+              (object.metadata.name == 'allow-intra-namespace' && rule.to.size() == 1 &&
+               has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
+               rule.to[0].podSelector == {} &&
+               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort))) ||
+              rule.to.all(peer,
               (has(peer.namespaceSelector) && has(peer.podSelector) && !has(peer.ipBlock) &&
                peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}} &&
                peer.podSelector == {'matchLabels': {'k8s-app': 'kube-dns'}}) ||
               (has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) && has(peer.ipBlock.except) && (
                 (peer.ipBlock.cidr == '0.0.0.0/0' && {{ toJson $v4 }}.all(r, r in peer.ipBlock.except)) ||
-                (peer.ipBlock.cidr == '::/0' && {{ toJson $v6 }}.all(r, r in peer.ipBlock.except))))))))
-      message: "network policies: ingress from the ingress controller only, egress to DNS or to the internet without private and cluster ranges"
+                (peer.ipBlock.cidr == '::/0' && {{ toJson $v6 }}.all(r, r in peer.ipBlock.except)))))))))
+      message: "network policies: ingress from the ingress controller only (or, in allow-intra-namespace, from all pods of the namespace over TCP), egress to DNS, to the internet without private and cluster ranges (or, in allow-intra-namespace, to all pods of the namespace over TCP)"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
