@@ -145,6 +145,9 @@ services:
       dockerfile: Dockerfile.dev
     container_name: backend-dev
     environment:
+      # The backend defaults to production (and then refuses http origins and
+      # an unset KEYCLOAK_ISSUER); this is the local dev stack.
+      APP_ENV: development
       # Database
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
       
@@ -168,6 +171,9 @@ services:
       # Keycloak
       KEYCLOAK_SERVER_URL: ${KEYCLOAK_SERVER_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-dhbw}
+      # `iss` of the tokens = the URL the browser signs in at, which differs
+      # from KEYCLOAK_SERVER_URL (docker-internal) in this stack.
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/dhbw}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-appstore-backend}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
       KEYCLOAK_ENABLED: ${KEYCLOAK_ENABLED:-true}
@@ -240,6 +246,7 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     environment:
+      APP_ENV: development
       # Database (.github#5): its own role on the application DB (queue,
       # task events, results only).
       DATABASE_URL: postgresql://appstore_worker:${WORKER_DB_PASSWORD:-worker-dev-password}@postgres:5432/${DB_NAME:-backend_dev}
