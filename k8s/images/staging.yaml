@@ -6,7 +6,7 @@
 images:
   tags:
     backend: "sha256:7a3640e7242b85cc1ca8a635cee38ce69b28108d4dba8e7b8527f9bbecd5321a"  # sha-53dacde
-    worker: "sha256:04370595b3ff14f27d92aec6c86056f22acd03edb532ea59b4cb139cca2e1d73"  # sha-3f53a95
+    worker: "sha256:d07694814fa25fcfe5b23add7682456e3bb432bce9dff60e35b67c337cf6eec1"  # sha-166d410
     workerPods: "sha256:1928982b607e90fa887d41100b69ddc6e5c32e9ad616564b4fa7d53eb8a9387d"  # sha-3f53a95
     frontend: "sha256:4e82e852ecee6bac4409b0fb0e8dd176cf752e491b0bf7debf17a400e3aff22e"  # sha-cb07d46
     appstoreMcp: "sha256:351a19c9e60be24787287b3b760bbab752eb9a8c25dbadb416f04aa27ba3b97e"  # sha-e05f290
