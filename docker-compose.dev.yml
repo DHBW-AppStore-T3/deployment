@@ -26,6 +26,7 @@ services:
       - "${KEYCLOAK_PORT:-8081}:8081"
     volumes:
       - ./keycloak/dhbw-realm.json:/opt/keycloak/data/import/dhbw-realm.json:ro
+      - ./keycloak/themes:/opt/keycloak/themes:ro
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q 'UP' <&3"]
       interval: 10s
