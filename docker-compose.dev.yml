@@ -125,6 +125,8 @@ services:
       KC_HTTP_ENABLED: 'true'
     command:
       - start-dev
+    volumes:
+      - ./keycloak/themes:/opt/keycloak/themes:ro
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     depends_on:
@@ -209,12 +211,13 @@ services:
       HANDOFF_SESSION_SECRET: ${HANDOFF_SESSION_SECRET:-change-me-in-production}
 
       # Application
+      APP_ENV: ${APP_ENV:-development}
       DEBUG: "True"
       APP_NAME: ${APP_NAME:-Backend API Dev}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.88.0.1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -241,7 +244,7 @@ services:
     # Use host network to allow OpenStack API access
     # Note: This disables container network isolation
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.88.0.1"
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -264,6 +267,7 @@ services:
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
 
       # Application
+      APP_ENV: ${APP_ENV:-development}
       DEBUG: "True"
     depends_on:
       postgres:
