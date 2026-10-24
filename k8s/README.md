@@ -91,7 +91,9 @@ through the AppStore and run as pods; see the app-registry repository.
   allowlist pinned by digest; Ingress hosts `<workload>-<deployment>.<appDomain>`
   of its own deployment only (never `appstore.<zone>` or `sso.<zone>`), plain
   `Prefix` paths, no annotations but cert-manager's; network policies that
-  keep the student pods' isolation. Single objects are never deleted, only
+  keep the student pods' isolation (the only `podSelector` peer is the empty
+  selector, TCP only, in a policy named `allow-intra-namespace`: pods of one
+  deployment may reach each other). Single objects are never deleted, only
   namespaces, pods (restart) and volume claims (reset).
 - **Keycloak realm `dhbw`**: access tokens of 5 minutes, refresh token
   rotation, brute-force protection, a password policy, PKCE S256 and no
