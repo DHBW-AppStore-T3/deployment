@@ -1,8 +1,8 @@
 # Entscheidung: Der AppStore läuft auf Kubernetes (Migrationsplan Phase 0, D1–D10)
 
-**Status:** vorgeschlagen; umgesetzt auf `spike/dev` (backend, worker, frontend) und `spike/pods-platform`
-(deployment), Stand 2026-10-16. Die Abnahme im Team steht aus. Ergänzt `2026-pods-instead-of-vms.md` und ändert
-dort Punkt 3 (zwei Rollen statt einer) und Punkt 7 (jeder Host gehört seinem Deployment).
+**Status:** angenommen und umgesetzt. Staging läuft aus `dev`, Prod seit 2026-10-23 aus `main` (backend, worker,
+frontend, deployment; die `spike/*`-Branches sind gemergt). Ergänzt `2026-pods-instead-of-vms.md` und ändert dort
+Punkt 3 (zwei Rollen statt einer) und Punkt 7 (jeder Host gehört seinem Deployment). Nachträge: siehe unten.
 
 ## Kontext
 Unser Stack lief mit Compose und Ansible auf VMs, alle Apps als OpenTofu/Packer-VMs. Das Pod-MVP (#4) gab es nur als
@@ -13,7 +13,7 @@ weder Pod Security `restricted` noch Nicht-Root-Container.
 ## Entscheidung
 | # | Entscheidung | Umsetzung |
 |---|---|---|
-| D1 | Unser Code (backend, worker, frontend); Pfisterers Kopie nur als Referenz | Portiert auf `spike/dev`; `k8s/src/` rollt Argo CD nicht mehr aus |
+| D1 | Unser Code (backend, worker, frontend); Pfisterers Kopie nur als Referenz | Portiert nach `dev`; `k8s/src/` ist entfernt. Das Frontend wurde danach in React neu geschrieben (frontend#36) |
 | D2 | Windows bleibt VM, in einem eigenen Executor ohne Kubernetes-Rechte | `appstore-t3-vm-executor` (Queue `vm`, kein Service-Account-Token); VM-Code auf dem Stand von `dhbw-appstore` |
 | D3 | Laufende VM-Deployments laufen bis zum Destroy; eine Linux-App bekommt nach freigegebener Pod-Version keine neue VM-Version | organisatorisch, bei der Freigabe |
 | D4 | Kapazität, Nodes für Studierenden-Pods, Storage, Backups mit Pfisterer klären | **offen**, vor Prod nötig; `podApps.studentNodeSelector`/`studentTolerations` sind vorbereitet |
@@ -22,7 +22,7 @@ weder Pod Security `restricted` noch Nicht-Root-Container.
 | D7 | Moodle zieht ebenfalls auf Kubernetes um (`charts/moodle`, ersetzt die VM-Variante); die LTI-Hosts stehen in `appstore.api.lti` je Umgebung | `charts/moodle`, `moodle_appstore`-Image |
 | D8 | #5 vorher auf Compose-Prod, wenn der Umstieg mehr als einen Monat entfernt ist | **offen** (Betrieb) |
 | D9 | Gemeinsamer Code von backend und worker als identische Kopien mit Hash-Test | `app/k8s/{spec,render,kube,fake}.py`, `pgq.py`, `task_contract.py` u. a. (`test_shared_files.py`) |
-| D10 | Images nur aus unserer Registry | Allowlist `ghcr.io/dhbw-appstore-t3/`, nur per Digest (API, Worker und Admission Policy) |
+| D10 | Images nur aus unserer Registry | Allowlist `ghcr.io/dhbw-appstore-t3/apps/` (die App-Pakete, nicht alle Pakete der Organisation), nur per Digest (API, Worker und Admission Policy) |
 
 ## Beim Bauen entschieden
 1. **Ein Chart** `k8s/charts/appstore` (alle Namen `appstore-t3-*`) statt der vier Applications der Referenz, als eine
@@ -49,8 +49,9 @@ weder Pod Security `restricted` noch Nicht-Root-Container.
    mit `sslmode=require`; `appstore_worker` als CNPG-Managed-Role.
 8. **Keycloak:** öffentlich nur `/realms/dhbw/`, `/realms/appstore/` und `/resources/`; Master-Realm und
    Admin-Konsole per `kubectl port-forward`; Demo-Nutzer nur auf Staging.
-9. **CI:** rendert das Chart wie Argo CD, prüft mit kubeconform, dem Policy-Harness und einer kind-Probe; Pushes auf
-   `spike/dev` pinnen die Images per Digest in `k8s/env/appstore.yaml` (`k8s-bump.yml`).
+9. **CI:** rendert das Chart wie Argo CD, prüft mit kubeconform, dem Policy-Harness und einer kind-Probe; die CI der
+   Komponenten pinnt ihre Images per Digest in `k8s/images/<staging|prod>.yaml` (`k8s-bump.yml`: auf `dev` direkt, auf
+   `main` als Pull Request, den eine Person mergt).
 
 ## Offen
 - D4 und D8.
@@ -63,3 +64,12 @@ weder Pod Security `restricted` noch Nicht-Root-Container.
   Cluster für Studierenden-Workloads, Backups (CNPG, Volumes), Monitoring.
 - Restrisiko VM-Pfad: Destroy und Redeploy führen den OpenTofu-Code der App mit dem Credential der auslösenden Person
   aus, auch eines Admins. Davor schützt nur die Freigabe der App-Version (#7 G).
+
+## Nachträge (Review 2026-10-24, `docs/REVIEW-PODS-MIGRATION-2026-10-24.md`)
+- **D1:** Mit dem React-Frontend und der self-service-ui stehen zwei Oberflächen vor einer API. Beide bleiben; weil
+  Studierenden-Apps auf derselben Site liegen, lehnt die API Schreibzugriffe ab, die ein Browser für eine fremde Seite
+  sendet (`Sec-Fetch-Site`/`Origin`, backend#28).
+- **D4:** weiterhin offen; Prod ging ohne die Klärung live.
+- **D7:** Moodle läuft im selben Namespace und Postgres-Cluster wie der AppStore (nicht mehr auf seiner VM).
+- **Identität:** LTI-Konten hängen an `iss` + `sub` statt an der E-Mail, Kurse an `context.id`; die Rolle ist die
+  höchste der Aussagen von Keycloak, letztem LTI-Launch und Admin-Vergabe (backend#29).
