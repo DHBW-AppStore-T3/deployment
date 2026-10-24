@@ -1,27 +1,23 @@
 # ================================================================
 # Makefile for Multi-Repo Deployment
-# Manages frontend, backend, worker services
+# Manages frontend, backend, worker, keycloak, postgres services
 #
-# Local dev runs via docker-compose.dev.yml (simulate mode, no
-# OpenStack / Keycloak / cluster needed — .github#6).
+# Local dev runs via docker-compose.dev.yml (simulate mode for
+# OpenStack & Kubernetes, local Keycloak on :8081 — .github#6).
 #
-# Production (docker-compose.prod.yml) is bootstrapped manually on
-# the prod VM only; see docs/prod-setup.md.
-# Staging is rolled out exclusively via the Ansible CD pipeline
-# (infrastructure/ansible/), not from a developer laptop.
+# Staging and production run on Kubernetes (k8s/, rolled out by
+# Argo CD).
 # ================================================================
 
 # ----------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------
-DC_DEV  := docker compose -f docker-compose.dev.yml
-DC_PROD := docker compose -f docker-compose.prod.yml
+DC_DEV := docker compose -f docker-compose.dev.yml
 
-DC_RUNNER := docker compose -f docker-compose.prod.yml -f docker-compose.runner.yml
-
-# Host-Ports (must match ${...:-default} values in compose files)
-FRONTEND_PORT_DEV  ?= 5173
-BACKEND_PORT       ?= 8000
+# Host-Ports (must match ${...:-default} values in docker-compose.dev.yml)
+FRONTEND_PORT_DEV ?= 5173
+BACKEND_PORT      ?= 8000
+KEYCLOAK_PORT     ?= 8081
 
 .DEFAULT_GOAL := help
 
@@ -29,16 +25,13 @@ BACKEND_PORT       ?= 8000
         env secret \
         init dev dev-up dev-down dev-logs dev-build dev-rebuild dev-ps \
         dev-restart dev-restart-backend dev-restart-frontend dev-restart-worker \
-        dev-logs-backend dev-logs-frontend dev-logs-worker \
+        dev-logs-backend dev-logs-frontend dev-logs-worker dev-logs-keycloak \
         shell-backend shell-worker shell-frontend shell-db \
         seed-dev migrate-dev migration-create migration-history migration-current migration-downgrade \
         db-reset-dev \
         health status stats watch-dev top \
         clean-dev clean-all prune \
         test-backend test-backend-cov lint-backend lint-backend-fix format-backend \
-        prod-up prod-down prod-stop prod-restart prod-pull prod-logs prod-ps \
-        prod-migrate prod-seed prod-reset \
-        runner-up runner-down runner-logs runner-ps \
         up down logs build
 
 # ----------------------------------------------------------------
@@ -71,15 +64,16 @@ init: ## First start: env + up --build + migrate + seed
 	$(DC_DEV) up -d --build
 	@echo "Warte auf Postgres..."
 	@$(DC_DEV) exec -T postgres sh -c 'until pg_isready -U postgres; do sleep 1; done'
-	$(DC_DEV) exec -T backend poetry run alembic upgrade head
-	$(DC_DEV) cp ./seed/seed_sim.py backend:/tmp/seed_sim.py
-	$(DC_DEV) exec -T backend poetry run python /tmp/seed_sim.py
+	@$(MAKE) --no-print-directory migrate-dev
+	@$(MAKE) --no-print-directory seed-dev
 	@echo ""
 	@echo "✓ Dev stack bereit."
-	@echo "  Backend API Docs: http://localhost:$(BACKEND_PORT)/docs"
 	@echo "  Frontend:         http://localhost:$(FRONTEND_PORT_DEV)"
+	@echo "  Backend API Docs: http://localhost:$(BACKEND_PORT)/docs"
+	@echo "  Keycloak Admin:   http://localhost:$(KEYCLOAK_PORT)  (admin / admin)"
 	@echo ""
-	@echo "  Auth: X-Dev-User Header — prof@dhbw.de / student@dhbw.de / admin@dhbw.de"
+	@echo "  Keycloak Logins:  dozent.demo / admin.demo / student1.demo (Passwort: DevLocal1234!)"
+	@echo "  API Header-Auth:  X-Dev-User: prof@dhbw.de / student@dhbw.de / admin@dhbw.de"
 
 # ----------------------------------------------------------------
 # Development Environment
@@ -114,6 +108,9 @@ dev-logs-frontend: ## Follow frontend logs
 dev-logs-worker: ## Follow worker logs
 	$(DC_DEV) logs -f worker
 
+dev-logs-keycloak: ## Follow keycloak logs
+	$(DC_DEV) logs -f keycloak
+
 dev-build: ## Build all dev images
 	$(DC_DEV) build
 
@@ -143,12 +140,14 @@ shell-db: ## psql in dev Postgres
 # ----------------------------------------------------------------
 # Seed & Migrations
 # ----------------------------------------------------------------
-seed-dev: ## Re-run the dev seed (idempotent)
+seed-dev: ## Re-run the dev seed (idempotent: Keycloak users + course + catalog apps)
 	$(DC_DEV) cp ./seed/seed_sim.py backend:/tmp/seed_sim.py
 	$(DC_DEV) exec -T backend poetry run python /tmp/seed_sim.py
 
-migrate-dev: ## Run Alembic migrations (dev)
+migrate-dev: ## Run Alembic migrations (dev) and configure appstore_worker DB role
 	$(DC_DEV) exec -T backend poetry run alembic upgrade head
+	$(DC_DEV) exec -T backend poetry run python -m app.worker_db_role
+	$(DC_DEV) restart worker
 
 migration-create: ## Autogenerate migration (usage: make migration-create MSG="...")
 	@if [ -z "$(MSG)" ]; then \
@@ -182,9 +181,10 @@ db-reset-dev: ## ⚠️  Wipe dev DB (DROPS ALL DATA, re-runs migrations)
 # ----------------------------------------------------------------
 # Health & Status
 # ----------------------------------------------------------------
-health: ## Check backend + frontend health
+health: ## Check backend + frontend + keycloak health
 	@printf "  Backend:   "; curl -sf http://localhost:$(BACKEND_PORT)/health > /dev/null && echo "healthy" || echo "not healthy"
 	@printf "  Frontend:  "; curl -sf http://localhost:$(FRONTEND_PORT_DEV) > /dev/null && echo "healthy" || echo "not healthy"
+	@printf "  Keycloak:  "; curl -sf http://localhost:$(KEYCLOAK_PORT)/realms/dhbw/.well-known/openid-configuration > /dev/null && echo "healthy" || echo "not healthy"
 
 status: ## Show container status
 	$(DC_DEV) ps
@@ -227,64 +227,6 @@ lint-backend-fix: ## ruff check --fix
 
 format-backend: ## ruff format
 	$(DC_DEV) exec backend ruff format .
-
-# ----------------------------------------------------------------
-# Production (manual VM bootstrap — see docs/prod-setup.md)
-# ----------------------------------------------------------------
-prod-up: ## Start the prod stack
-	$(DC_PROD) up -d --pull always
-
-prod-down: ## Stop and remove prod containers (volumes kept)
-	$(DC_PROD) down
-
-prod-stop: ## Stop prod containers without removing them
-	$(DC_PROD) stop
-
-prod-restart: ## Restart one prod service (usage: make prod-restart SVC=backend)
-	@if [ -z "$(SVC)" ]; then echo "Usage: make prod-restart SVC=backend"; exit 1; fi
-	$(DC_PROD) up -d --force-recreate $(SVC)
-
-prod-pull: ## Re-pull all prod images and recreate changed containers
-	$(DC_PROD) pull
-	$(DC_PROD) up -d
-
-prod-logs: ## Follow prod logs (or SVC=backend for one service)
-	$(DC_PROD) logs -f $(SVC)
-
-prod-ps: ## List prod containers + health
-	$(DC_PROD) ps
-
-prod-migrate: ## Apply Alembic migrations on the running prod backend
-	docker exec backend-prod python -m alembic upgrade head
-
-prod-seed: ## Seed DB on the running prod backend
-	$(DC_PROD) cp ./seed/seed_sim.py backend:/tmp/seed_sim.py
-	$(DC_PROD) exec -T backend python /tmp/seed_sim.py
-
-prod-reset: ## ⚠️  Stop prod + DELETE all volumes. Irreversible.
-	@echo "⚠️  This wipes ALL prod data."
-	@read -p "Type 'yes' to continue: " -r REPLY; \
-	if [ "$$REPLY" = "yes" ]; then \
-		$(DC_PROD) down -v; \
-		echo "✓ Prod stack and all volumes removed."; \
-	else \
-		echo "Aborted."; \
-	fi
-
-# ----------------------------------------------------------------
-# Self-hosted GitHub Actions runner
-# ----------------------------------------------------------------
-runner-up: ## Start the self-hosted runner (needs GITHUB_ACCESS_TOKEN in .env)
-	$(DC_RUNNER) up -d --pull always staging-runner
-
-runner-down: ## Stop and remove the runner container
-	$(DC_RUNNER) rm -sf staging-runner
-
-runner-logs: ## Follow runner logs
-	$(DC_RUNNER) logs -f staging-runner
-
-runner-ps: ## Show runner container status
-	$(DC_RUNNER) ps staging-runner
 
 # ----------------------------------------------------------------
 # Aliases

@@ -1,17 +1,22 @@
-"""Minimal seed for the simulation-mode dev stack (.github#6).
+"""Idempotent seed for the local simulation-mode dev stack (.github#6).
 
-Creates users, courses and apps directly in the database.
-No Keycloak required. Idempotent.
+1. Provisions all users from the local Keycloak ``dhbw`` realm into Postgres
+   via ``app.cli`` (``dozent.demo``, ``admin.demo``, ``student1..4.demo``,
+   ``test-teacher``) with their real Keycloak subject IDs.
+2. Also ensures the three ``X-Dev-User`` header convenience accounts exist
+   (``prof@dhbw.de``, ``student@dhbw.de``, ``admin@dhbw.de``).
+3. Creates the demo course ``WI SE B 23`` and links all teachers and students.
+4. Registers, submits and approves the Pod catalog apps via ``app.cli.seed_apps``
+   (real git commit SHA, ``runtime="kubernetes"``, ``spec_sha256``).
 
 Usage (from inside the backend-sim container):
-    python /seed/seed_sim.py
+    python /tmp/seed_sim.py
 Or via make:
     make seed-dev
 """
 from __future__ import annotations
 
 import logging
-import os
 import sys
 
 from sqlalchemy.orm import Session
@@ -19,12 +24,13 @@ from sqlalchemy.orm import Session
 # Make sure the app module is importable when run inside the backend container.
 sys.path.insert(0, "/app")
 
+from app.cli import realm_users, seed_apps, seed_course, seed_users
+from app.crud import courses as crud_courses
 from app.database import SessionLocal
-from app.models import App, AppVersionApproval, AppVersionApprovalStatus, Course, CourseTeacher, User, UserRole
+from app.models import Course, CourseTeacher, User, UserRole
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("seed_sim")
-
 
 # ----------------------------------------------------------------
 # Data definitions
@@ -37,48 +43,46 @@ COURSE_NAME = "WI SE B 23"
 APPS = [
     {
         "name": "Online-IDE",
-        "description": "Code-Server im Browser, eine VM pro Team",
-        "git_link": "https://github.com/DHBW-AppStore/Online-IDE",
-        "is_private": False,
-    },
-    {
-        "name": "pgAdmin",
-        "description": "PostgreSQL mit pgAdmin für Datenbank-Übungen",
-        "git_link": "https://github.com/DHBW-AppStore/pgAdmin",
-        "is_private": False,
+        "description": "Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person.",
+        "gitLink": "https://github.com/DHBW-AppStore-T3/Online-IDE",
+        "versions": ["v2.0.1"],
     },
     {
         "name": "Web-LaTeX",
-        "description": "LaTeX-Editor im Browser",
-        "git_link": "https://github.com/DHBW-AppStore/Web-LaTeX",
-        "is_private": False,
+        "description": "LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person.",
+        "gitLink": "https://github.com/DHBW-AppStore-T3/Web-LaTeX",
+        "versions": ["v2.0.2"],
+    },
+    {
+        "name": "Jupyter-Notebook",
+        "description": "JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person.",
+        "gitLink": "https://github.com/DHBW-AppStore-T3/Jupyter-Notebook",
+        "versions": ["v2.0.0"],
+    },
+    {
+        "name": "pgAdmin",
+        "description": "pgAdmin mit PostgreSQL und Pagila-Beispieldatenbank, ein Pod pro Team.",
+        "gitLink": "https://github.com/DHBW-AppStore-T3/pgAdmin",
+        "versions": ["v2.0.1"],
+    },
+    {
+        "name": "template-app",
+        "description": "Vorlage fuer neue AppStore-Apps (nginx-Pod).",
+        "gitLink": "https://github.com/DHBW-AppStore-T3/template-app",
+        "versions": ["v2.0.1"],
     },
 ]
 
 
-# ----------------------------------------------------------------
-# Helpers
-# ----------------------------------------------------------------
-def _get_or_create_user(db: Session, email: str, role: UserRole) -> User:
+def _get_or_create_dev_user(db: Session, email: str, role: UserRole) -> User:
     user = db.query(User).filter(User.email == email).first()
     if user:
         return user
     user = User(email=email, username=email.split("@")[0], role=role)
     db.add(user)
     db.flush()
-    logger.info("Created user %s (%s)", email, role.value)
+    logger.info("Created X-Dev-User %s (%s)", email, role.value)
     return user
-
-
-def _get_or_create_course(db: Session, name: str) -> Course:
-    course = db.query(Course).filter(Course.name == name).first()
-    if course:
-        return course
-    course = Course(name=name)
-    db.add(course)
-    db.flush()
-    logger.info("Created course %s", name)
-    return course
 
 
 def _link_teacher(db: Session, course: Course, teacher: User) -> None:
@@ -92,70 +96,43 @@ def _link_teacher(db: Session, course: Course, teacher: User) -> None:
         logger.info("Linked %s as teacher of %s", teacher.email, course.name)
 
 
-def _get_or_create_app(db: Session, data: dict, owner: User) -> App:
-    app = db.query(App).filter(App.name == data["name"]).first()
-    if app:
-        return app
-    app = App(
-        name=data["name"],
-        description=data["description"],
-        git_link=data["git_link"],
-        is_private=data["is_private"],
-        userId=owner.userId,
-    )
-    db.add(app)
-    db.flush()
-    logger.info("Created app %s", app.name)
-    return app
-
-
-def _approve_app(db: Session, app: App, approver: User) -> None:
-    exists = (
-        db.query(AppVersionApproval)
-        .filter(
-            AppVersionApproval.appId == app.appId,
-            AppVersionApproval.status == AppVersionApprovalStatus.APPROVED,
-        )
-        .first()
-    )
-    if exists:
-        return
-    approval = AppVersionApproval(
-        appId=app.appId,
-        reviewed_by=approver.userId,
-        status=AppVersionApprovalStatus.APPROVED,
-        version_tag="sim-latest",
-        commit_sha="0000000000000000000000000000000000000000",
-    )
-    db.add(approval)
-    logger.info("Approved app %s", app.name)
-
-
-# ----------------------------------------------------------------
-# Main
-# ----------------------------------------------------------------
 def seed() -> None:
+    try:
+        kc_realm_users = list(realm_users())
+    except Exception as exc:
+        logger.warning("Could not fetch Keycloak realm users (%s) — continuing with local DB users", exc)
+        kc_realm_users = []
+
     with SessionLocal() as db:
-        teacher = _get_or_create_user(db, TEACHER_EMAIL, UserRole.TEACHER)
-        student = _get_or_create_user(db, STUDENT_EMAIL, UserRole.STUDENT)  # noqa: F841
-        admin = _get_or_create_user(db, ADMIN_EMAIL, UserRole.ADMIN)  # noqa: F841
+        provisioned = seed_users(db, kc_realm_users) if kc_realm_users else []
 
-        course = _get_or_create_course(db, COURSE_NAME)
+        # Ensure convenience accounts for X-Dev-User header testing exist as well
+        teacher = _get_or_create_dev_user(db, TEACHER_EMAIL, UserRole.TEACHER)
+        student = _get_or_create_dev_user(db, STUDENT_EMAIL, UserRole.STUDENT)
+        admin = _get_or_create_dev_user(db, ADMIN_EMAIL, UserRole.ADMIN)
+        db.commit()
+
+        all_users = provisioned + [teacher, student, admin]
+        course = seed_course(db, COURSE_NAME, all_users)
         _link_teacher(db, course, teacher)
+        if student.courseId is None:
+            crud_courses.add_users_to_course(db, course.courseId, [student.userId])
+        db.commit()
 
-        for app_data in APPS:
-            app = _get_or_create_app(db, app_data, owner=teacher)
-            _approve_app(db, app, approver=teacher)
-
+        owner = (
+            db.query(User).filter(User.role == UserRole.ADMIN).order_by(User.created_at).first()
+            or admin
+        )
+        seed_apps(db, owner, APPS)
         db.commit()
 
     logger.info(
         "Seed complete.\n"
-        "  Teacher:  %s\n"
-        "  Student:  %s\n"
-        "  Admin:    %s\n"
-        "  Course:   %s\n"
-        "  Apps:     %s",
+        "  Keycloak users provisioned: %d\n"
+        "  X-Dev-User accounts:        %s, %s, %s\n"
+        "  Course:                     %s\n"
+        "  Apps:                       %s",
+        len(provisioned),
         TEACHER_EMAIL,
         STUDENT_EMAIL,
         ADMIN_EMAIL,

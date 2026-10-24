@@ -1,8 +1,10 @@
 # ================================================================
 # Local Development Stack (.github#6)
 #
-# Runs without OpenStack, Keycloak, Redis or RabbitMQ.
-# Pod-apps deploy against FakeKube (no cluster needed).
+# Runs with local Keycloak (realm `dhbw`) and Postgres (`pgq` queue),
+# without OpenStack, Kubernetes cluster, Redis or RabbitMQ.
+# OpenStack calls return canned data (OPENSTACK_SIMULATE=true) and
+# pod-apps deploy against in-memory FakeKube (WORKER_SIMULATE=true).
 #
 # Usage:
 #   make init           # first start: up + migrate + seed
@@ -21,9 +23,9 @@ services:
       KC_HTTP_PORT: 8081
       KC_HEALTH_ENABLED: "true"
     ports:
-      - "8081:8081"
+      - "${KEYCLOAK_PORT:-8081}:8081"
     volumes:
-      - ../deployment/keycloak/dhbw-realm.json:/opt/keycloak/data/import/dhbw-realm.json:ro
+      - ./keycloak/dhbw-realm.json:/opt/keycloak/data/import/dhbw-realm.json:ro
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q 'UP' <&3"]
       interval: 10s
@@ -59,13 +61,15 @@ services:
     container_name: backend-sim
     environment:
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:-worker-dev-password}
+      CELERY_BROKER_URL: ""
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
       APP_ENV: "development"
       OPENSTACK_SIMULATE: "true"
       KEYCLOAK_SERVER_URL: "http://keycloak-sim:8081"
-      KEYCLOAK_ISSUER: "http://localhost:8081/realms/dhbw"
+      KEYCLOAK_ISSUER: "http://localhost:${KEYCLOAK_PORT:-8081}/realms/dhbw"
       KEYCLOAK_REALM: "dhbw"
       KEYCLOAK_CLIENT_ID: "appstore-backend"
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-dev-local-secret}
@@ -93,14 +97,13 @@ services:
       dockerfile: Dockerfile.dev
     container_name: worker-sim
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
+      DATABASE_URL: postgresql://appstore_worker:${WORKER_DB_PASSWORD:-worker-dev-password}@postgres:5432/${DB_NAME:-backend_dev}
+      CELERY_BROKER_URL: ""
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
       RESULTS_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
       APPSTORE_API_URL: http://backend:8000
-      GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
       APP_ENV: "development"
       WORKER_SIMULATE: "true"
-      DEBUG: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,7 +122,7 @@ services:
       VITE_APP_URL: ${VITE_APP_URL:-http://localhost:5173}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      VITE_KEYCLOAK_URL: "http://localhost:8081"
+      VITE_KEYCLOAK_URL: "http://localhost:${KEYCLOAK_PORT:-8081}"
       VITE_KEYCLOAK_REALM: "dhbw"
       VITE_KEYCLOAK_CLIENT_ID: "appstore-frontend"
       NODE_ENV: development

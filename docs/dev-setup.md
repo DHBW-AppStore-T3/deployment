@@ -145,6 +145,7 @@ Oder im Browser:
 | `make dev-logs-backend` | Nur Backend |
 | `make dev-logs-worker` | Nur Worker |
 | `make dev-logs-frontend` | Nur Frontend |
+| `make dev-logs-keycloak` | Nur Keycloak |
 
 ### Shell-Zugriff
 
@@ -194,32 +195,6 @@ Oder im Browser:
 | `make clean-dev` | ⚠️ `down -v` — entfernt alle Volumes |
 | `make clean-all` | ⚠️ `down -v` + lokale Images löschen |
 | `make prune` | ⚠️ `docker system prune -af --volumes` |
-
-### Produktion (manuelle VM-Bootstrap — nur auf appstore-prod-01)
-
-> Staging läuft ausschließlich über die Ansible CD-Pipeline (`infrastructure/ansible/`), nicht vom Developer-Laptop.
-
-| Befehl | Beschreibung |
-|---|---|
-| `make prod-up` | Prod-Stack starten |
-| `make prod-down` | Prod-Stack stoppen (Volumes bleiben) |
-| `make prod-stop` | Container stoppen ohne entfernen |
-| `make prod-restart SVC=backend` | Einen Prod-Service neu starten |
-| `make prod-pull` | Images neu pullen + geänderte Container neu starten |
-| `make prod-logs` | Prod-Logs verfolgen (oder `SVC=backend` für einen Dienst) |
-| `make prod-ps` | Prod-Container + Health anzeigen |
-| `make prod-migrate` | Alembic-Migrationen auf laufendem Prod-Backend |
-| `make prod-seed` | Seed auf laufendem Prod-Backend |
-| `make prod-reset` | ⚠️ Prod-Stack + alle Volumes löschen (irreversibel) |
-
-### Self-hosted GitHub Actions Runner
-
-| Befehl | Beschreibung |
-|---|---|
-| `make runner-up` | Runner starten (benötigt `GITHUB_ACCESS_TOKEN` in `.env`) |
-| `make runner-down` | Runner-Container entfernen |
-| `make runner-logs` | Runner-Logs verfolgen |
-| `make runner-ps` | Runner-Container-Status |
 
 ## Was ist Simulation Mode?
 
