@@ -143,11 +143,16 @@
     }
     .lang-switcher button:hover { background: var(--lang-hover); }
 
-    /* ── Main content — absolutely positioned at 27.3% from top ── */
+    /* ── Main content — absolutely positioned, bounded above features ── */
     .main {
       position: absolute;
       top: 27.3%;
+      bottom: calc(8.7% + 120 * var(--u));
       width: 100%;
+      overflow: visible;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
     }
 
     .eyebrow {
