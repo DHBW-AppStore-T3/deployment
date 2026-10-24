@@ -37,25 +37,18 @@ services:
     container_name: backend-sim
     environment:
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-backend_dev}
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-sim}
-      ALGORITHM: ${ALGORITHM:-HS256}
-      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
-      GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
       # Simulate mode: no Keycloak, no OpenStack
       APP_ENV: "development"
       OPENSTACK_SIMULATE: "true"
-      # Stub values so Keycloak config does not fail validation
+      # Stub values so Keycloak config passes validation
       KEYCLOAK_SERVER_URL: "http://localhost:8080"
       KEYCLOAK_REALM: "dhbw"
       KEYCLOAK_CLIENT_ID: "appstore-backend"
-      KEYCLOAK_ENABLED: "false"
-      SMTP_ENABLED: "false"
       LTI13_SESSION_SECRET: "change-me-in-dev"
       HANDOFF_SESSION_SECRET: "change-me-in-dev"
-      DEBUG: "true"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

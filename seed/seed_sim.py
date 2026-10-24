@@ -6,7 +6,7 @@ No Keycloak required. Idempotent.
 Usage (from inside the backend-sim container):
     python /seed/seed_sim.py
 Or via make:
-    make dev-sim
+    make seed-dev
 """
 from __future__ import annotations
 
