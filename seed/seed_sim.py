@@ -122,9 +122,9 @@ def _approve_app(db: Session, app: App, approver: User) -> None:
         return
     approval = AppVersionApproval(
         appId=app.appId,
-        userId=approver.userId,
+        reviewed_by=approver.userId,
         status=AppVersionApprovalStatus.APPROVED,
-        version="sim-latest",
+        version_tag="sim-latest",
         commit_sha="0000000000000000000000000000000000000000",
     )
     db.add(approval)
