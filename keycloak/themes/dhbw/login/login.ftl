@@ -86,8 +86,13 @@
       margin-left: 6.95%;
     }
 
-    /* ── Header (logo) ── */
-    .hdr { padding-top: 9.7svh; }
+    /* ── Header (logo + lang switcher) ── */
+    .hdr {
+      padding-top: 9.7svh;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
 
     .brand {
       display: inline-flex;
@@ -106,12 +111,8 @@
       -webkit-mask: url('${url.resourcesPath}/img/logo.png') center / contain no-repeat;
     }
 
-    /* ── Language switcher — positioned relative to .page, matching auth.css --auth-language-left ── */
+    /* ── Language switcher ── */
     .lang-switcher {
-      position: absolute;
-      z-index: 10;
-      top: 4.4%;
-      left: 32.1%;
       display: flex;
       overflow: hidden;
       border: 1px solid var(--lang-border);
@@ -342,7 +343,8 @@
       .brand      { font-size: 0.8125rem; gap: 6px; }
       .logo-mark  { width: 56px; }
 
-      .lang-switcher        { position: fixed; top: 16px; right: 16px; width: fit-content; border-radius: 9px; }      .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
+      .lang-switcher        { border-radius: 9px; }
+      .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
 
       .main {
         position: static;
@@ -382,17 +384,16 @@
     <path fill="url(#fold-grad)"   d="M0 625L303 900Q317 914 320 941H0Z"/>
   </svg>
 
-  <div class="lang-switcher" role="group" aria-label="Language">
-    <button type="button" lang="de" id="btn-de" onclick="setLang('de')">DE</button>
-    <button type="button" lang="en" id="btn-en" onclick="setLang('en')">EN</button>
-  </div>
-
   <div class="left">
 
     <header class="hdr">
       <div class="brand">
         <div class="logo-mark" role="img" aria-label="T3 AppStore"></div>
         <span>AppStore</span>
+      </div>
+      <div class="lang-switcher" role="group" aria-label="Language">
+        <button type="button" lang="de" id="btn-de" onclick="setLang('de')">DE</button>
+        <button type="button" lang="en" id="btn-en" onclick="setLang('en')">EN</button>
       </div>
     </header>
 
