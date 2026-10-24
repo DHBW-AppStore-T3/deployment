@@ -54,6 +54,11 @@ keycloak:
 
 api:
   replicas: 2
+  # hostAliases of the API pod: [{ip, hostnames}]. The LTI platform (Moodle) is
+  # served by this cluster, and a pod cannot reach the node's public address, so
+  # its host name points at the ingress controller's Service (the egress rule
+  # in networkpolicies.yaml then opens 443/8443 to the ingress namespace).
+  hostAliases: []
   # uvicorn processes per pod
   workers: 2
   # Hosts app repositories may come from (comma-separated, exact names).

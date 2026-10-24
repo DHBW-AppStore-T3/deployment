@@ -159,6 +159,16 @@ Oder im Browser:
 | `make migration-downgrade` | Eine Revision zurück |
 | `make db-reset-dev` | ⚠️ DB komplett löschen und neu migrieren |
 
+### Status & Monitoring
+
+| Befehl | Beschreibung |
+|---|---|
+| `make health` | Backend + Frontend per curl prüfen |
+| `make status` | Container-Status (`docker compose ps`) |
+| `make stats` | `docker stats` für alle Container |
+| `make watch-dev` | Container-Status alle 2s aktualisieren |
+| `make top` | Prozesse je Container anzeigen |
+
 ### Qualität (Backend)
 
 | Befehl | Beschreibung |
@@ -176,6 +186,32 @@ Oder im Browser:
 | `make clean-dev` | ⚠️ `down -v` — entfernt alle Volumes |
 | `make clean-all` | ⚠️ `down -v` + lokale Images löschen |
 | `make prune` | ⚠️ `docker system prune -af --volumes` |
+
+### Produktion (manuelle VM-Bootstrap — nur auf appstore-prod-01)
+
+> Staging läuft ausschließlich über die Ansible CD-Pipeline (`infrastructure/ansible/`), nicht vom Developer-Laptop.
+
+| Befehl | Beschreibung |
+|---|---|
+| `make prod-up` | Prod-Stack starten |
+| `make prod-down` | Prod-Stack stoppen (Volumes bleiben) |
+| `make prod-stop` | Container stoppen ohne entfernen |
+| `make prod-restart SVC=backend` | Einen Prod-Service neu starten |
+| `make prod-pull` | Images neu pullen + geänderte Container neu starten |
+| `make prod-logs` | Prod-Logs verfolgen (oder `SVC=backend` für einen Dienst) |
+| `make prod-ps` | Prod-Container + Health anzeigen |
+| `make prod-migrate` | Alembic-Migrationen auf laufendem Prod-Backend |
+| `make prod-seed` | Seed auf laufendem Prod-Backend |
+| `make prod-reset` | ⚠️ Prod-Stack + alle Volumes löschen (irreversibel) |
+
+### Self-hosted GitHub Actions Runner
+
+| Befehl | Beschreibung |
+|---|---|
+| `make runner-up` | Runner starten (benötigt `GITHUB_ACCESS_TOKEN` in `.env`) |
+| `make runner-down` | Runner-Container entfernen |
+| `make runner-logs` | Runner-Logs verfolgen |
+| `make runner-ps` | Runner-Container-Status |
 
 ## Was ist Simulation Mode?
 
