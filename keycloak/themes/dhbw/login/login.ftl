@@ -342,7 +342,7 @@
       .brand      { font-size: 0.8125rem; gap: 6px; }
       .logo-mark  { width: 56px; }
 
-      .lang-switcher        { position: fixed; top: 16px; right: 16px; border-radius: 9px; }      .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
+      .lang-switcher        { position: fixed; top: 16px; right: 16px; width: fit-content; border-radius: 9px; }      .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
 
       .main {
         position: static;
