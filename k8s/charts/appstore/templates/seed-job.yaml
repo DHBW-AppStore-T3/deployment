@@ -1,17 +1,18 @@
 {{- if .Values.seed.enabled }}
 {{- $comp := dict "context" . "component" "seed" -}}
-# Demo data (files/seed.py): the realm's users in the database, a demo course
-# and a few catalog apps, so the UIs are usable right after a fresh rollout.
-# After every sync (Helm post-install/post-upgrade = Argo CD PostSync hook),
-# idempotent; the backend image, as the database owner, like the migrations.
+# Demo data (the backend's `python -m app.cli seed`): the realm's users in the
+# database, a demo course and a few catalog apps, so the UIs are usable right
+# after a fresh rollout. Argo CD runs Helm hooks after every sync (PostSync),
+# so the command only adds what is missing: it never approves a version again
+# that an admin rejected or revoked, and never changes the courses of users
+# that existed. It works through the CRUD layer, with no login and no HTTP.
+# For demo environments only (staging); off in prod.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "appstore.name" $comp }}
   labels: {{- include "appstore.labels" $comp | nindent 4 }}
 data:
-  seed.py: |-
-{{ .Files.Get "files/seed.py" | indent 4 }}
   seed.json: |-
 {{ dict "courseName" .Values.seed.courseName "apps" .Values.seed.apps | toPrettyJson | indent 4 }}
 ---
@@ -44,7 +45,7 @@ spec:
         - name: seed
           image: {{ include "appstore.image" (dict "context" . "key" "backend" "name" "backend") }}
           imagePullPolicy: {{ .Values.images.pullPolicy }}
-          command: ["python", "/seed/seed.py"]
+          command: ["python", "-m", "app.cli", "seed", "--config", "/seed/seed.json"]
           workingDir: /app
           env:
             {{- include "appstore.backendEnv" . | nindent 12 }}
