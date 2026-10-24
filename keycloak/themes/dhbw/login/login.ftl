@@ -213,20 +213,20 @@
     input[type="email"],
     input[type="password"] {
       width: 100%;
-      height: 44px;
+      height: 40px;
       padding: 0 12px;
       font-family: inherit;
-      font-size: 0.9375rem;
+      font-size: 0.875rem;
       color: var(--heading);
       background: #fff;
       border: 1.5px solid var(--input-border);
-      border-radius: 8px;
+      border-radius: 6px;
       outline: none;
       transition: border-color .15s, box-shadow .15s;
     }
     input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(226,0,26,.12);
+      box-shadow: 0 0 0 3px rgb(180 0 37 / .12);
     }
 
     /* Primary button */
@@ -236,20 +236,20 @@
       justify-content: center;
       gap: 8px;
       width: 100%;
-      height: 46px;
+      min-height: 40px;
       font-family: inherit;
-      font-size: 0.9375rem;
+      font-size: 0.875rem;
       font-weight: 600;
       color: #fff;
       background: var(--accent);
       border: none;
-      border-radius: 13px;
+      border-radius: 8px;
       cursor: pointer;
       transition: background .15s;
       margin-top: 8px;
     }
     .btn-primary:hover { background: var(--accent-hover); }
-    .btn-primary svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .btn-primary svg { width: 16px; height: 16px; flex-shrink: 0; }
 
     .help {
       margin-top: 18px;
