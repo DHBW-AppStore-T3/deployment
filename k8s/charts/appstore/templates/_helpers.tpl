@@ -103,6 +103,11 @@ to start in production without them (.github#7 O).
 - { name: OIDC_AUDIENCE, value: {{ $k.audience | quote }} }
 # Same origin: the frontend's nginx is the gateway for /api.
 - { name: CORS_ORIGINS, value: "[]" }
+# The other UI whose pages may change state through the API (the API refuses
+# writes a browser sends for any other page: student apps share the site).
+{{- if and .Values.selfServiceUi.enabled .Values.selfServiceHost }}
+- { name: CSRF_TRUSTED_ORIGINS, value: {{ printf "https://%s" .Values.selfServiceHost | quote }} }
+{{- end }}
 - { name: APP_BASE_URL, value: {{ printf "https://%s" (required "host is required" .Values.host) | quote }} }
 - { name: APP_GIT_ALLOWED_HOSTS, value: {{ .Values.api.gitAllowedHosts | quote }} }
 - { name: OPENSTACK_ALLOWED_AUTH_URLS, value: {{ .Values.api.openstackAllowedAuthUrls | quote }} }

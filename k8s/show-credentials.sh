@@ -18,3 +18,4 @@ fi
 MOODLE_HOST=$(awk '/^moodle:/{f=1} f&&/^  host:/{print $2; exit}' "environments/$ENV_NAME.yaml")
 echo "Moodle:    https://$MOODLE_HOST"
 echo "           user admin, password $(kubectl -n "$NS" get secret moodle-admin -o jsonpath='{.data.password}' | base64 -d)"
+echo "           demo users (see moodle.setup.demoUsers): password $(kubectl -n "$NS" get secret moodle-demo -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)"

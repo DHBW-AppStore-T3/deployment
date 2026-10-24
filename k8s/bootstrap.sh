@@ -99,6 +99,15 @@ if ! have moodle-admin; then
   NEW+=("Moodle admin (user admin, https://$(awk '/^moodle:/{f=1} f&&/^  host:/{print $2; exit}' "environments/$ENV_NAME.yaml")): $MOODLEPW")
 fi
 
+# Password of Moodle's demo users (moodle.setup.demoUsers; created by the chart's
+# `configure` init container). Moodle's policy wants a special character, a digit,
+# upper and lower case.
+if ! have moodle-demo; then
+  DEMOPW="$(rand 12)-Aa1"
+  kubectl -n "$NS" create secret generic moodle-demo --from-literal=password="$DEMOPW"
+  NEW+=("Moodle demo users (see moodle.setup.demoUsers): $DEMOPW")
+fi
+
 # --- Pulling our private images (images.pullSecrets in environments/*.yaml).
 # The token goes from the file to kubectl's stdin, never into an argument.
 if [ -n "${GHCR_PULL_TOKEN_FILE:-}" ]; then

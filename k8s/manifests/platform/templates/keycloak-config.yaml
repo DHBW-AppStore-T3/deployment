@@ -1,0 +1,81 @@
+{{- if .Values.selfServiceHost }}
+{{- /* The client definition comes from the same source as the realm import (files/dhbw-realm.json). */}}
+{{- $realm := include "platform.dhbwRealm" . | fromJson }}
+{{- $client := dict }}
+{{- range $realm.clients }}{{ if eq .clientId "appstore-self-service" }}{{ $client = . }}{{ end }}{{ end }}
+# Keycloak imports a realm only into an empty database and never changes an
+# existing one, so a client added to the realm file later is missing in a
+# running environment. This job creates or updates the clients below in the LIVE
+# realm after every sync (idempotent; replaces k8s/keycloak-self-service-client.sh
+# as the normal way). Admin login: Secret keycloak-secret, in-cluster only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-clients
+data:
+  appstore-self-service.json: |-
+{{ $client | toPrettyJson | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-config
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: kcadm
+          image: quay.io/keycloak/keycloak:26.4.7@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007
+          command: [/bin/bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              kcadm=/opt/keycloak/bin/kcadm.sh
+              cfg=/tmp/kcadm.config
+              realm={{ $realm.realm }}
+              # Keycloak may still be restarting after the sync: wait for the admin login.
+              for i in $(seq 1 30); do
+                $kcadm config credentials --config $cfg --server http://keycloak:8080 \
+                  --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASSWORD" 2>/dev/null && break
+                [ "$i" = 30 ] && { echo "Keycloak admin login failed" >&2; exit 1; }
+                sleep 5
+              done
+              for f in /clients/*.json; do
+                clientId=$(basename "$f" .json)
+                id=$($kcadm get clients --config $cfg -r "$realm" -q "clientId=$clientId" --fields id --format csv --noquotes)
+                if [ -z "$id" ]; then
+                  $kcadm create clients --config $cfg -r "$realm" -f "$f"
+                  echo "created client $clientId in realm $realm"
+                else
+                  $kcadm update "clients/$id" --config $cfg -r "$realm" -f "$f"
+                  echo "updated client $clientId in realm $realm"
+                fi
+              done
+          env:
+            - { name: KC_ADMIN_USER, value: admin }
+            - name: KC_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-secret, key: admin-password } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: clients, mountPath: /clients, readOnly: true }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - name: clients
+          configMap: { name: keycloak-clients }
+{{- end }}

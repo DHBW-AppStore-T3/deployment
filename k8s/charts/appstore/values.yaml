@@ -84,12 +84,15 @@ podApps:
   zone: ""
   # Hosts are <workload>-<deployment>.<appDomain>; empty: apps.<zone>.
   appDomain: ""
-  # Images must be pinned by digest and start with one of these prefixes.
+  # Images must be pinned by digest and start with one of these prefixes:
+  # the apps' packages (app-registry builds them as apps/<name>), not every
+  # package of the organisation (backend, worker, ...).
   imageRegistryAllowlist:
-    - ghcr.io/dhbw-appstore-t3/
-  # Ceilings per container and volume.
-  maxCpu: "2"
-  maxMemory: 4Gi
+    - ghcr.io/dhbw-appstore-t3/apps/
+  # Ceilings per container and volume. An app can offer people a range up to
+  # these (resourceBounds in appstore.yaml); the node has 4 vCPU and 16 GiB.
+  maxCpu: "4"
+  maxMemory: 8Gi
   maxStorage: 20Gi
   # Workloads (one per team or person) per deployment, and per owner across
   # their live pod deployments (0: no budget).
@@ -177,6 +180,40 @@ selfServiceUi:
 # an Argo CD PreSync hook).
 migrations:
   enabled: true
+
+# Demo data after every sync (templates/seed-job.yaml, the backend's
+# `python -m app.cli seed`): the realm's users in the database, a demo course
+# (of the users it provisions: teachers teach it, students join it) and public
+# catalog apps (registered, owned by the first admin; a version without any
+# review is submitted and approved). Adds only what is missing and never undoes
+# a review or a course membership. Demo environments only: off in prod.
+seed:
+  enabled: false
+  courseName: Demo-Kurs
+  # name, description, gitLink (public repository), versions: tags that are submitted
+  # and approved. Needs the tag on a commit with appstore.yaml (runtime pods). The
+  # newest release of each app: those pin the images the Trivy gate passed.
+  apps:
+    - name: Online-IDE
+      description: Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Online-IDE
+      versions: [v2.0.1]
+    - name: Web-LaTeX
+      description: LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Web-LaTeX
+      versions: [v2.0.2]
+    - name: Jupyter-Notebook
+      description: JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Jupyter-Notebook
+      versions: [v2.0.0]
+    - name: pgAdmin
+      description: pgAdmin mit PostgreSQL und Pagila-Beispieldatenbank, ein Pod pro Team.
+      gitLink: https://github.com/DHBW-AppStore-T3/pgAdmin
+      versions: [v2.0.1]
+    - name: template-app
+      description: Vorlage fuer neue AppStore-Apps (nginx-Pod).
+      gitLink: https://github.com/DHBW-AppStore-T3/template-app
+      versions: [v2.0.1]
 
 # Hourly report of dep-* namespaces without a live deployment (the Job fails
 # when it finds one).

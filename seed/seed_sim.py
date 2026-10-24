@@ -77,8 +77,11 @@ APPS = [
 def _get_or_create_dev_user(db: Session, email: str, role: UserRole) -> User:
     user = db.query(User).filter(User.email == email).first()
     if user:
+        if user.role != role or user.granted_role != role:
+            user.role = role
+            user.granted_role = role
         return user
-    user = User(email=email, username=email.split("@")[0], role=role)
+    user = User(email=email, username=email.split("@")[0], role=role, granted_role=role)
     db.add(user)
     db.flush()
     logger.info("Created X-Dev-User %s (%s)", email, role.value)
@@ -104,7 +107,7 @@ def seed() -> None:
         kc_realm_users = []
 
     with SessionLocal() as db:
-        provisioned = seed_users(db, kc_realm_users) if kc_realm_users else []
+        provisioned, _created = seed_users(db, kc_realm_users) if kc_realm_users else ([], [])
 
         # Ensure convenience accounts for X-Dev-User header testing exist as well
         teacher = _get_or_create_dev_user(db, TEACHER_EMAIL, UserRole.TEACHER)

@@ -17,11 +17,19 @@ platform:
 appstore:
   selfServiceUi:
     enabled: true
+  # Demo course and catalog apps after every sync (charts/appstore/templates/seed-job.yaml).
+  seed:
+    enabled: true
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
   images:
     pullSecrets: [ghcr-pull]
   api:
+    # Moodle's LTI keys: its public name -> the ingress controller's Service
+    # (kubectl -n kube-system get svc traefik); see values.yaml api.hostAliases.
+    hostAliases:
+      - ip: "fd00:43::2fb9"
+        hostnames: ["moodle-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"]
     # The DHBW Keystone (OPENSTACK_ALLOWED_AUTH_URLS); empty: no OpenStack
     # credential can be saved, so no VM app (the Windows desktop) runs.
     # TODO before VM apps: the URL from the GitHub secret STAGING_OS_AUTH_URL.
@@ -29,10 +37,12 @@ appstore:
     # LTI 1.3 from Moodle (off while clientId is empty). Moodle's tool URLs:
     # https://<host>/api/lti13/login and https://<host>/api/lti13/launch.
     lti:
-      platformIssuer: ""
-      clientId: ""
-      deploymentId: ""
-      jwksUrl: ""
+      # Moodle (moodle-staging): issuer = wwwroot; the tool is the mod_lti type
+      # "DHBW AppStore" (client and deployment id are public identifiers).
+      platformIssuer: "https://moodle-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
+      clientId: "igUs9thTxg8FE2S"
+      deploymentId: "1"
+      jwksUrl: "https://moodle-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/mod/lti/certs.php"
   # Apps that run as pods: https://<workload>-<deployment>.<appDomain>.
   podApps:
     zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
@@ -63,3 +73,10 @@ moodle:
     pullSecrets: [ghcr-pull]
   site:
     adminEmail: max.rml@web.de
+  # Demo users of Moodle (password: Secret moodle-demo); same e-mail addresses as
+  # the Keycloak users, so an LTI launch and the SSO login meet the same AppStore user.
+  setup:
+    demoUsers:
+      - { username: dozent.demo, email: dozent.demo@appstore.example, firstName: Dozentin, lastName: Demo, role: teacher }
+      - { username: student1.demo, email: student1.demo@appstore.example, firstName: Studentin, lastName: Eins, role: student }
+      - { username: student2.demo, email: student2.demo@appstore.example, firstName: Student, lastName: Zwei, role: student }
