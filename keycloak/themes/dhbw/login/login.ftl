@@ -48,91 +48,94 @@
     }
 
     /* ═══════════════════════════════════════════════════════════
-       DESKTOP LAYOUT  (≥ 1024px)
-       Left half: white content over background photo
-       Right half: photo visible through
+       SCALING UNIT — identical to React's --auth-unit
+       min(100vw/1672, 100svh/941)
     ═══════════════════════════════════════════════════════════ */
     .page {
+      --u: min(calc(100vw / 1672), calc(100svh / 941));
       position: relative;
-      min-height: 100svh;
-      display: flex;
+      width: 100vw;
+      height: 100svh;
+      overflow: hidden;
     }
 
-    /* Background photo covers the whole page */
+    /* Background photo */
     .page-bg {
-      position: fixed;
+      position: absolute;
       inset: 0;
       background-image: url('${url.resourcesPath}/img/background.jpg');
       background-size: cover;
       background-position: left center;
       filter: saturate(.72) brightness(.97);
-      z-index: -2;
+      z-index: 0;
     }
 
-    /* SVG diagonal mask — white left panel */
+    /* SVG diagonal white panel */
     .page-panel {
-      position: fixed;
+      position: absolute;
       inset: 0;
       width: 100%; height: 100%;
-      z-index: -1;
+      z-index: 1;
       pointer-events: none;
     }
     .panel-surface { fill: var(--surface); }
     .panel-fold-stop { stop-color: var(--fold); }
 
-    /* Left content column — sits on top of white panel */
+    /* Content column — absolutely positioned, same as React auth-content */
     .left {
-      width: 44%;
-      min-width: 480px;
-      min-height: 100svh;
+      position: absolute;
+      z-index: 2;
+      top: 0; left: 0; bottom: 0;
+      width: calc(370 * var(--u));
+      margin-left: 6.95%;
       display: flex;
       flex-direction: column;
-      padding: 0 0 0 6.95%;
     }
 
     /* ── Header ── */
     .hdr {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding-top: 9.7svh;
-      padding-right: 6%;
+      padding-top: var(--auth-header-top, 9.7svh);
+      flex-shrink: 0;
     }
 
     .brand {
-      display: flex;
+      display: inline-flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: calc(7 * var(--u));
       color: var(--muted);
-      font-size: 0.8125rem;
+      font-size: calc(13 * var(--u));
     }
 
-    /* Logo rendered as coloured mask, exactly like the React component */
     .logo-mark {
-      width: 72px;
+      width: calc(80 * var(--u));
       aspect-ratio: 182 / 151;
       background: var(--accent);
       mask: url('${url.resourcesPath}/img/logo.png') center / contain no-repeat;
       -webkit-mask: url('${url.resourcesPath}/img/logo.png') center / contain no-repeat;
     }
 
+    /* Language switcher — absolutely positioned like React */
     .lang-switcher {
+      position: absolute;
+      z-index: 3;
+      top: 4.4%;
+      left: 32.1%;
       display: flex;
       overflow: hidden;
       border: 1px solid var(--lang-border);
-      border-radius: 9px;
+      border-radius: calc(9 * var(--u));
     }
     .lang-switcher button {
-      padding: 6px 14px;
+      padding: calc(6 * var(--u)) calc(12 * var(--u));
       font-family: inherit;
-      font-size: 0.8125rem;
+      font-size: calc(13 * var(--u));
       color: var(--lang-text);
       background: none;
       border: none;
       cursor: pointer;
       transition: background .15s;
-      min-height: 36px;
+      min-height: calc(32 * var(--u));
     }
     .lang-switcher button[aria-pressed='true'] {
       color: var(--accent);
@@ -140,40 +143,36 @@
     }
     .lang-switcher button:hover { background: var(--lang-hover); }
 
-    /* ── Main content ── */
+    /* ── Main content — absolutely positioned at 27.3% from top ── */
     .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      padding-right: 6%;
-      padding-top: 5vh;
-      padding-bottom: 5vh;
+      position: absolute;
+      top: 27.3%;
+      width: 100%;
     }
 
     .eyebrow {
-      font-size: 0.8125rem;
+      margin: 0 0 calc(18 * var(--u));
+      font-size: calc(13 * var(--u));
+      line-height: 1.3;
       letter-spacing: .23em;
       color: var(--accent);
-      margin-bottom: 14px;
     }
 
     .title {
-      font-size: clamp(2.5rem, 3.5vw, 3.75rem);
+      margin: 0 0 calc(12 * var(--u));
+      font-size: calc(58 * var(--u));
       font-weight: 750;
       line-height: 1.03;
       letter-spacing: -.005em;
-      margin-bottom: 10px;
     }
     .title span { display: block; }
     .title-accent { color: var(--accent); }
 
     .description {
+      margin: 0 0 calc(32 * var(--u));
       color: var(--muted);
-      font-size: clamp(0.9375rem, 1.1vw, 1.0625rem);
+      font-size: calc(17 * var(--u));
       line-height: 1.5;
-      margin-top: 18px;
-      margin-bottom: 28px;
     }
 
     /* ── Alert ── */
@@ -181,7 +180,7 @@
       border-radius: 8px;
       padding: 10px 14px;
       margin-bottom: 16px;
-      font-size: 0.875rem;
+      font-size: calc(14 * var(--u));
       line-height: 1.4;
     }
     .alert-error   { background: #fde8e8; border: 1px solid #fbd5d5; color: #b91c1c; }
@@ -189,38 +188,38 @@
     .alert-info    { background: #dbeafe; border: 1px solid #bfdbfe; color: #1d4ed8; }
 
     /* ── Form ── */
-    .form-group { margin-bottom: 14px; }
+    .form-group { margin-bottom: calc(12 * var(--u)); }
 
     .form-row-between {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      margin-bottom: 6px;
+      margin-bottom: calc(6 * var(--u));
     }
 
     label {
       display: block;
-      font-size: 0.875rem;
+      font-size: calc(14 * var(--u));
       font-weight: 600;
       color: var(--label);
-      margin-bottom: 6px;
+      margin-bottom: calc(6 * var(--u));
     }
 
-    .forgot { font-size: 0.8125rem; color: var(--accent); font-weight: 500; text-decoration: none; }
+    .forgot { font-size: calc(13 * var(--u)); color: var(--accent); font-weight: 500; text-decoration: none; }
     .forgot:hover { text-decoration: underline; }
 
     input[type="text"],
     input[type="email"],
     input[type="password"] {
       width: 100%;
-      height: 40px;
-      padding: 0 12px;
+      height: calc(44 * var(--u));
+      padding: 0 calc(12 * var(--u));
       font-family: inherit;
-      font-size: 0.875rem;
+      font-size: calc(14 * var(--u));
       color: var(--heading);
       background: #fff;
       border: 1.5px solid var(--input-border);
-      border-radius: 6px;
+      border-radius: calc(8 * var(--u));
       outline: none;
       transition: border-color .15s, box-shadow .15s;
     }
@@ -234,59 +233,62 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: calc(8 * var(--u));
       width: 100%;
-      min-height: 40px;
+      min-height: calc(44 * var(--u));
+      padding: calc(11 * var(--u)) calc(18 * var(--u));
       font-family: inherit;
-      font-size: 0.875rem;
+      font-size: calc(14 * var(--u));
       font-weight: 600;
       color: #fff;
       background: var(--accent);
       border: none;
-      border-radius: 8px;
+      border-radius: calc(13 * var(--u));
       cursor: pointer;
       transition: background .15s;
-      margin-top: 8px;
+      margin-top: calc(8 * var(--u));
     }
     .btn-primary:hover { background: var(--accent-hover); }
-    .btn-primary svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .btn-primary svg { width: calc(20 * var(--u)); height: calc(20 * var(--u)); flex-shrink: 0; }
 
     .help {
-      margin-top: 18px;
+      margin-top: calc(20 * var(--u));
       color: var(--muted);
-      font-size: 0.8125rem;
+      font-size: calc(13 * var(--u));
       line-height: 1.5;
     }
 
-    /* ── Feature strip ── */
+    /* ── Feature strip — absolutely positioned at bottom ── */
     .features {
+      position: absolute;
+      bottom: 8.7%;
+      width: 100%;
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 32px;
-      padding-top: 24px;
+      gap: calc(46 * var(--u));
+      padding-top: calc(28 * var(--u));
       border-top: 1px solid var(--divider);
-      margin-bottom: 8.7svh;
-      padding-right: 6%;
     }
     .feature {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: calc(13 * var(--u));
       color: var(--icon);
     }
-    .feature svg { width: 20px; height: 20px; stroke-width: 1.5; }
-    .feature span { color: var(--muted); font-size: 0.8125rem; line-height: 1.35; }
+    .feature svg { width: calc(23 * var(--u)); height: calc(23 * var(--u)); stroke-width: 1.5; }
+    .feature span { color: var(--muted); font-size: calc(13 * var(--u)); line-height: 1.35; }
 
     /* ═══════════════════════════════════════════════════════════
-       WORKFLOW CARDS — decorative, right side
+       WORKFLOW CARDS — absolutely positioned, right side
     ═══════════════════════════════════════════════════════════ */
     .workflow {
-      position: fixed;
+      position: absolute;
+      z-index: 2;
       top: 36%;
       left: 60.9%;
-      width: clamp(180px, 13.2vw, 220px);
+      width: calc(220 * var(--u));
       display: grid;
-      gap: clamp(16px, 1.8vw, 30px);
+      gap: calc(30 * var(--u));
       transform: skewY(4deg);
       pointer-events: none;
     }
@@ -304,11 +306,11 @@
     .step {
       display: flex;
       align-items: center;
-      gap: clamp(6px, .5vw, 8px);
-      height: clamp(48px, 3.8vw, 64px);
-      padding: clamp(10px, .96vw, 16px);
+      gap: calc(8 * var(--u));
+      height: calc(64 * var(--u));
+      padding: calc(16 * var(--u));
       border: 1px solid var(--card-border);
-      border-radius: clamp(9px, .78vw, 13px);
+      border-radius: calc(13 * var(--u));
       background: var(--card-bg);
       color: var(--card-text);
       box-shadow: 0 12px 36px var(--card-shadow);
@@ -322,13 +324,13 @@
       width: 24%;
       border-top: 1px solid var(--line);
     }
-    .step span { font-size: clamp(9px, .69vw, 11.5px); white-space: nowrap; }
-    .step svg  { flex-shrink: 0; width: clamp(14px, 1.2vw, 20px); height: clamp(14px, 1.2vw, 20px); stroke-width: 1.5; }
+    .step span { font-size: calc(11.5 * var(--u)); white-space: nowrap; }
+    .step svg  { flex-shrink: 0; width: calc(20 * var(--u)); height: calc(20 * var(--u)); stroke-width: 1.5; }
     .step-check { margin-left: auto; }
     .step-circle {
       margin-left: auto;
-      width: clamp(12px, 1.02vw, 17px);
-      height: clamp(12px, 1.02vw, 17px);
+      width: calc(17 * var(--u));
+      height: calc(17 * var(--u));
       border: 1px solid var(--status-ring);
       border-radius: 50%;
       flex-shrink: 0;
@@ -338,6 +340,11 @@
        MOBILE  (< 1024px or short viewport)
     ═══════════════════════════════════════════════════════════ */
     @media (max-width: 1023px), (max-height: 650px) {
+      .page {
+        height: auto;
+        min-height: 100svh;
+        overflow: visible;
+      }
       .page-bg, .page-panel, .workflow { display: none; }
 
       .page::before {
@@ -345,37 +352,69 @@
         position: fixed;
         z-index: -1;
         inset: 45% -50% -20%;
-        background: linear-gradient(135deg, #f1f1f3, var(--surface));
+        background: linear-gradient(135deg, rgb(241 241 243), var(--surface));
         transform: rotate(-35deg);
       }
 
       .left {
+        position: static;
         width: 100%;
-        min-width: 0;
         max-width: 488px;
         min-height: 100svh;
         margin: 0 auto;
         padding: 32px 24px;
+        display: flex;
+        flex-direction: column;
       }
 
       .hdr {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
         padding-top: 0;
-        padding-right: 0;
-        align-items: center;
+        flex-shrink: 0;
       }
+
+      .brand { font-size: 0.8125rem; gap: 6px; }
+      .logo-mark { width: 56px; }
+
+      .lang-switcher {
+        position: static;
+        border-radius: 9px;
+      }
+      .lang-switcher button { font-size: 0.8125rem; padding: 6px 14px; min-height: 36px; }
 
       .main {
-        padding-right: 0;
+        position: static;
+        width: 100%;
         flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        margin: 60px 0;
       }
 
-      .title { font-size: clamp(2rem, 8.5vw, 3.5rem); }
+      .eyebrow  { font-size: 0.8125rem; margin-bottom: 14px; }
+      .title    { font-size: clamp(34px, 8.5vw, 58px); margin-bottom: 10px; letter-spacing: -.035em; }
+      .description { font-size: 0.9375rem; margin-bottom: 24px; }
+      label     { font-size: 0.875rem; }
+      input[type="text"], input[type="email"], input[type="password"] {
+        height: 44px; font-size: 0.875rem; border-radius: 8px; padding: 0 12px;
+      }
+      .btn-primary { min-height: 44px; font-size: 0.875rem; border-radius: 13px; padding: 11px 18px; margin-top: 8px; }
+      .btn-primary svg { width: 18px; height: 18px; }
+      .help { font-size: 0.8125rem; margin-top: 18px; }
 
       .features {
-        padding-right: 0;
-        margin-bottom: 0;
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
         gap: 16px;
+        padding-top: 24px;
+        border-top: 1px solid var(--divider);
+        margin-top: auto;
       }
+      .feature svg { width: 20px; height: 20px; }
       .feature span { font-size: 0.75rem; overflow-wrap: anywhere; }
     }
   </style>
