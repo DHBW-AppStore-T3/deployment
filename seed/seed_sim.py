@@ -63,7 +63,7 @@ def _get_or_create_user(db: Session, email: str, role: UserRole) -> User:
     user = db.query(User).filter(User.email == email).first()
     if user:
         return user
-    user = User(email=email, role=role)
+    user = User(email=email, username=email.split("@")[0], role=role)
     db.add(user)
     db.flush()
     logger.info("Created user %s (%s)", email, role.value)
