@@ -419,9 +419,7 @@
         <span class="title-accent" id="title-accent">bereitstellen</span>
       </h1>
 
-      <p class="description" id="desc">
-        Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.
-      </p>
+      <p class="description" id="desc">Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.</p>
 
       <!-- Keycloak error/info messages -->
       <#if displayMessage?? && message?has_content>
@@ -437,9 +435,7 @@
             <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
 
           <div class="form-group">
-            <label for="username" id="label-username">
-              <#if !realm.loginWithEmailAllowed>Benutzername<#elseif !realm.registrationEmailAsUsername>Benutzername oder E-Mail<#else>E-Mail</#if>
-            </label>
+            <label for="username" id="label-username">Benutzername</label>
             <input type="text" id="username" name="username"
               value="${(login.username!'')}"
               autocomplete="username"
@@ -533,16 +529,16 @@ var t = {
     eyebrow:'CLICK\'N DEPLOY', lead:'Anwendungen einfach', accent:'bereitstellen',
     desc:'Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.',
     btn:'Mit DHBW anmelden', help:'Kein Account? Wenden Sie sich an Ihren Administrator.',
-    labelUser:'Benutzername oder E-Mail', labelPw:'Passwort', forgot:'Passwort vergessen?',
+    labelUser:'Benutzername', labelPw:'Passwort', forgot:'Passwort vergessen?',
     feat:['Vielfältige Anwendungen','Vorkonfigurierte Umgebungen','Sicher & Hochschulintern'],
     steps:['App konfigurieren','Umgebung bereitstellen','Direkt loslegen']
   },
   en: {
-    eyebrow:'CLICK\'N DEPLOY', lead:'Deploy applications', accent:'with ease',
-    desc:'The DHBW AppStore provides preconfigured applications and environments for teaching, research and administration.',
+    eyebrow:'CLICK\'N DEPLOY', lead:'Deploy\napplications with', accent:'ease',
+    desc:'The DHBW AppStore provides preconfigured applications and environments for teaching, research, and administration.',
     btn:'Sign in with DHBW', help:'No account? Contact your administrator.',
-    labelUser:'Username or email', labelPw:'Password', forgot:'Forgot password?',
-    feat:['Diverse Applications','Preconfigured Environments','Secure & University-internal'],
+    labelUser:'Username', labelPw:'Password', forgot:'Forgot password?',
+    feat:['Diverse Applications','Preconfigured Environments','Secure & University-Internal'],
     steps:['Configure app','Deploy environment','Get started']
   }
 };
