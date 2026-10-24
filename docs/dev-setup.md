@@ -1,278 +1,224 @@
 # Lokales Dev Setup
 
-Der App Store ist ein Web-System, in dem Studierende und Dozierende vorgefertigte Cloud-Apps (Packer + Terraform in einem Git-Repo) per Klick auf OpenStack ausrollen. Lokal läuft alles in Docker: Vue-Frontend, FastAPI-Backend, Celery-Worker, Keycloak als Identity Provider sowie PostgreSQL als Infrastruktur (die Task-Queue ist eine Postgres-Tabelle, kein RabbitMQ/Redis mehr). Diese Anleitung führt von einem leeren Arbeitsverzeichnis bis zum eingeloggten Browser.
+Der AppStore läuft lokal mit echtem Keycloak (Realm `dhbw`) und echter OIDC-Authentifizierung — so nah wie möglich an Prod. OpenStack-Aufrufe werden simuliert (Dummy-Daten), Kubernetes-Deployments laufen über FakeKube (In-Memory).
 
 ## Voraussetzungen
 
 | Werkzeug | Version | Anmerkung |
 |---|---|---|
-| Docker Desktop (oder Docker Engine) | 24.x oder neuer | Compose v2 ist enthalten |
-| Docker Compose | v2 (`docker compose`, nicht `docker-compose`) | Über Docker Desktop bereits dabei |
+| Docker Desktop (oder Docker Engine + Compose Plugin) | 24.x oder neuer | Compose v2 (`docker compose`) ist enthalten |
 | Git | 2.x | |
-| Python 3 | 3.11+ | Wird einmalig zum Generieren des Fernet-Keys gebraucht |
-| GNU Make | Pflicht | Alle Schritte sind als `make`-Targets ausgelegt — wer kein Make hat, kann die zugrunde liegenden Befehle direkt aus dem [Makefile](./Makefile) ablesen |
-| Freie Ports | 5173, 8000, 8080, 5432, 5672, 15672, 6379, 5050, 55433 | Bei Konflikt den entsprechenden Port in der `.env` überschreiben (z. B. `KEYCLOAK_PORT=8180`) — die zugehörige `VITE_*_URL` ebenfalls anpassen |
+| Python 3 | 3.11+ | Einmalig zum Generieren des Fernet-Keys |
+| GNU Make | beliebig | Alle Schritte sind als `make`-Targets ausgelegt |
+| Freie Ports | 5173, 8000, 5432, 8081 | Bei Konflikt in `.env` überschreiben |
 
-
-Ein GitHub Personal Access Token mit `repo`-Scope ist empfohlen. Ohne Token funktioniert das Setup, aber Deployments aus privaten App-Repos schlagen fehl.
-
-
-## Schritt 1: Repository klonen
+## Schritt 1: Repos klonen
 
 ```bash
-mkdir app-store
-cd app-store
-git clone https://github.com/six7-click-n-deploy/frontend
-git clone https://github.com/six7-click-n-deploy/backend
-git clone https://github.com/six7-click-n-deploy/worker
-git clone https://github.com/six7-click-n-deploy/deployment
-git clone https://github.com/six7-click-n-deploy/.github org-docs # optional (nur Dokumentation)
+mkdir appstore && cd appstore
+git clone https://github.com/DHBW-AppStore-T3/frontend
+git clone https://github.com/DHBW-AppStore-T3/backend
+git clone https://github.com/DHBW-AppStore-T3/worker
+git clone https://github.com/DHBW-AppStore-T3/deployment
 cd deployment
 ```
 
-Alle weiteren Befehle werden aus `app-store/deployment` ausgeführt — dort liegen `Makefile`, `docker-compose.dev.yml` und `.env.example`.
+Alle weiteren Befehle werden aus `deployment/` ausgeführt.
 
 Verzeichnislayout nach dem Klonen:
 
 ```
 appstore/
-├── frontend/        # Vue 3 + Vite
-├── backend/         # FastAPI + Alembic
-├── worker/          # Celery + Terraform/Packer
-├── deployment/      # docker-compose.dev.yml, Makefile, .env.example, seed/, keycloak/
-└── org-docs/        # Dokumentation
+├── frontend/     # React + Vite
+├── backend/      # FastAPI + Alembic
+├── worker/       # Celery + FakeKube
+└── deployment/   # docker-compose.dev.yml, Makefile, .env.example, seed/
 ```
 
-## Schritt 2: `.env` anlegen
-
-> [!TIP]
-> Auf Anfrage stellen wir eine fertig befüllte `.env` bereit. In dem Fall genügt es, die Datei direkt nach `deployment/.env` zu legen und mit Schritt 3 weiterzumachen — die folgenden Unterpunkte 2a–2d sind dann nicht nötig.
+## Schritt 2: `.env` anlegen und Key generieren
 
 ```bash
 make env
 ```
 
-Das kopiert `.env.example` nach `.env`. Die Vorlage enthält nur die Felder, die für Dev nötig sind — alle anderen Werte (DB-Passwörter, Ports, URLs) haben sinnvolle Defaults in `docker-compose.dev.yml` und müssen nicht in der `.env` stehen.
-
-### 2a. `CREDENTIAL_ENCRYPTION_KEY` (Pflicht, sonst startet der Stack nicht)
-
-Symmetrischer Fernet-Key, den Backend und Worker teilen, um OpenStack-Credentials zu ver-/entschlüsseln. Beim Container-Start wird er zwingend geprüft — fehlt er, bricht `docker compose up` mit der Meldung `CREDENTIAL_ENCRYPTION_KEY is required` ab.
-
-Generieren:
+Das kopiert `.env.example` nach `.env`. Danach den Pflicht-Key eintragen:
 
 ```bash
-python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+make secret
 ```
 
-Die Ausgabe — ein url-safe-base64-String, der mit `=` endet — als `CREDENTIAL_ENCRYPTION_KEY` in die `.env` eintragen.
+Die Ausgabe (`CREDENTIAL_ENCRYPTION_KEY=...`) in die `.env` kopieren. Ohne diesen Key startet der Stack nicht.
 
-Falls `cryptography` lokal nicht installiert ist:
+## Schritt 3: Erster Start
 
 ```bash
-pip install cryptography
+make init
 ```
 
-### 2b. `KEYCLOAK_CLIENT_SECRET` (Pflicht für Login)
+`make init` macht alles auf einmal:
+1. Baut alle Images
+2. Startet die 5 Container (postgres, keycloak, backend, worker, frontend)
+3. Wartet bis Postgres und Keycloak bereit sind
+4. Führt Alembic-Migrationen aus
+5. Spielt Seed-Daten ein (Keycloak-User, 1 Kurs, 5 Pod-Apps)
 
-Das Secret kann erst nach dem ersten Keycloak-Start aus dem Admin-UI geholt werden. Für den Erst-Start in `.env` einfach einen Platzhalter eintragen:
-
-```
-KEYCLOAK_CLIENT_SECRET=changeme
-```
-
-In Schritt 5 wird der echte Wert nachgetragen.
-
-### 2c. `GIT_ACCESS_TOKEN` (empfohlen)
-
-GitHub Personal Access Token mit `repo`-Scope. Anlegen unter: GitHub → Settings → Developer settings → Personal access tokens (classic) → Generate new token.
+Beim ersten Start dauert das 3–5 Minuten (Image-Build + Keycloak-Start). Danach:
 
 ```
-GIT_ACCESS_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+✓ Dev stack bereit.
+  Frontend:         http://localhost:5173
+  Backend API Docs: http://localhost:8000/docs
+  Keycloak Admin:   http://localhost:8081  (admin / admin)
 ```
 
-Für reines Testen ohne private Repos darf der Wert leer bleiben.
+## Danach: Stack starten und stoppen
 
-### 2d. `SMTP_*` (optional)
-
-E-Mail-Benachrichtigungen (Approval-Workflow). Wenn nicht gebraucht, einfach `SMTP_ENABLED=false` lassen und die anderen Felder leer. Für Gmail ein App-Password verwenden, nicht das Account-Passwort.
-
-## Schritt 3: Stack starten
+Nach dem ersten `make init` reicht für den normalen Alltag:
 
 ```bash
-make dev-up
+make dev-up     # Stack starten
+make dev-down   # Stack stoppen (Daten bleiben)
 ```
 
-Das startet neun Container: `frontend`, `backend`, `worker`, `keycloak`, `keycloak-postgres`, `postgres`, `postgres-test`, `postgres-tfstate`, `pgadmin`.
+## Login
 
-Beim ersten Start dauert der Boot 1–3 Minuten (Image-Pull + Keycloak-Init). Bevor Schritt 4 läuft, sicherstellen dass Keycloak fertig ist:
+Authentifizierung läuft über echtes Keycloak (Realm `dhbw`, Port 8081). Im Browser auf „Mit DHBW anmelden" klicken — Keycloak-Loginseite erscheint.
 
-```bash
-make dev-logs-keycloak | grep -i "listening on\|started in"
-```
+| Username | Rolle | Passwort |
+|---|---|---|
+| `test-teacher` | teacher | `TestTeacher12` |
+| `dozent.demo` | teacher | `DevLocal1234!` |
+| `admin.demo` | admin | `DevLocal1234!` |
+| `student1.demo` | student | `DevLocal1234!` |
+| `student2.demo` | student | `DevLocal1234!` |
+| `student3.demo` | student | `DevLocal1234!` |
+| `student4.demo` | student | `DevLocal1234!` |
 
-Erwartete Zeilen:
+### Keycloak Admin Console
 
-```
-Listening on: http://0.0.0.0:8080
-... started in XX.XXXs
-```
-
-
-## Schritt 4: Migrationen und Seed-Daten
-
-Schema anlegen:
-
-```bash
-make migrate-dev
-```
-
-Seed-Daten einspielen (Realm-Import, Test-User, Beispiel-Apps, Kurse):
-
-```bash
-make seed-data
-```
-
-Das Skript ist idempotent — wiederholtes Ausführen schadet nicht und ist bei Timing-Problemen die richtige Antwort.
-
-## Schritt 5: Echtes `KEYCLOAK_CLIENT_SECRET` eintragen
-
-Der mit Schritt 4 importierte Realm bringt den `appstore-backend`-Client mit dem maskierten Secret `**********` aus dem Realm-Export mit. Das ist kein gültiger Wert — das echte Secret muss in Keycloak einmalig neu erzeugt und in die `.env` übernommen werden.
-
-Vorbereitung: Der `master`-Realm verlangt per Default HTTPS, weshalb http://localhost:8080/admin sonst mit "HTTPS required" abbricht. Einmal abschalten:
-
-```bash
-make keycloak-disable-ssl
-```
-
-Anschließend:
-
-1. http://localhost:8080/admin im Browser öffnen.
-2. Mit `admin` / `admin` einloggen.
-3. Oben links im Realm-Switcher von `master` auf `dhbw` umstellen.
-4. Links auf "Clients" → `appstore-backend` öffnen.
-5. Reiter "Credentials" → Button **"Regenerate"** klicken (das Feld zeigt vorher buchstäblich `**********` — das ist die Maskierung aus dem Realm-Export, kein nutzbarer Wert).
-6. Den neu generierten Wert kopieren und in `.env` eintragen:
-
-   ```
-   KEYCLOAK_CLIENT_SECRET=<kopierter-wert>
-   ```
-
-7. Backend neu starten:
-
-   ```bash
-   make dev-restart-backend
-   ```
-
-Ab jetzt kann das Backend Tokens validieren.
+Über `http://localhost:8081` erreichbar (admin / admin). Neue User anlegen: Realm `dhbw` → Users → Add user. Passwort muss mind. 12 Zeichen haben und darf nicht gleich Username oder E-Mail sein (Policy wie Prod).
 
 ## Verifikation
-
-Smoke-Test per Make (curlt drei Endpoints):
 
 ```bash
 make health
 ```
 
-Oder im Browser einzeln öffnen:
+Oder im Browser:
 
-| Dienst | URL | Erwartet |
-|---|---|---|
-| Frontend | http://localhost:5173 | Click-n-Deploy Login-Seite |
-| Backend Swagger | http://localhost:8000/docs | OpenAPI-UI mit Endpoints `/users`, `/apps`, `/deployments` |
-| Backend Health | http://localhost:8000/health | `{"status":"ok"}` |
-| Keycloak Admin | http://localhost:8080/admin | Keycloak Welcome, Login `admin` / `admin` |
-| Keycloak OIDC Discovery | http://localhost:8080/realms/dhbw/.well-known/openid-configuration | JSON mit `issuer: http://localhost:8080/realms/dhbw` |
-| Task-Queue | `make shell-db`, dann `SELECT * FROM celery_queue;` | Wartende und laufende Aufträge (Live-Events in `task_events`) |
-| pgAdmin | http://localhost:5050 | Login `admin@admin.com` / `admin` |
-
-Token-Check auf der Kommandozeile:
-
-```bash
-make keycloak-token USER=tobias.admin@dhbw.de PASS=1234
-```
-
-Liefert die ersten 50 Zeichen eines JWT. Wenn stattdessen `invalid_grant` kommt: Seed lief nicht durch (Schritt 4 wiederholen).
-
-## Login
-
-Im Browser http://localhost:5173 öffnen, "Login" klicken, mit einem der folgenden Test-User anmelden. Passwort ist für ALLE Seed-User `1234`.
-
-**Administrator**
-
-| E-Mail | Passwort | Rolle |
-|---|---|---|
-| `tobias.admin@dhbw.de` | `1234` | admin |
-
-**Dozierende**
-
-| E-Mail | Passwort |
+| Dienst | URL |
 |---|---|
-| `michael.eichberg@dhbw.de` | `1234` |
-| `henning.pagnia@dhbw.de` | `1234` |
-| `sarah.detzler@dhbw.de` | `1234` |
-| `frank.hubert@dhbw.de` | `1234` |
-| `andrea.bauer@dhbw.de` | `1234` |
-| `thomas.wagner@dhbw.de` | `1234` |
+| Frontend | http://localhost:5173 |
+| Backend API Docs | http://localhost:8000/docs |
+| Backend Health | http://localhost:8000/health |
+| Keycloak | http://localhost:8081 |
 
-**Studierende**
+## Alle verfügbaren Make-Targets
 
-| E-Mail | Passwort | Kurs |
-|---|---|---|
-| `luca.baeck@dhbw.de` | `1234` | WI SE B 23 |
-| `felix.erhard@dhbw.de` | `1234` | WI SE B 23 |
-| `okan.soenmez@dhbw.de` | `1234` | WI SE B 23 |
-| `monika.piano@dhbw.de` | `1234` | WI SE B 23 |
-| `anna.schulz@dhbw.de` | `1234` | WI SE B 24 |
-| `jan.krueger@dhbw.de` | `1234` | INF TI 23 |
+### Bootstrap
 
-Hinweise zur E-Mail-Konvention: `<vorname>.<nachname>@dhbw.de`, alles klein, Umlaute werden ersetzt (`ä → ae`, `ö → oe`, `ü → ue`, `ß → ss`). Der Keycloak-Admin (`admin` / `admin`) ist NICHT identisch mit den Realm-Usern — er funktioniert nur unter http://localhost:8080/admin, nicht im Frontend.
+| Befehl | Beschreibung |
+|---|---|
+| `make init` | **Erster Start:** Build + Migrate + Seed (einmalig) |
+| `make env` | `.env` aus `.env.example` anlegen |
+| `make secret` | Neuen Fernet-Key für `CREDENTIAL_ENCRYPTION_KEY` generieren |
 
-## Stoppen, Neustarten, Zurücksetzen
+### Normalbetrieb
 
-### Sauber stoppen (Daten bleiben)
+| Befehl | Beschreibung |
+|---|---|
+| `make dev-up` | Stack starten (ohne Rebuild/Migrate/Seed) |
+| `make dev-down` | Stack stoppen (Volumes bleiben) |
+| `make dev-restart` | Alle Container neu starten |
+| `make dev-restart-backend` | Nur Backend neu starten |
+| `make dev-restart-worker` | Nur Worker neu starten |
+| `make dev-restart-frontend` | Nur Frontend neu starten |
+| `make dev-build` | Images neu bauen |
+| `make dev-rebuild` | Kompletter Rebuild (`down` + `build --no-cache` + `up`) |
+| `make dev-ps` | Container-Status anzeigen |
+
+### Logs
+
+| Befehl | Beschreibung |
+|---|---|
+| `make dev-logs` | Alle Logs verfolgen |
+| `make dev-logs-backend` | Nur Backend |
+| `make dev-logs-worker` | Nur Worker |
+| `make dev-logs-frontend` | Nur Frontend |
+| `make dev-logs-keycloak` | Nur Keycloak |
+
+### Shell-Zugriff
+
+| Befehl | Beschreibung |
+|---|---|
+| `make shell-backend` | bash im Backend-Container |
+| `make shell-worker` | bash im Worker-Container |
+| `make shell-frontend` | sh im Frontend-Container |
+| `make shell-db` | psql direkt in Postgres |
+
+### Datenbank & Seed
+
+| Befehl | Beschreibung |
+|---|---|
+| `make seed-dev` | Seed nochmal einspielen (idempotent) |
+| `make migrate-dev` | Alembic-Migrationen ausführen |
+| `make migration-create MSG="..."` | Neue Migration erstellen |
+| `make migration-history` | Migrations-Historie anzeigen |
+| `make migration-current` | Aktuelle Revision anzeigen |
+| `make migration-downgrade` | Eine Revision zurück |
+| `make db-reset-dev` | ⚠️ DB komplett löschen und neu migrieren |
+
+### Status & Monitoring
+
+| Befehl | Beschreibung |
+|---|---|
+| `make health` | Backend + Frontend per curl prüfen |
+| `make status` | Container-Status (`docker compose ps`) |
+| `make stats` | `docker stats` für alle Container |
+| `make watch-dev` | Container-Status alle 2s aktualisieren |
+| `make top` | Prozesse je Container anzeigen |
+
+### Qualität (Backend)
+
+| Befehl | Beschreibung |
+|---|---|
+| `make test-backend` | pytest |
+| `make test-backend-cov` | pytest mit HTML-Coverage |
+| `make lint-backend` | ruff check |
+| `make lint-backend-fix` | ruff check --fix |
+| `make format-backend` | ruff format |
+
+### Aufräumen
+
+| Befehl | Beschreibung |
+|---|---|
+| `make clean-dev` | ⚠️ `down -v` — entfernt alle Volumes |
+| `make clean-all` | ⚠️ `down -v` + lokale Images löschen |
+| `make prune` | ⚠️ `docker system prune -af --volumes` |
+
+## Was ist Simulation Mode?
+
+Lokal laufen zwei Subsysteme als Fake — Keycloak läuft jetzt echt:
+
+| Produktions-Dienst | Lokal |
+|---|---|
+| Keycloak (JWT-Auth) | **Echter Keycloak** auf Port 8081, Realm `dhbw` |
+| OpenStack (Credential-Validierung + Ressourcen) | Statische Dummy-Daten |
+| Kubernetes-Cluster (Pod-Deployments) | `FakeKube` (In-Memory) |
+
+Der komplette Code-Pfad von HTTP-Request bis zum Worker-Task läuft durch — nur die letzten Netzwerkaufrufe gegen OpenStack und Kubernetes werden abgefangen.
+
+Pod-Deployments über `FakeKube` generieren echte `terraform_outputs` mit Zugangsdaten, sodass „Meine Zugänge" im Frontend auch lokal funktioniert. Der In-Memory-State von FakeKube ist nach einem Worker-Neustart weg.
+
+## Keycloak Realm — Hinweise
+
+Der Realm wird beim allerersten Start aus `keycloak/dhbw-realm.json` importiert (Strategy: `IGNORE_EXISTING`). Änderungen an der Datei greifen erst nach `make clean-dev && make init`, da Keycloak einen vorhandenen Realm nicht überschreibt.
+
+Wer den Realm manuell geändert hat (z.B. neuen User über die Admin Console angelegt) und den Stand in die JSON-Datei zurückschreiben will:
 
 ```bash
-make dev-down
+# Realm aus laufendem Keycloak exportieren
+docker exec keycloak-sim /opt/keycloak/bin/kc.sh export \
+  --file /tmp/dhbw-realm-export.json --realm dhbw
+docker cp keycloak-sim:/tmp/dhbw-realm-export.json keycloak/dhbw-realm.json
 ```
-
-Container weg, Volumes (DBs, Keycloak-Daten) bleiben. Beim nächsten `make dev-up` startet alles im Zustand vor dem Stopp.
-
-### Nur pausieren (schnellster Re-Start)
-
-```bash
-make dev-stop      # stoppt, Container bleiben
-make dev-up        # läuft wieder
-```
-
-### Einzelnen Dienst neu starten
-
-```bash
-make dev-restart-backend
-make dev-restart-frontend
-make dev-restart-worker
-```
-
-### Logs verfolgen
-
-```bash
-make dev-logs                # alle
-make dev-logs-backend        # nur Backend
-make dev-logs-worker         # nur Worker
-make dev-logs-keycloak       # nur Keycloak
-```
-
-### Komplett zurücksetzen (alle Daten weg)
-
-```bash
-make seed-reset
-```
-
-Das ruft intern `db-reset-dev` + `keycloak-reset` + `seed-data` — danach ist der Stand identisch zum frischen Erst-Setup.
-
-### Maximal aufräumen (auch lokal gebaute Images löschen)
-
-```bash
-make clean-all
-```
-
-Nach `clean-all` baut der nächste `make dev-up` alle Images neu (kann 5–10 Minuten dauern).
