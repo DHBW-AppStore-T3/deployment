@@ -1,46 +1,46 @@
-# Online-IDE – Browserbasierte Java-Entwicklungsumgebung
+# Online-IDE – VS Code im Browser
 
-Eine cloud-init-basierte VS Code Server Instanz pro Team, die jedem Studierenden eine
-individuelle Entwicklungsumgebung im Browser bereitstellt. Jeder Nutzer meldet sich mit
-persönlichen Zugangsdaten an und erhält eine eigene code-server-Session auf einem
-dedizierten Port.
+Eine eigene Entwicklungsumgebung (code-server, VS Code im Browser) für jede Person eines
+Deployments, mit eigenem Speicher und eigenem Login. Die App läuft als Pods (App-Vertrag v2),
+nicht mehr als VMs: **ein code-server-Pod je Person** mit 5 GiB Speicher im Home-Verzeichnis,
+HTTPS-Link und eigenem Passwort.
 
 ## User-Management
 
-Jeder Nutzer bekommt einen eigenen Linux-Account (abgeleitet aus der E-Mail-Adresse)
-und ein automatisch generiertes Passwort. Der Login in code-server erfolgt über dieses
-Passwort. Zugangsdaten werden nach dem Deployment per Mail versendet. Innerhalb eines
-Teams teilen sich alle Nutzer dieselbe VM, arbeiten aber auf isolierten Ports und in
-separaten Home-Verzeichnissen.
+Jede Person erhält ihren eigenen Pod und ein von der Plattform erzeugtes Passwort. Link und
+Passwort stehen nach dem Deployment unter „Meine Zugänge“. Dateien liegen im persistenten
+Home-Verzeichnis (`/home/coder`) und überstehen Pause/Fortsetzen und Neustart.
 
-## VM-Deployment
+Weil die App pro Person läuft, bekommt im Wizard jede Person ein eigenes Team. Gruppen mit
+gemeinsamer Umgebung gibt es nicht.
 
-Es wird **eine VM pro Team** deployed. Bei zwei Teams entstehen zwei VMs. Jeder Nutzer
-eines Teams erhält einen eigenen Port ab 8080 (aufsteigend pro Nutzer). Flavor: `gp1.small`.
+## Deployment
 
-## Deployment-Dauer
+Es wird **ein Pod pro Person** deployed, nicht mehr eine VM pro Team. Jede Person arbeitet in
+einer eigenen Umgebung ohne Zugriff auf die Umgebungen anderer.
 
-| Phase | Dauer |
+## Software im Terminal
+
+| Werkzeug | Hinweis |
 |---|---|
-| Packer Image Build (einmalig) | ca. 15–20 Min |
-| Terraform Apply | ca. 2–5 Min |
-| VM-Boot + cloud-init (User-Anlage, code-server-Start) | ca. 2–4 Min |
-| **Gesamt erstmalig** | **ca. 20–30 Min** |
+| `gcc`, `g++`, `make` | `build-essential` |
+| `python3`, `pip`, `python3 -m venv` | Pro Projekt `python3 -m venv .venv` benutzen; ohne venv installiert `pip` nach `~/.local` |
+| `node`, `npm` | `npm install -g` landet in `~/.npm-global` |
+| `git`, `curl`, `wget`, `unzip` | |
 
-Bei vorhandenem Packer-Image entfällt der Build — dann ca. **5–10 Minuten** gesamt.
+Das Root-Dateisystem ist schreibgeschützt, schreibbar sind nur das Home-Verzeichnis und `/tmp`.
+`sudo` und `apt` gibt es nicht. Internetzugang ist erlaubt (PyPI, npm). Java ist **nicht**
+enthalten; dafür gibt es die Java-IDE.
 
 ## Konfigurierbare Variablen
 
 | Variable | Beschreibung | Pflicht |
 |---|---|---|
-| `assignment_files` | Java-Aufgabendatei pro User (`.java`) — landet unter `~/Coding-Aufgabe/` | Ja |
-| `team_flavor_ids` | Flavor-ID pro Team — Picker-Auswahl | Nein |
-| `network_uuid` | UUID des internen Netzwerks | Ja (Default vorhanden) |
-| `floating_ip_pool` | Name des External Networks für öffentliche IP | Ja (Default vorhanden) |
-| `shared_secgroup_id` | ID der Security Group | Ja (Default vorhanden) |
+| `assignments` | Aufgaben als ZIP-Datei pro Team (also pro Person), höchstens 1 MiB | Nein |
 
-### Aufgabendateien (`assignment_files`)
+### Aufgaben (`assignments`)
 
-Über den Wizard muss pro Nutzer eine individuelle `.java`-Datei hochgeladen werden.
-Diese wird beim VM-Start automatisch unter `~/Coding-Aufgabe/<dateiname>.java`
-abgelegt und ist direkt in code-server sichtbar.
+Die ZIP-Datei wird beim ersten Start des Arbeitsplatzes nach `~/Coding-Aufgabe` entpackt und ist
+direkt in code-server sichtbar. Ohne ZIP startet der Arbeitsplatz leer. Das Archiv wird vor dem
+Entpacken geprüft; ein unzulässiger Eintrag (zum Beispiel ein Pfad mit `..` oder ein symbolischer
+Link) verwirft das ganze Archiv, die IDE startet dann mit leerem Arbeitsplatz.
