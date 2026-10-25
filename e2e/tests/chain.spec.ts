@@ -88,9 +88,9 @@ for (const chain of CHAINS) {
       await page.getByRole('button', { name: 'App Store' }).click()
       const row = chain.version
         ? page.getByRole('row').filter({ hasText: chain.version })
-        : page.getByRole('row').nth(1)
+        : page.getByRole('row').filter({ hasText: 'Zur Prüfung einreichen' }).first()
       await row.getByText('Zur Prüfung einreichen').click()
-      await page.getByRole('button', { name: 'Einreichen' }).click()
+      await page.getByRole('button', { name: 'Einreichen', exact: true }).click()
       await expect(page.getByText('Wartet auf Freigabe').first()).toBeVisible()
 
       await page.goto('/admin/apps')
