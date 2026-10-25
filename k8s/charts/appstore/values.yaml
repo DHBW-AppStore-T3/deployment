@@ -171,7 +171,11 @@ selfServiceUi:
     # Hard end of a browser session (the access token is renewed every minute
     # while the tab is in use).
     cookieExpire: 8h
-    cookieName: _ssu_oauth2
+    # __Host-: browsers accept the cookie only from this very host (Secure,
+    # Path=/, no Domain), so a page of another host under the same site, e.g. a
+    # student app, cannot plant one (cookie tossing, review S3). Renaming it
+    # signs everybody out once.
+    cookieName: __Host-ssu_oauth2
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { cpu: 200m, memory: 64Mi }
