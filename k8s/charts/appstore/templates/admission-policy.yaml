@@ -35,11 +35,15 @@ spec:
       - apiGroups: ["apps"]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE", "DELETE"]
-        resources: ["statefulsets", "statefulsets/scale"]
+        resources: ["statefulsets", "statefulsets/scale", "deployments"]
       - apiGroups: ["networking.k8s.io"]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE", "DELETE"]
         resources: ["ingresses", "networkpolicies"]
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["virtualmachines", "virtualmachineinstances"]
       - apiGroups: ["rbac.authorization.k8s.io"]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE", "DELETE"]
@@ -88,9 +92,12 @@ spec:
           'appstore.dhbw/deployment-id' in variables.labels &&
           'app.kubernetes.io/managed-by' in variables.labels && variables.labels['app.kubernetes.io/managed-by'] == 'appstore' &&
           'appstore.dhbw/environment' in variables.labels && variables.labels['appstore.dhbw/environment'] == variables.env &&
-          'pod-security.kubernetes.io/enforce' in variables.labels && variables.labels['pod-security.kubernetes.io/enforce'] == 'restricted' &&
+          'pod-security.kubernetes.io/enforce' in variables.labels && (
+            variables.labels['pod-security.kubernetes.io/enforce'] == 'restricted' ||
+            (variables.labels['pod-security.kubernetes.io/enforce'] == 'privileged' &&
+             'appstore.dhbw/vm-namespace' in variables.labels && variables.labels['appstore.dhbw/vm-namespace'] == 'true')) &&
           (!('pod-security.kubernetes.io/enforce-version' in variables.labels) || variables.labels['pod-security.kubernetes.io/enforce-version'] == 'latest'))
-      message: "a namespace needs its deployment id, managed-by=appstore, this installation's environment label and Pod Security 'restricted'"
+      message: "a namespace needs its deployment id, managed-by=appstore, this installation's environment label and Pod Security 'restricted' (or 'privileged' for vm-namespace=true)"
     - expression: >-
         !variables.isNamespace || request.operation == 'CREATE' || (
           'app.kubernetes.io/managed-by' in variables.oldLabels && variables.oldLabels['app.kubernetes.io/managed-by'] == 'appstore' &&
@@ -109,8 +116,9 @@ spec:
     # pods (restart) and volume claims (reset).
     - expression: >-
         request.operation != 'DELETE' || variables.isNamespace ||
-        variables.resource == 'pods' || variables.resource == 'persistentvolumeclaims'
-      message: "the pod deployer deletes namespaces, pods and volume claims only"
+        variables.resource == 'pods' || variables.resource == 'persistentvolumeclaims' ||
+        variables.resource == 'virtualmachines' || variables.resource == 'virtualmachineinstances'
+      message: "the pod deployer deletes namespaces, pods, volume claims and VirtualMachines only"
     - expression: >-
         variables.resource != 'rolebindings' || request.operation == 'DELETE' || (
           object.roleRef.kind == 'ClusterRole' && has(object.subjects) && object.subjects.size() == 1 &&
@@ -247,7 +255,8 @@ spec:
     # podSelector peer allowed is the empty selector, alone in its rule, TCP
     # only, in the policy named allow-intra-namespace (pods of the own namespace).
     - expression: >-
-        variables.resource != 'networkpolicies' || request.operation == 'DELETE' || (
+        variables.resource != 'networkpolicies' || request.operation == 'DELETE' ||
+        ('appstore.dhbw/vm-namespace' in variables.nsLabels && variables.nsLabels['appstore.dhbw/vm-namespace'] == 'true') || (
           !has(object.spec.podSelector.matchLabels) && !has(object.spec.podSelector.matchExpressions) &&
           (!has(object.spec.ingress) || object.spec.ingress.all(rule,
             has(rule.from) && rule.from.size() > 0 && (
