@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { enableAdminView, runId, signIn, type Session } from './helpers'
+import { enableAdminView, runId, signIn, sweepStale, type Session } from './helpers'
 
 /**
  * The whole chain, once for a pod app and once for a kubevirt-vm app, as people do it in the UI:
@@ -51,13 +51,17 @@ for (const chain of CHAINS) {
     test.beforeAll(async ({ browser }) => {
       admin = await signIn(browser, 'admin')
       dozent = await signIn(browser, 'dozent')
+      await sweepStale(admin)
       await enableAdminView(admin.page)
     })
 
     test.afterAll(async () => {
       // Always clean up: the deployment first (it destroys the namespace), then the app.
       if (deploymentId) await removeDeployment(dozent.page, deploymentId).catch((e) => console.warn('cleanup deployment:', e))
-      if (appId) await removeApp(admin.page, appId).catch((e) => console.warn('cleanup app:', e))
+      // The app may exist although the test stopped before it learned its id: find it by name.
+      const apps = await admin.api<{ appId: string; name: string }[]>('/apps/?limit=200')
+      appId ||= apps.body?.find((a) => a.name === appName)?.appId ?? ''
+      if (appId) await removeApp(admin, appId).catch((e) => console.warn('cleanup app:', e))
       await admin?.context.close()
       await dozent?.context.close()
     })
@@ -70,7 +74,7 @@ for (const chain of CHAINS) {
       await page.getByRole('button', { name: 'Hinzufügen' }).click()
       await expect(page).toHaveURL(/\/apps$/, { timeout: 30_000 })
 
-      await page.getByPlaceholder('Apps suchen...').fill(appName)
+      await page.getByPlaceholder(/Apps suchen/).fill(appName)
       await page.locator('div', { hasText: appName }).getByRole('button', { name: 'Details' }).first().click()
       await expect(page).toHaveURL(/\/apps\/[0-9a-f-]{36}$/)
       appId = page.url().split('/').pop() as string
@@ -98,7 +102,7 @@ for (const chain of CHAINS) {
     test('the teacher deploys it to one student', async () => {
       const { page } = dozent
       await page.goto('/apps')
-      await page.getByPlaceholder('Apps suchen...').fill(appName)
+      await page.getByPlaceholder(/Apps suchen/).fill(appName)
       await page.locator('div', { hasText: appName }).getByRole('button', { name: 'Details' }).first().click()
       await page.getByRole('button', { name: 'Jetzt Deployen' }).click()
 
@@ -169,8 +173,7 @@ async function removeDeployment(page: Page, id: string): Promise<void> {
     .toBe(404)
 }
 
-async function removeApp(page: Page, id: string): Promise<void> {
-  await page.goto(`/apps/${id}`)
-  await page.getByRole('button', { name: 'Löschen' }).click()
-  await page.getByRole('button', { name: 'Löschen' }).last().click()
+async function removeApp(admin: Session, id: string): Promise<void> {
+  const status = await admin.remove(`/apps/${id}`)
+  expect([200, 204, 404], `deleting the app answered ${status}`).toContain(status)
 }

@@ -12,6 +12,8 @@ export interface Session {
   context: BrowserContext
   page: Page
   api: <T = unknown>(path: string) => Promise<{ status: number; body: T }>
+  /** A write the page itself could make (the app's own "Löschen"), used to clean up. */
+  remove: (path: string) => Promise<number>
 }
 
 export async function signIn(browser: Browser, role: Role): Promise<Session> {
@@ -39,7 +41,19 @@ export async function signIn(browser: Browser, role: Role): Promise<Session> {
     const text = await response.text()
     return { status: response.status(), body: (text ? JSON.parse(text) : null) as T }
   }
-  return { context, page, api }
+  const remove = async (path: string) => (await page.request.delete(`/api${path}`, { headers: { Authorization: token } })).status()
+  return { context, page, api, remove }
+}
+
+/** Apps and deployments a failed earlier run left behind: everything named e2e-*, removed before a new chain starts. */
+export async function sweepStale(admin: Session): Promise<void> {
+  const apps = await admin.api<{ appId: string; name: string }[]>('/apps/?limit=200')
+  for (const app of apps.body ?? []) {
+    if (!app.name.startsWith('e2e-')) continue
+    const deployments = await admin.api<{ deploymentId: string; appId: string }[]>('/deployments/')
+    for (const d of (deployments.body ?? []).filter((x) => x.appId === app.appId)) await admin.remove(`/deployments/${d.deploymentId}`)
+    await admin.remove(`/apps/${app.appId}`)
+  }
 }
 
 /** Switch on the admin view (the app store tab and version management only exist there). */
