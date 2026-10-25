@@ -8,7 +8,7 @@ images:
     backend: "sha256:9cc6d9b617970d4a5a498fe063a181cd0f0cb15f27f6ca68171c6e3ddd9ce14c"  # sha-afcb180
     worker: "sha256:b84e459f15f93ea6218062d7a4faa22c2eae21f5824764cdcdee569b7049a0c6"  # sha-d21c578
     workerPods: "sha256:cf48eaf401d7fb242aa0d902e0bf9b17bd13760c36d10cd40132030aacd3bbae"  # sha-d21c578
-    frontend: "sha256:bf85d162bddd10288ad5f13b4456fd69e71225ea7ef465b7b432d4dd6a0687bb"  # sha-f2532fe
+    frontend: "sha256:6c2aed6e1e9f36f0109eba0105baf2322f84e9ac5b7c3bd15d8eb751727a1e40"  # sha-1f21655
     appstoreMcp: "sha256:4b3992741bae983fa2275d5ca322b21f14b5fe22154630fa52157985487727f3"  # sha-3013285
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
