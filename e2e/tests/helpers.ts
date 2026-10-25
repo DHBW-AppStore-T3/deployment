@@ -22,10 +22,22 @@ export async function signIn(browser: Browser, role: Role): Promise<Session> {
   const context = await browser.newContext()
   const page = await context.newPage()
   let token = ''
+  let tokenSeen = 0
   page.on('request', (request) => {
     const header = request.headers()['authorization']
-    if (header?.startsWith('Bearer ') && request.url().includes('/api/')) token = header
+    if (header?.startsWith('Bearer ') && request.url().includes('/api/')) {
+      token = header
+      tokenSeen = Date.now()
+    }
   })
+  // Access tokens live a few minutes and a chain runs longer: when the last one is old, load a page
+  // so the app renews it, and take the one its next API call carries.
+  const fresh = async () => {
+    if (token && Date.now() - tokenSeen < 2 * 60_000) return
+    const before = tokenSeen
+    await page.goto('/dashboard')
+    await expect.poll(() => tokenSeen, { message: 'the app did not renew its token' }).toBeGreaterThan(before)
+  }
   await page.goto('/')
   // The landing page offers the single sign-on first; with a live session it passes straight through.
   const start = page.getByRole('button', { name: /Mit DHBW anmelden/ }).or(page.getByRole('link', { name: /Mit DHBW anmelden/ }))
@@ -37,11 +49,12 @@ export async function signIn(browser: Browser, role: Role): Promise<Session> {
   await expect.poll(() => token, { message: 'the app never called the API with a token' }).not.toBe('')
 
   const api = async <T,>(path: string) => {
+    await fresh()
     const response = await page.request.get(`/api${path}`, { headers: { Authorization: token } })
     const text = await response.text()
     return { status: response.status(), body: (text ? JSON.parse(text) : null) as T }
   }
-  const remove = async (path: string) => (await page.request.delete(`/api${path}`, { headers: { Authorization: token } })).status()
+  const remove = async (path: string) => (await fresh(), await page.request.delete(`/api${path}`, { headers: { Authorization: token } })).status()
   return { context, page, api, remove }
 }
 

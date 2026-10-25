@@ -111,6 +111,10 @@ for (const chain of CHAINS) {
       await page.getByPlaceholder('Suche...').fill('student1')
       await page.getByText('Studentin Eins').first().click()
       await page.getByRole('button', { name: 'Weiter' }).click() // -> Verteilung
+      // One student, one team: "Zufall" puts her there (an app that forces one team per person needs no click).
+      const random = page.getByRole('button', { name: 'Zufall' })
+      if (await random.isVisible()) await random.click()
+      await expect(page.getByText('1 / 1 zugewiesen')).toBeVisible()
       await page.getByRole('button', { name: 'Weiter' }).click() // -> Variablen
 
       if (chain.kind === 'vm') await smallestVm(page)
