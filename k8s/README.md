@@ -1,11 +1,14 @@
 # The AppStore on Kubernetes
 
 Our AppStore (backend, worker, frontend) on the k3s cluster of OpenStack
-project `ma_wwi_24sea_appstore_g3`, deployed by Argo CD. Every app runs as
-pods in a namespace `dep-<id>` per deployment (the Windows desktop will run on
-KubeVirt, a topic of its own). This is the only deployment of the
-AppStore: there is no compose stack and no vendored third-party code in this
-repository any more.
+project `ma_wwi_24sea_appstore_g3`, deployed by Argo CD. Linux apps run as
+pods in a namespace `dep-<id>` per deployment; Windows desktop apps run as
+KubeVirt VMs in such a namespace (`runtime: kubevirt-vm`, golden image in the
+namespace `vm-poc`, volumes on Cinder; `scripts/install-cinder-csi.sh`,
+`scripts/migrate-golden-image.sh`, `scripts/enable-cross-namespace-clone.sh`,
+noVNC proxy image from `docker/novnc-proxy`). This is the only deployment of
+the AppStore (staging, prod); the local development stack is
+`docker-compose.dev.yml` with `docs/dev-setup.md`.
 
 ## Environments
 
