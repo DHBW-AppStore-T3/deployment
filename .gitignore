@@ -9,6 +9,3 @@ graphify-out/.graphify_python
 graphify-out/.graphify_root
 graphify-out/.graphify_labels.json
 graphify-out/.graphify_labels.json.sig
-
-# Generated code graph (graphify), not tracked
-graphify-out/
