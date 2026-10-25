@@ -152,6 +152,9 @@ case("service external IPs", "deny", mutated(service, lambda s: s["spec"].update
 case("service ExternalName", "deny", mutated(service, lambda s: s["spec"].update(type="ExternalName", externalName="evil.example")))
 case("quota with node ports", "deny", mutated(quota, lambda q: q["spec"]["hard"].update({"services.nodeports": "5"})))
 case("quota without a pod cap", "deny", mutated(quota, lambda q: q["spec"]["hard"].pop("pods")))
+case("quota above the workload limit", "deny", mutated(quota, lambda q: q["spec"]["hard"].update(pods="1000")))
+case("quota with a quantity suffix", "deny", mutated(quota, lambda q: q["spec"]["hard"].update(pods="1k")))
+case("quota with many claims", "deny", mutated(quota, lambda q: q["spec"]["hard"].update(persistentvolumeclaims="500")))
 case("scale to 5", "deny", mutated(scale, lambda s: s["spec"].update(replicas=5)), "UPDATE", old=scale, kind="StatefulSet", sub="scale")
 case("statefulset with 5 replicas", "deny", mutated(sts, lambda s: s["spec"].update(replicas=5)))
 
@@ -178,6 +181,11 @@ pod_variant("service account", lambda p: p.update(serviceAccountName="appstore-t
 pod_variant("image from docker.io", lambda p: c0(p).update(image=f"docker.io/evil/img@{DIGEST}"))
 pod_variant("image by tag", lambda p: c0(p).update(image="ghcr.io/dhbw-appstore-t3/apps/online-ide:latest"))
 pod_variant("lookalike registry", lambda p: c0(p).update(image=f"ghcr.io/dhbw-appstore-t3-evil/img@{DIGEST}"))
+pod_variant("a platform image, not an app's", lambda p: c0(p).update(image=f"ghcr.io/dhbw-appstore-t3/backend@{DIGEST}"))
+pod_variant("cpu above the ceiling", lambda p: c0(p)["resources"]["limits"].update(cpu="64"))
+pod_variant("memory above the ceiling", lambda p: c0(p)["resources"]["limits"].update(memory="512Gi"))
+pod_variant("no limits", lambda p: c0(p)["resources"].pop("limits"))
+pod_variant("no cpu limit", lambda p: c0(p)["resources"]["limits"].pop("cpu"))
 pod_variant("pinned to a node", lambda p: p.update(nodeName="k3s-server"))
 pod_variant("priority class", lambda p: p.update(priorityClassName="system-node-critical"))
 pod_variant("another scheduler", lambda p: p.update(schedulerName="my-scheduler"))
@@ -187,6 +195,10 @@ pod_variant("privileged init container", lambda p: p.update(initContainers=[dict
 pod_variant("runtime class", lambda p: p.update(runtimeClassName="runc-unsafe"))
 case("statefulset: other storage class", "deny",
      mutated(sts, lambda s: s["spec"]["volumeClaimTemplates"][0]["spec"].update(storageClassName="fast-hostpath")))
+case("statefulset: volume above the ceiling", "deny",
+     mutated(sts, lambda s: s["spec"]["volumeClaimTemplates"][0]["spec"]["resources"]["requests"].update(storage="10Ti")))
+case("statefulset: volume without a size", "deny",
+     mutated(sts, lambda s: s["spec"]["volumeClaimTemplates"][0]["spec"].pop("resources")))
 
 
 # ---------------------------------------------------------------- ingress
@@ -229,6 +241,50 @@ np_variant(internet, "egress without except", lambda n: n["spec"]["egress"][0]["
 np_variant(internet, "egress reaches the metadata service", lambda n: n["spec"]["egress"][0]["to"][0]["ipBlock"]["except"].remove("169.254.0.0/16"))
 np_variant(internet, "egress reaches the node", lambda n: n["spec"]["egress"][1]["to"][0]["ipBlock"]["except"].remove("2001:7c0:1b20:c913:1::10d/128"))
 np_variant(internet, "egress to a private range", lambda n: n["spec"]["egress"][0]["to"][0].update(ipBlock={"cidr": "10.0.0.0/8"}))
+# allow-intra-namespace (issue .github#11): the one podSelector shape that is accepted.
+def intra(**over):
+    spec = {"podSelector": {}, "policyTypes": ["Ingress", "Egress"],
+            "ingress": [{"from": [{"podSelector": {}}], "ports": [{"protocol": "TCP", "port": 8080}]}],
+            "egress": [{"to": [{"podSelector": {}}], "ports": [{"protocol": "TCP", "port": 8080}]}]}
+    spec.update(over)
+    return {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+            "metadata": dict(copy.deepcopy(dns_np["metadata"]), name="allow-intra-namespace"), "spec": spec}
+
+
+intra_np = intra()
+case("network policy: allow-intra-namespace create", "allow", intra_np)
+case("network policy: allow-intra-namespace re-apply", "allow", intra_np, "UPDATE", old=intra_np)
+case("network policy: allow-intra-namespace, protocol defaulted away", "allow",
+     mutated(intra_np, lambda n: [n["spec"][d][0]["ports"][0].pop("protocol") for d in ("ingress", "egress")]))
+np_variant(intra_np, "podSelector peer in another policy (ingress)", lambda n: n["metadata"].update(name="allow-pods"))
+np_variant(intra_np, "podSelector peer in the dns policy name", lambda n: n["metadata"].update(name="allow-dns"))
+np_variant(intra_np, "intra-namespace non-empty podSelector (ingress)", lambda n: n["spec"]["ingress"][0]["from"][0].update(podSelector={"matchLabels": {"a": "b"}}))
+np_variant(intra_np, "intra-namespace non-empty podSelector (egress)", lambda n: n["spec"]["egress"][0]["to"][0].update(podSelector={"matchLabels": {"a": "b"}}))
+np_variant(intra_np, "intra-namespace empty matchExpressions podSelector", lambda n: n["spec"]["egress"][0]["to"][0].update(podSelector={"matchExpressions": []}))
+np_variant(intra_np, "intra-namespace podSelector + namespaceSelector (ingress)", lambda n: n["spec"]["ingress"][0]["from"][0].update(namespaceSelector={}))
+np_variant(intra_np, "intra-namespace podSelector + namespaceSelector (egress)", lambda n: n["spec"]["egress"][0]["to"][0].update(namespaceSelector={}))
+np_variant(intra_np, "intra-namespace podSelector + ipBlock (ingress)", lambda n: n["spec"]["ingress"][0]["from"][0].update(ipBlock={"cidr": "0.0.0.0/0"}))
+np_variant(intra_np, "intra-namespace podSelector + ipBlock (egress)", lambda n: n["spec"]["egress"][0]["to"][0].update(ipBlock={"cidr": "10.0.0.0/8"}))
+np_variant(intra_np, "intra-namespace UDP (ingress)", lambda n: n["spec"]["ingress"][0]["ports"][0].update(protocol="UDP"))
+np_variant(intra_np, "intra-namespace SCTP (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(protocol="SCTP"))
+np_variant(intra_np, "intra-namespace TCP and UDP (egress)", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "UDP", "port": 53}))
+np_variant(intra_np, "intra-namespace TCP without a port (ingress)", lambda n: n["spec"]["ingress"][0].update(ports=[{"protocol": "TCP"}]))
+np_variant(intra_np, "intra-namespace empty port entry (egress)", lambda n: n["spec"]["egress"][0].update(ports=[{}]))
+np_variant(intra_np, "intra-namespace port range (ingress)", lambda n: n["spec"]["ingress"][0]["ports"][0].update(port=1, endPort=65535))
+np_variant(intra_np, "intra-namespace port range (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(endPort=9000))
+np_variant(intra_np, "intra-namespace named port (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(port="http"))
+np_variant(intra_np, "intra-namespace two rules, one bad (ingress)", lambda n: n["spec"]["ingress"].append({"from": [{"podSelector": {}}], "ports": [{"protocol": "UDP", "port": 53}]}))
+np_variant(intra_np, "intra-namespace two rules, one without ports (egress)", lambda n: n["spec"]["egress"].append({"to": [{"podSelector": {}}]}))
+case("network policy: allow-intra-namespace, two good rules", "allow", mutated(intra_np, lambda n: [n["spec"][d].append(copy.deepcopy(n["spec"][d][0])) or n["spec"][d][1]["ports"][0].update(port=9090) for d in ("ingress", "egress")]))
+np_variant(intra_np, "intra-namespace without ports (ingress)", lambda n: n["spec"]["ingress"][0].pop("ports"))
+np_variant(intra_np, "intra-namespace empty ports (egress)", lambda n: n["spec"]["egress"][0].update(ports=[]))
+np_variant(intra_np, "intra-namespace extra peer (ingress)", lambda n: n["spec"]["ingress"][0]["from"].append({"ipBlock": {"cidr": "0.0.0.0/0"}}))
+np_variant(intra_np, "intra-namespace extra namespaceSelector peer (egress)", lambda n: n["spec"]["egress"][0]["to"].append({"namespaceSelector": {}}))
+np_variant(intra_np, "intra-namespace second podSelector peer (egress)", lambda n: n["spec"]["egress"][0]["to"].append({"podSelector": {}}))
+np_variant(intra_np, "intra-namespace selects some pods only", lambda n: n["spec"].update(podSelector={"matchLabels": {"a": "b"}}))
+np_variant(intra_np, "intra-namespace peer-less ingress rule", lambda n: n["spec"]["ingress"][0].pop("from"))
+np_variant(intra_np, "intra-namespace peer-less egress rule", lambda n: n["spec"]["egress"][0].pop("to"))
+
 np_variant(dns_np, "egress to all of kube-system", lambda n: n["spec"]["egress"][0]["to"][0].pop("podSelector"))
 np_variant(dns_np, "egress to postgres", lambda n: n["spec"]["egress"][0]["to"][0].update(namespaceSelector={"matchLabels": {"kubernetes.io/metadata.name": NS}}, podSelector={"matchLabels": {"cnpg.io/cluster": "postgres-cluster"}}))
 

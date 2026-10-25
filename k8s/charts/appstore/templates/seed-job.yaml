@@ -1,0 +1,65 @@
+{{- if .Values.seed.enabled }}
+{{- $comp := dict "context" . "component" "seed" -}}
+# Demo data (the backend's `python -m app.cli seed`): the realm's users in the
+# database, a demo course and a few catalog apps, so the UIs are usable right
+# after a fresh rollout. Argo CD runs Helm hooks after every sync (PostSync),
+# so the command only adds what is missing: it never approves a version again
+# that an admin rejected or revoked, and never changes the courses of users
+# that existed. It works through the CRUD layer, with no login and no HTTP.
+# For demo environments only (staging); off in prod.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "appstore.name" $comp }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+data:
+  seed.json: |-
+{{ dict "courseName" .Values.seed.courseName "apps" .Values.seed.apps | toPrettyJson | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "appstore.name" $comp }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {{- include "appstore.labels" $comp | nindent 8 }}
+    spec:
+      {{- include "appstore.podDefaults" . | nindent 6 }}
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: {{ include "appstore.image" (dict "context" . "key" "backend" "name" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: ["python", "-m", "app.cli", "seed", "--config", "/seed/seed.json"]
+          workingDir: /app
+          env:
+            {{- include "appstore.backendEnv" . | nindent 12 }}
+            - { name: PYTHONPATH, value: /app }
+          securityContext: {{- include "appstore.restricted" . | nindent 12 }}
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: seed, mountPath: /seed, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+        - name: seed
+          configMap: { name: {{ include "appstore.name" $comp }} }
+{{- end }}

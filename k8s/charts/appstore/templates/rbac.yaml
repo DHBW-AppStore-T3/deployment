@@ -78,7 +78,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "patch"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "delete", "deletecollection"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete", "deletecollection"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "delete"]
@@ -91,9 +91,16 @@ rules:
   - apiGroups: ["apps"]
     resources: ["statefulsets/scale"]
     verbs: ["get", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "patch"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "list", "watch", "create", "patch"]
+  # KubeVirt VMs for runtime kubevirt-vm
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines", "virtualmachineinstances"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 # Bound by the pod deployer in each dep-* namespace for the API's account:
 # the live view of a deployment (app/services/k8s_status.py). No Secrets.
@@ -106,8 +113,17 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "events", "persistentvolumeclaims"]
     verbs: ["get", "list"]
+  # Only to find the one "appstore-progress" line an app logs while it sets itself
+  # up (app/services/k8s_status.py); nothing else of a log is passed on.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
   - apiGroups: ["apps"]
-    resources: ["statefulsets"]
+    resources: ["statefulsets", "deployments"]
+    verbs: ["get", "list"]
+  # KubeVirt VM status for the live view
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines", "virtualmachineinstances"]
     verbs: ["get", "list"]
 ---
 # The API, cluster-wide: the namespaces themselves (their labels say whose

@@ -5,12 +5,12 @@
 # comment behind a digest is the tag (sha-<commit>) it was built from.
 images:
   tags:
-    backend: "sha256:ab9ef6401b1c4cbd40dfc6b22841adb143d67ed19a087fe0192207d4e7bf03e3"  # sha-623d0dd
-    worker: "sha256:32b9b578bf00c9c1923fd84858856f7a278420bafce6e2c4c22ab92a939a7b7e"  # sha-43d1b97
-    workerPods: "sha256:9929b96620789f7bdc259cfc55783c413640875a490bf69804863c0d37c928fb"  # sha-43d1b97
-    frontend: "sha256:febc206a1bb714ce70e208d62c1b9dcc67a089befd171c829bb1317e09fb94a3"  # sha-164837e
-    appstoreMcp: "sha256:4654a9581ca82b2005ca60a215694b07955828b210893ca3c4b21f773b99cb5d"  # sha-b239de2
+    backend: "sha256:484d4c1a9169e118c79a0b245edc51fc52c0b832019f2c635ca1dcc620b5f2a9"  # sha-4cff8e7
+    worker: "sha256:d8da20aabf8d562b43329879a3467e52f8815226988fad4817587ddc97872949"  # sha-6c1314d
+    workerPods: "sha256:18931a541585cfbfb17ca8c0f7d23d1c8162af7fff6d49a793e5b388e31659fe"  # sha-6c1314d
+    frontend: "sha256:4853803049c360b4d63fe0dbd8636985da3713673dfa7030e0144a699c3c75da"  # sha-63125de
+    appstoreMcp: "sha256:4b3992741bae983fa2275d5ca322b21f14b5fe22154630fa52157985487727f3"  # sha-3013285
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
-    selfServiceUi: "sha256:54f797baf060b6c9ea8d541a0993480e4c87ad6d68b31aff17cad2a1f7466f82"  # sha-085b80e
+    selfServiceUi: "sha256:791759e40099f336359471a19365616f84989a92aaa3269af6dd5af2e4642dea"  # sha-9c47867
     moodle: "sha256:337a94c5dab5b23db310e8ca62e57ff0674d89bfe8a0df26b39e6ca2aefef931"  # sha-f13fc38

@@ -91,7 +91,9 @@ through the AppStore and run as pods; see the app-registry repository.
   allowlist pinned by digest; Ingress hosts `<workload>-<deployment>.<appDomain>`
   of its own deployment only (never `appstore.<zone>` or `sso.<zone>`), plain
   `Prefix` paths, no annotations but cert-manager's; network policies that
-  keep the student pods' isolation. Single objects are never deleted, only
+  keep the student pods' isolation (the only `podSelector` peer is the empty
+  selector, TCP with a concrete numeric port and no port range, in a policy named `allow-intra-namespace`; the app's `expose.port` is enforced by the renderer, not by admission: pods of one
+  deployment may reach each other). Single objects are never deleted, only
   namespaces, pods (restart) and volume claims (reset).
 - **Keycloak realm `dhbw`**: access tokens of 5 minutes, refresh token
   rotation, brute-force protection, a password policy, PKCE S256 and no
@@ -104,7 +106,11 @@ through the AppStore and run as pods; see the app-registry repository.
   master realm's login pages are built for <http://localhost:8080> (the job
   `keycloak-admin-url` gives the master realm that frontend URL after each
   sync). Realm files are imported into a new database only; a running realm
-  is changed in the admin console. Demo users only on staging.
+  is changed in the admin console, except `loginTheme`: the job `keycloak-config`
+  sets it in the live realm after each sync. The login page is the theme `dhbw`
+  (T3 look, `manifests/platform/files/themes/dhbw`, mounted from ConfigMaps
+  `keycloak-theme*`; the local dev stack mounts the same files; a changed theme
+  restarts Keycloak). Demo users only on staging.
 
 ## The second UI: self-service-ui
 

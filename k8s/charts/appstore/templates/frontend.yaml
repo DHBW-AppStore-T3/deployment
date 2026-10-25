@@ -1,7 +1,7 @@
 {{- $comp := dict "context" . "component" "frontend" -}}
 {{- $name := include "appstore.name" $comp -}}
 {{- $v := .Values.frontend -}}
-# The Vue frontend, and under /api the gateway to the API (API_UPSTREAM):
+# The React frontend, and under /api the gateway to the API (API_UPSTREAM):
 # nginx strips the prefix and answers /api/internal/ with 404, so the one
 # Ingress of the host routes both. Read-only root filesystem; the runtime
 # configuration goes to /tmp/runtime.

@@ -8,8 +8,12 @@ name: K8s - roll out an image
 # of that environment follows. The caller passes the digest it pushed, so this
 # workflow needs no read access to the components' (private) packages.
 #   dev   a commit on dev                       -> staging
-#   main  a pull request with auto-merge on main -> prod (main requires the
-#         Gitleaks check, which this workflow dispatches on the bump branch)
+#   main  a pull request on main                -> prod, merged by a person who
+#         checked it (main requires the Gitleaks check, which this workflow
+#         dispatches on the bump branch). With the repository variable
+#         PROD_AUTO_MERGE=true the pull request merges itself when the check
+#         is green, as it did before (review S1: then anyone who can push to a
+#         component's main rolls out to prod unseen).
 on:
   workflow_dispatch:
     inputs:
@@ -86,19 +90,33 @@ jobs:
             sleep 5
           done
           exit 1
-      - name: Prod - pull request into main, merged when the checks pass
+      - name: Prod - pull request into main
         if: steps.pin.outputs.changed == 'true' && github.ref_name == 'main'
         env:
           GH_TOKEN: ${{ github.token }}
           COMPONENT: ${{ inputs.component }}
           TAG: ${{ inputs.tag }}
+          DIGEST: ${{ inputs.digest }}
+          AUTO_MERGE: ${{ vars.PROD_AUTO_MERGE }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           BR="bump/prod-${COMPONENT}-${TAG}"
           git push origin "HEAD:refs/heads/${BR}"
           # No workflow runs for a pull request opened with the GITHUB_TOKEN:
           # report the required check by running it on the branch ourselves.
           gh workflow run secret-scan.yml --ref "$BR"
+          case "$COMPONENT" in worker-pods) REPO=worker ;; moodle) REPO=moodle_appstore ;; *) REPO="$COMPONENT" ;; esac
+          SOURCE="https://github.com/DHBW-AppStore-T3/${REPO}/commit/${TAG#sha-}"
+          if [ "$AUTO_MERGE" = true ]; then
+            NOTE="Merges itself when the Gitleaks check is green (PROD_AUTO_MERGE)."
+          else
+            NOTE="Merging rolls it out to prod: check that the commit is the one meant for prod and that its CI run pushed exactly this digest, then merge."
+          fi
+          printf '%s\n\n- component: %s\n- commit: %s\n- digest: %s\n- requested by: %s (%s)\n\n%s\n' \
+            "Written by k8s-bump.yml after the CI of ${COMPONENT} pushed ${TAG} from main." \
+            "$COMPONENT" "$SOURCE" "$DIGEST" "$GITHUB_TRIGGERING_ACTOR" "$RUN_URL" "$NOTE" > /tmp/body.md
           gh pr create --base main --head "$BR" \
-            --title "chore(k8s): roll out ${COMPONENT} ${TAG} on prod" \
-            --body "Written by k8s-bump.yml after the CI of ${COMPONENT} pushed ${TAG} from main. Merges itself when the Gitleaks check is green."
-          gh pr merge "$BR" --auto --squash --delete-branch
+            --title "chore(k8s): roll out ${COMPONENT} ${TAG} on prod" --body-file /tmp/body.md
+          if [ "$AUTO_MERGE" = true ]; then
+            gh pr merge "$BR" --auto --squash --delete-branch
+          fi
