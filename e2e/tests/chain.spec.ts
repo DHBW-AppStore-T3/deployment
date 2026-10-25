@@ -113,16 +113,19 @@ for (const chain of CHAINS) {
       await page.getByPlaceholder('Suche...').fill('student1')
       await page.getByText('Studentin Eins').first().click()
       await page.getByRole('button', { name: 'Weiter' }).click() // -> Verteilung
+      await expect(page.getByRole('button', { name: 'Jeder Nutzer einzeln' })).toBeVisible()
       // "Jeder Nutzer einzeln" gives every person a team of their own: deterministic for one student
       // (an app that forces this mode has the button locked already).
       const perPerson = page.getByRole('button', { name: 'Jeder Nutzer einzeln' })
       if (await perPerson.isEnabled()) await perPerson.click()
       await expect(page.getByText(/1\s*\/\s*1\s*zugewiesen/)).toBeVisible()
       await page.getByRole('button', { name: 'Weiter' }).click() // -> Variablen
+      await expect(page.getByRole('heading', { name: 'Variablen-Konfiguration' })).toBeVisible()
 
       if (chain.kind === 'vm') await smallestVm(page)
       await page.getByRole('button', { name: 'Weiter' }).click() // -> Übersicht
-      await page.getByRole('button', { name: 'Deployen' }).click()
+      // Each step is waited for before the next click: a click on a step that is still changing is lost.
+      await page.getByRole('button', { name: 'Deployen', exact: true }).click()
 
       await expect(page).toHaveURL(/\/deployments\/[0-9a-f-]{36}/, { timeout: 60_000 })
       deploymentId = page.url().match(/deployments\/([0-9a-f-]{36})/)![1]
