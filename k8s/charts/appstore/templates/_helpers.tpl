@@ -120,6 +120,11 @@ to start in production without them (.github#7 O).
 {{ include "appstore.podLimitsEnv" . }}
 - { name: K8S_MAX_WORKLOADS_PER_OWNER, value: {{ .Values.podApps.maxWorkloadsPerOwner | quote }} }
 - { name: TEMP_REPO_BASE_PATH, value: /tmp/repos }
+{{- if .Values.clamav.enabled }}
+# ClamAV: when CLAMD_HOST is set the API scans every upload and fails closed.
+- { name: CLAMD_HOST, value: {{ include "appstore.name" (dict "context" . "component" "clamav") | quote }} }
+- { name: CLAMD_PORT, value: "3310" }
+{{- end }}
 {{- end }}
 
 {{/*

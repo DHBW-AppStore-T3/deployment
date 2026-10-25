@@ -237,3 +237,18 @@ network:
   # Addresses the API and the VM executor may reach although they are in a
   # private range (e.g. an internal OpenStack endpoint); CIDRs.
   extraEgressAllow: []
+
+# ClamAV virus scanner for uploaded files. Disabled by default; enable per environment
+# once you have decided on resources (1-2 GiB RAM for the signature database) and who
+# watches the freshclam staleness alert. When enabled the API fails closed: a scanner
+# outage blocks all file uploads (503 upload_scan_unavailable).
+# See the API settings CLAMD_HOST / CLAMD_PORT / CLAMD_TIMEOUT and .github#13.
+clamav:
+  enabled: false
+  replicas: 2
+  # Pin by digest before enabling in production.
+  # Latest stable: docker.io/clamav/clamav (check https://hub.docker.com/r/clamav/clamav/tags)
+  image: "clamav/clamav:1.4"
+  resources:
+    requests: { cpu: 100m, memory: 1536Mi }
+    limits: { cpu: "1", memory: 2Gi }

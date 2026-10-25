@@ -131,6 +131,13 @@ spec:
     {{- include "appstore.kubeApi" $n.kubeApi | nindent 4 }}
     {{- end }}
     {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow) | nindent 4 }}
+    {{- if .Values.clamav.enabled }}
+    # ClamAV: the API is the only pod that scans uploads.
+    - to:
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "clamav")) | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 3310 }
+    {{- end }}
     {{- if .Values.api.hostAliases }}
     # The ingress controller, for the host names of api.hostAliases (Moodle's keys).
     - to:
