@@ -130,4 +130,6 @@ def make_app() -> web.Application:
 
 
 if __name__ == "__main__":
-    web.run_app(make_app(), host="0.0.0.0", port=8080)
+    # No host: every address of the machine, IPv4 and IPv6. The cluster is dual-stack with IPv6 first, so
+    # the pod's address (and its readiness probe) is an IPv6 one.
+    web.run_app(make_app(), host=None, port=8080)
