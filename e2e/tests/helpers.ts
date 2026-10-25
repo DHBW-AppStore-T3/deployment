@@ -25,6 +25,9 @@ export async function signIn(browser: Browser, role: Role): Promise<Session> {
     if (header?.startsWith('Bearer ') && request.url().includes('/api/')) token = header
   })
   await page.goto('/')
+  // The landing page offers the single sign-on first; with a live session it passes straight through.
+  const start = page.getByRole('button', { name: /Mit DHBW anmelden/ }).or(page.getByRole('link', { name: /Mit DHBW anmelden/ }))
+  await start.first().click({ timeout: 30_000 })
   await page.locator('#username').fill(USERS[role].name)
   await page.locator('#password').fill(password)
   await page.locator('#kc-login').click()
