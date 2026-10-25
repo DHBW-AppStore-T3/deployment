@@ -10,9 +10,9 @@ name: K8s - chart, admission policy and RBAC
 on:
   push:
     branches: [main, dev]
-    paths: ['k8s/**', '.github/workflows/k8s-chart.yml']
+    paths: ['k8s/**', 'keycloak/themes/**', '.github/workflows/k8s-chart.yml']
   pull_request:
-    paths: ['k8s/**', '.github/workflows/k8s-chart.yml']
+    paths: ['k8s/**', 'keycloak/themes/**', '.github/workflows/k8s-chart.yml']
 
 permissions:
   contents: read
@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install pyyaml==6.0.2
+      - name: The Keycloak theme in the chart is the one the dev stack mounts
+        run: diff -r keycloak/themes/dhbw k8s/manifests/platform/files/themes/dhbw
       - name: Render staging and prod as Argo CD does
         run: |
           set -euo pipefail

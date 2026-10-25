@@ -1,0 +1,36 @@
+{{- $theme := "files/themes/dhbw/login" }}
+# The login theme `dhbw` of the realm (files/themes/dhbw, a copy of
+# keycloak/themes/dhbw that the dev stack mounts; the k8s-chart workflow fails
+# when the two differ). keycloak.yaml projects the three ConfigMaps into
+# /opt/keycloak/themes/dhbw. They are split because one ConfigMap is limited to
+# 1 MiB and the background photo and the font are binary (base64 in binaryData).
+# The realm setting `loginTheme` is in files/dhbw-realm.json (new realm) and is
+# set in a running realm by the keycloak-config job.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-theme
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+data:
+  theme.properties: |-
+{{ .Files.Get (print $theme "/theme.properties") | indent 4 }}
+  login.ftl: |-
+{{ .Files.Get (print $theme "/login.ftl") | indent 4 }}
+binaryData:
+  logo.png: {{ .Files.Get (print $theme "/resources/img/logo.png") | b64enc }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-theme-background
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+binaryData:
+  background.jpg: {{ .Files.Get (print $theme "/resources/img/background.jpg") | b64enc }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-theme-font
+  annotations: { argocd.argoproj.io/sync-wave: "1" }
+binaryData:
+  InterVariable.woff2: {{ .Files.Get (print $theme "/resources/img/InterVariable.woff2") | b64enc }}
