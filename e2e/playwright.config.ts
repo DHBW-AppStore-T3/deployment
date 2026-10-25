@@ -6,6 +6,9 @@ try {
 } catch {
   /* CI passes them as environment variables */
 }
+if (!process.env.E2E_ADMIN_PASSWORD || !process.env.E2E_DOZENT_PASSWORD) {
+  throw new Error('E2E_ADMIN_PASSWORD and E2E_DOZENT_PASSWORD are not set: copy e2e/.env.local.example to e2e/.env.local and fill it in')
+}
 
 /**
  * The chain runs against a real environment (staging). One worker, one test at a time: the
