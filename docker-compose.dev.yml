@@ -3,8 +3,7 @@
 #
 # Runs with local Keycloak (realm `dhbw`) and Postgres (`pgq` queue),
 # without OpenStack, Kubernetes cluster, Redis or RabbitMQ.
-# OpenStack calls return canned data (OPENSTACK_SIMULATE=true) and
-# pod-apps deploy against in-memory FakeKube (WORKER_SIMULATE=true).
+# Pod apps deploy against in-memory FakeKube (WORKER_SIMULATE=true).
 #
 # Usage:
 #   make init           # first start: up + migrate + seed
@@ -69,7 +68,6 @@ services:
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
       APP_ENV: "development"
-      OPENSTACK_SIMULATE: "true"
       KEYCLOAK_SERVER_URL: "http://keycloak-sim:8081"
       KEYCLOAK_ISSUER: "http://localhost:${KEYCLOAK_PORT:-8081}/realms/dhbw"
       KEYCLOAK_REALM: "dhbw"

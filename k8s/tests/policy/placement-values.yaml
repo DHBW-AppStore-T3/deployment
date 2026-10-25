@@ -4,7 +4,7 @@ host: appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.sit
 ssoHost: sso-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
 environment: appstore-staging
 images:
-  tags: { backend: sha-0000000, worker: sha-0000000, workerPods: sha-0000000, frontend: sha-0000000 }
+  tags: { backend: sha-0000000, workerPods: sha-0000000, frontend: sha-0000000 }
 podApps:
   zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
   appDomain: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site

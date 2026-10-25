@@ -24,7 +24,6 @@ images:
   # into k8s/images/<env>.yaml.
   tags:
     backend: ""
-    worker: ""
     workerPods: ""
     frontend: ""
     # Empty: the self-service-ui is not rolled out yet (no image to run).
@@ -32,7 +31,7 @@ images:
 
 # Created by k8s/bootstrap.sh. Keys: database-url (the owner role; API,
 # migrations, orphan check), worker-database-url (role appstore_worker; both
-# workers), credential-encryption-key (API, VM executor),
+# workers), credential-encryption-key (API),
 # results-encryption-key (API, both workers), keycloak-client-secret,
 # lti13-session-secret, self-service-cookie-secret (oauth2-proxy of the
 # self-service-ui).
@@ -63,9 +62,6 @@ api:
   workers: 2
   # Hosts app repositories may come from (comma-separated, exact names).
   gitAllowedHosts: github.com
-  # Keystone URLs an OpenStack credential may point to (comma-separated). Empty
-  # in production: no credential can be saved, so no VM app (Windows) runs.
-  openstackAllowedAuthUrls: ""
   # LTI 1.3 launch from Moodle; off while clientId is empty.
   lti:
     platformIssuer: ""
@@ -140,24 +136,6 @@ podDeployer:
   resources:
     requests: { cpu: 50m, memory: 384Mi }
     limits: { cpu: 500m, memory: 1Gi }
-
-# The VM executor: OpenTofu/Packer jobs of the apps that still run as VMs
-# (the Windows desktop). No Kubernetes rights.
-vmExecutor:
-  enabled: true
-  replicas: 1
-  # Slots; slot n runs its tools as UID 20000+n.
-  concurrency: 4
-  jobTimeoutSeconds: 7200
-  # A rollout lets running jobs finish: keep it above jobTimeoutSeconds.
-  terminationGracePeriodSeconds: 7500
-  resources:
-    requests: { cpu: 100m, memory: 512Mi }
-    limits: { cpu: "2", memory: 2Gi }
-  # The job directories (app clones with their Packer builds) and the slot
-  # homes (plugins, caches).
-  tmpSizeLimit: 20Gi
-  homesSizeLimit: 10Gi
 
 frontend:
   replicas: 2
