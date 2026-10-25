@@ -20,6 +20,7 @@ Jede Session liest dieses Dokument zu Beginn und aktualisiert es vor dem Abschlu
 
 ## 2. In Arbeit & Nächste Schritte
 
+- [x] **Admission-Policy der kubevirt-vm-Namespaces gehärtet (fix/vm-namespace-policy):** Deployments nur noch proxy-förmig, VirtualMachine-/PVC-/NetworkPolicy-Inhaltsprüfung, VMI-Create/Update/Delete für den Pod-Deployer verboten (RBAC: VMI nur lesen). Neue Werte `podApps.vmMax{Cores,Memory,Disk}`, `vmStorageClass`, `vncProxyImagePrefix`. Fälle: `k8s/tests/policy/make_cases.py` (5. Argument, `vm-cases.json`). Nach dem Rollout einen VM-Deploy auf Staging prüfen (KubeVirt-Mutating-Webhook kann Felder ergänzen, die die Policy ablehnt).
 - [x] Reengineering auf 2 Flows im Deployment-Repo: `staging.yml` auf `dev`-Trigger umgestellt.
 - [x] Staging Health-Check & Discord-Notification (`notify_staging_health.py`) implementiert.
 - [ ] **GitHub MCP & OpenStack MCP aktivieren:** Liegen vorkonfiguriert in `agent/config.yaml`, warten auf Read-Only-PAT bzw. `clouds.yaml`.

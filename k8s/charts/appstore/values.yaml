@@ -101,6 +101,16 @@ podApps:
   # (scripts/enable-cross-namespace-clone.sh).
   vmImageNamespaces:
     - vm-poc
+  # What a kubevirt-vm namespace may contain (admission-policy.yaml). The
+  # renderer never asks for more: VmSpec allows 1-16 cores, 2-32 GiB and
+  # 40-200 GiB of disk.
+  vmMaxCores: 16
+  vmMaxMemory: 32Gi
+  vmMaxDisk: 200Gi
+  vmStorageClass: cinder
+  # The noVNC proxy Deployment of a kubevirt-vm namespace: its image must be this
+  # repository, followed by nothing, a :tag or an @digest.
+  vncProxyImagePrefix: ghcr.io/dhbw-appstore-t3/novnc-proxy
   # Workloads (one per team or person) per deployment, and per owner across
   # their live pod deployments (0: no budget).
   maxWorkloadsPerDeployment: 60

@@ -18,8 +18,12 @@
 # objects that look like what app/k8s/render.py makes. RBAC limits the kinds
 # and verbs; this policy limits the content. It matches the pod deployer's
 # identity only; the controllers (StatefulSet, namespace deletion) are not
-# affected, and Pod Security "restricted" on every dep-* namespace checks the
-# pods they create.
+# affected. Pod Security "restricted" checks the pods they create in the dep-*
+# namespaces of ordinary apps; a kubevirt-vm namespace (label
+# appstore.dhbw/vm-namespace=true) is "privileged" (virt-launcher needs it), so
+# nothing checks the pods the Deployment controller or KubeVirt create there:
+# this policy therefore inspects the pod template of the noVNC proxy Deployment
+# and the whole VirtualMachine, claim and network policies itself.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -72,10 +76,19 @@ spec:
       expression: "request.operation != 'CREATE' && has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}"
     - name: nsLabels
       expression: "namespaceObject != null && has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels : {}"
+    - name: isVmNs
+      expression: "'appstore.dhbw/vm-namespace' in variables.nsLabels && variables.nsLabels['appstore.dhbw/vm-namespace'] == 'true'"
     - name: podSpec
       expression: >-
         variables.resource == 'statefulsets' && request.operation != 'DELETE' ? object.spec.template.spec :
         (variables.resource == 'pods' && request.operation != 'DELETE' ? object.spec : null)
+    # The noVNC proxy's pod template (Deployments only exist in kubevirt-vm
+    # namespaces) and the VM's template: pods the controllers create from them
+    # are not admitted by this policy, so the templates are.
+    - name: deploySpec
+      expression: "variables.resource == 'deployments' && request.operation != 'DELETE' ? object.spec.template.spec : null"
+    - name: vmSpec
+      expression: "variables.resource == 'virtualmachines' && request.operation != 'DELETE' ? object.spec.template.spec : null"
     - name: containers
       expression: >-
         variables.podSpec == null ? [] :
@@ -114,12 +127,15 @@ spec:
       message: "objects only in this installation's own dep-* namespaces"
     # --- what -----------------------------------------------------------
     # Namespaces go as a whole; single objects are never deleted, except
-    # pods (restart) and volume claims (reset).
+    # pods (restart) and volume claims (reset); a VirtualMachine may go, a
+    # VirtualMachineInstance is KubeVirt's.
     - expression: >-
         request.operation != 'DELETE' || variables.isNamespace ||
         variables.resource == 'pods' || variables.resource == 'persistentvolumeclaims' ||
-        variables.resource == 'virtualmachines' || variables.resource == 'virtualmachineinstances'
+        variables.resource == 'virtualmachines'
       message: "the pod deployer deletes namespaces, pods, volume claims and VirtualMachines only"
+    - expression: "variables.resource != 'virtualmachineinstances'"
+      message: "VirtualMachineInstances are made by KubeVirt from a VirtualMachine, never by the pod deployer"
     - expression: >-
         variables.resource != 'rolebindings' || request.operation == 'DELETE' || (
           object.roleRef.kind == 'ClusterRole' && has(object.subjects) && object.subjects.size() == 1 &&
@@ -232,6 +248,112 @@ spec:
         object.spec.volumeClaimTemplates.all(t,
           {{ if $p.storageClass }}has(t.spec.storageClassName) && t.spec.storageClassName == {{ $p.storageClass | squote }}{{ else }}!has(t.spec.storageClassName){{ end }})
       message: "volume claims only of the configured storage class"
+    # --- kubevirt-vm namespaces (render_vm in the backend) ----------------
+    # Deployments: only the noVNC proxy, shaped exactly as the renderer makes it.
+    - expression: >-
+        variables.resource != 'deployments' || request.operation == 'DELETE' || (
+          variables.isVmNs && (!has(object.spec.replicas) || object.spec.replicas <= 1))
+      message: "deployments only in kubevirt-vm namespaces, with at most one replica"
+    - expression: >-
+        variables.deploySpec == null || (
+          has(variables.deploySpec.serviceAccountName) && variables.deploySpec.serviceAccountName == 'vnc-proxy' &&
+          (!has(variables.deploySpec.hostNetwork) || !variables.deploySpec.hostNetwork) &&
+          (!has(variables.deploySpec.hostPID) || !variables.deploySpec.hostPID) &&
+          (!has(variables.deploySpec.hostIPC) || !variables.deploySpec.hostIPC) &&
+          !has(variables.deploySpec.nodeName) && !has(variables.deploySpec.priorityClassName) &&
+          (!has(variables.deploySpec.schedulerName) || variables.deploySpec.schedulerName == 'default-scheduler') &&
+          !has(variables.deploySpec.runtimeClassName) && !has(variables.deploySpec.hostAliases) &&
+          !has(variables.deploySpec.ephemeralContainers) &&
+          (!has(variables.deploySpec.initContainers) || variables.deploySpec.initContainers.size() == 0) &&
+          variables.deploySpec.containers.size() == 1 &&
+          (!has(variables.deploySpec.volumes) || variables.deploySpec.volumes.all(v, has(v.emptyDir) && has(v.emptyDir.sizeLimit))) &&
+          has(variables.deploySpec.securityContext) && has(variables.deploySpec.securityContext.runAsNonRoot) &&
+          variables.deploySpec.securityContext.runAsNonRoot && !has(variables.deploySpec.securityContext.sysctls))
+      message: "the proxy pod runs as vnc-proxy, as non-root, with one container, without host namespaces, node pinning or host volumes"
+    - expression: >-
+        variables.deploySpec == null || variables.deploySpec.containers.all(c,
+          has(c.securityContext) &&
+          has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation &&
+          has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot &&
+          has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem &&
+          (!has(c.securityContext.privileged) || !c.securityContext.privileged) &&
+          has(c.securityContext.capabilities) && !has(c.securityContext.capabilities.add) &&
+          has(c.securityContext.capabilities.drop) && 'ALL' in c.securityContext.capabilities.drop &&
+          (!has(c.ports) || c.ports.all(port, !has(port.hostPort) || port.hostPort == 0)) &&
+          has(c.resources) && has(c.resources.limits) && 'cpu' in c.resources.limits && 'memory' in c.resources.limits &&
+          quantity(string(c.resources.limits['cpu'])).compareTo(quantity({{ $p.maxCpu | toString | squote }})) <= 0 &&
+          quantity(string(c.resources.limits['memory'])).compareTo(quantity({{ $p.maxMemory | toString | squote }})) <= 0)
+      message: "the proxy container: no privilege escalation, no root, read-only root file system, all capabilities dropped, none added, no host ports, limits set"
+    # The repository, then nothing, a tag or a digest ("novnc-proxy-evil" is not it).
+    - expression: >-
+        variables.deploySpec == null || variables.deploySpec.containers.all(c,
+          c.image.startsWith({{ $p.vncProxyImagePrefix | squote }}) && (
+            c.image.size() == {{ len $p.vncProxyImagePrefix }} ||
+            c.image.substring({{ len $p.vncProxyImagePrefix }}).startsWith(':') ||
+            c.image.substring({{ len $p.vncProxyImagePrefix }}).startsWith('@')))
+      message: "{{ printf "the proxy image must be %s" $p.vncProxyImagePrefix }}"
+    # VirtualMachines: a disk on the clone, a masqueraded interface, a tablet, a TPM.
+    - expression: >-
+        variables.resource != 'virtualmachines' || request.operation == 'DELETE' || (
+          variables.isVmNs && object.spec.all(k, k in ['runStrategy', 'running', 'template']) &&
+          (!has(object.spec.template.metadata) || !has(object.spec.template.metadata.annotations) ||
+           object.spec.template.metadata.annotations.all(k, !k.startsWith('hooks.kubevirt.io'))))
+      message: "VirtualMachines only in kubevirt-vm namespaces, without data volume templates, instance types or hook sidecars"
+    - expression: >-
+        variables.vmSpec == null || (
+          !has(variables.vmSpec.accessCredentials) && !has(variables.vmSpec.tolerations) &&
+          !has(variables.vmSpec.nodeSelector) && !has(variables.vmSpec.affinity) && !has(variables.vmSpec.priorityClassName) &&
+          (!has(variables.vmSpec.schedulerName) || variables.vmSpec.schedulerName == 'default-scheduler') &&
+          has(variables.vmSpec.domain) && !has(variables.vmSpec.domain.launchSecurity) &&
+          (!has(variables.vmSpec.domain.firmware) || !has(variables.vmSpec.domain.firmware.kernelBoot)) &&
+          has(variables.vmSpec.domain.devices) &&
+          variables.vmSpec.domain.devices.all(k, k in ['disks', 'interfaces', 'inputs', 'tpm']) &&
+          (!has(variables.vmSpec.domain.devices.disks) || variables.vmSpec.domain.devices.disks.all(d,
+            has(d.disk) && has(d.disk.bus) && d.disk.bus == 'sata' && !has(d.cdrom) && !has(d.lun))) &&
+          (!has(variables.vmSpec.domain.devices.interfaces) || variables.vmSpec.domain.devices.interfaces.all(i,
+            has(i.masquerade) && !has(i.bridge) && !has(i.sriov) && !has(i.slirp) && !has(i.passt) && !has(i.binding))) &&
+          (!has(variables.vmSpec.domain.devices.inputs) || variables.vmSpec.domain.devices.inputs.all(i,
+            has(i.type) && i.type == 'tablet')) &&
+          (!has(variables.vmSpec.networks) || variables.vmSpec.networks.all(n, has(n.pod) && !has(n.multus))) &&
+          (!has(variables.vmSpec.volumes) || variables.vmSpec.volumes.all(v,
+            v.all(k, k in ['name', 'persistentVolumeClaim']) && has(v.persistentVolumeClaim) && has(v.persistentVolumeClaim.claimName))))
+      message: "VirtualMachines: devices only disk (sata), masquerade interface, tablet and TPM; volumes only the namespace's own claims; no host devices, GPUs, host or container disks, cloud-init, secrets, config maps, service accounts, scheduling overrides"
+    - expression: >-
+        variables.vmSpec == null || (
+          has(variables.vmSpec.domain.cpu) && has(variables.vmSpec.domain.cpu.cores) &&
+          variables.vmSpec.domain.cpu.cores >= 1 && variables.vmSpec.domain.cpu.cores <= {{ int $p.vmMaxCores }} &&
+          (!has(variables.vmSpec.domain.cpu.sockets) || variables.vmSpec.domain.cpu.sockets <= 1) &&
+          (!has(variables.vmSpec.domain.cpu.threads) || variables.vmSpec.domain.cpu.threads <= 1) &&
+          !has(variables.vmSpec.domain.cpu.dedicatedCpuPlacement) && !has(variables.vmSpec.domain.cpu.numa) &&
+          !has(variables.vmSpec.domain.cpu.realtime) && !has(variables.vmSpec.domain.cpu.isolateEmulatorThread) &&
+          has(variables.vmSpec.domain.memory) && has(variables.vmSpec.domain.memory.guest) &&
+          quantity(string(variables.vmSpec.domain.memory.guest)).compareTo(quantity({{ $p.vmMaxMemory | toString | squote }})) <= 0 &&
+          !has(variables.vmSpec.domain.memory.hugepages) && !has(variables.vmSpec.domain.memory.maxGuest) &&
+          (!has(variables.vmSpec.domain.resources) || ['requests', 'limits'].all(t,
+            !(t in variables.vmSpec.domain.resources) || (
+              (!('memory' in variables.vmSpec.domain.resources[t]) ||
+                quantity(string(variables.vmSpec.domain.resources[t]['memory'])).compareTo(quantity({{ $p.vmMaxMemory | toString | squote }})) <= 0) &&
+              (!('cpu' in variables.vmSpec.domain.resources[t]) ||
+                quantity(string(variables.vmSpec.domain.resources[t]['cpu'])).compareTo(quantity({{ $p.vmMaxCores | toString | squote }})) <= 0)))))
+      message: "{{ printf "VirtualMachines: 1 to %v cores, guest memory of at most %v, no dedicated CPUs, huge pages or NUMA" $p.vmMaxCores $p.vmMaxMemory }}"
+    # Volume claims of a kubevirt-vm namespace: a clone of a golden image.
+    - expression: >-
+        variables.resource != 'persistentvolumeclaims' || request.operation == 'DELETE' || !variables.isVmNs || (
+          has(object.spec.storageClassName) && object.spec.storageClassName == {{ $p.vmStorageClass | squote }} &&
+          has(object.spec.resources) && has(object.spec.resources.requests) && 'storage' in object.spec.resources.requests &&
+          quantity(string(object.spec.resources.requests['storage'])).compareTo(quantity({{ $p.vmMaxDisk | toString | squote }})) <= 0 &&
+          (!has(object.spec.accessModes) || object.spec.accessModes.all(m, m == 'ReadWriteOnce')) &&
+          !has(object.spec.selector) && (request.operation != 'CREATE' || !has(object.spec.volumeName)) &&
+          (!has(object.spec.dataSource) || (
+            object.spec.dataSource.kind == 'PersistentVolumeClaim' &&
+            (!has(object.spec.dataSource.apiGroup) || object.spec.dataSource.apiGroup == '') &&
+            !has(object.spec.dataSource.namespace))) &&
+          (!has(object.spec.dataSourceRef) || (
+            object.spec.dataSourceRef.kind == 'PersistentVolumeClaim' &&
+            (!has(object.spec.dataSourceRef.apiGroup) || object.spec.dataSourceRef.apiGroup == '') &&
+            has(object.spec.dataSourceRef.namespace) &&
+            {{ toJson $p.vmImageNamespaces }}.exists(n, n == object.spec.dataSourceRef.namespace))))
+      message: "{{ printf "claims in a kubevirt-vm namespace: class %s, at most %v, ReadWriteOnce, cloned from a claim in %s only" $p.vmStorageClass $p.vmMaxDisk (join ", " $p.vmImageNamespaces) }}"
     # --- ingress ----------------------------------------------------------
     # Hosts are <workload>-<deployment>.<appDomain>, the deployment being this
     # namespace's: a dep-* namespace can never route the platform's own hosts
@@ -261,25 +383,45 @@ spec:
     # cluster range. A rule without peers (= everything) is refused. The one
     # podSelector peer allowed is the empty selector, alone in its rule, TCP
     # only, in the policy named allow-intra-namespace (pods of the own namespace).
+    # In a kubevirt-vm namespace the policies select no pods or the pods with
+    # appstore.dhbw/role=vnc-proxy or =vm (render_vm), and two more shapes are
+    # accepted: allow-intra-namespace between the VMs (role=vm to role=vm), and
+    # allow-vnc-proxy-to-apiserver, egress of the proxy to any address on the
+    # ports 443 and 6443 only (the proxy reaches its VM through the API server).
     - expression: >-
-        variables.resource != 'networkpolicies' || request.operation == 'DELETE' ||
-        ('appstore.dhbw/vm-namespace' in variables.nsLabels && variables.nsLabels['appstore.dhbw/vm-namespace'] == 'true') || (
-          !has(object.spec.podSelector.matchLabels) && !has(object.spec.podSelector.matchExpressions) &&
+        variables.resource != 'networkpolicies' || request.operation == 'DELETE' || (
+          (variables.isVmNs ?
+            (object.spec.podSelector == {} ||
+             object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vnc-proxy'}} ||
+             object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}}) :
+            (!has(object.spec.podSelector.matchLabels) && !has(object.spec.podSelector.matchExpressions))) &&
           (!has(object.spec.ingress) || object.spec.ingress.all(rule,
             has(rule.from) && rule.from.size() > 0 && (
               rule.from.all(peer,
                 !has(peer.ipBlock) && !has(peer.podSelector) && has(peer.namespaceSelector) &&
                 peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': {{ $p.ingressNamespace | squote }}}}) ||
-              (object.metadata.name == 'allow-intra-namespace' && rule.from.size() == 1 &&
+              (!variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && rule.from.size() == 1 &&
                has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
                rule.from[0].podSelector == {} &&
-               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort)))))) &&
+               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort))) ||
+              (variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}} && rule.from.size() == 1 &&
+               has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
+               rule.from[0].podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}})))) &&
           (!has(object.spec.egress) || object.spec.egress.all(rule,
             has(rule.to) && rule.to.size() > 0 && (
-              (object.metadata.name == 'allow-intra-namespace' && rule.to.size() == 1 &&
+              (!variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && rule.to.size() == 1 &&
                has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
                rule.to[0].podSelector == {} &&
                has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort))) ||
+              (variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}} && rule.to.size() == 1 &&
+               has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
+               rule.to[0].podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}}) ||
+              (variables.isVmNs && object.metadata.name == 'allow-vnc-proxy-to-apiserver' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vnc-proxy'}} &&
+               rule.to.all(peer, has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) &&
+                 !has(peer.ipBlock.except) && peer.ipBlock.cidr in ['0.0.0.0/0', '::/0']) &&
+               has(rule.ports) && rule.ports.size() > 0 &&
+               rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int &&
+                 port.port in [443, 6443] && !has(port.endPort))) ||
               rule.to.all(peer,
               (has(peer.namespaceSelector) && has(peer.podSelector) && !has(peer.ipBlock) &&
                peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}} &&
@@ -287,7 +429,7 @@ spec:
               (has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) && has(peer.ipBlock.except) && (
                 (peer.ipBlock.cidr == '0.0.0.0/0' && {{ toJson $v4 }}.all(r, r in peer.ipBlock.except)) ||
                 (peer.ipBlock.cidr == '::/0' && {{ toJson $v6 }}.all(r, r in peer.ipBlock.except)))))))))
-      message: "network policies: ingress from the ingress controller only (or, in allow-intra-namespace, from all pods of the namespace over TCP), egress to DNS, to the internet without private and cluster ranges (or, in allow-intra-namespace, to all pods of the namespace over TCP)"
+      message: "network policies: ingress from the ingress controller only (or, in allow-intra-namespace, from all pods of the namespace over TCP; in a kubevirt-vm namespace from the VMs), egress to DNS, to the internet without private and cluster ranges (or, in allow-intra-namespace, to all pods of the namespace over TCP; in a kubevirt-vm namespace to the VMs, and from the proxy to the API server on 443 and 6443)"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
