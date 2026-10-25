@@ -57,7 +57,7 @@ for (const chain of CHAINS) {
 
     test.afterAll(async () => {
       // Always clean up: the deployment first (it destroys the namespace), then the app.
-      if (deploymentId && dozent) await removeDeployment(dozent.page, deploymentId).catch((e) => console.warn('cleanup deployment:', e))
+      if (deploymentId && dozent) await removeDeployment(dozent, deploymentId).catch((e) => console.warn('cleanup deployment:', e))
       // The app may exist although the test stopped before it learned its id: find it by name.
       if (admin) {
         const apps = await admin.api<{ appId: string; name: string }[]>('/apps/?limit=200')
@@ -184,12 +184,14 @@ async function smallestVm(page: Page): Promise<void> {
   await expect(picker.getByTestId('cpu-vm')).toContainText('2')
 }
 
-async function removeDeployment(page: Page, id: string): Promise<void> {
+/** Delete it the way a person does (the page's own buttons), then wait until the API no longer knows it. */
+async function removeDeployment(session: Session, id: string): Promise<void> {
+  const { page } = session
   await page.goto(`/deployments/${id}`)
   await page.getByTestId('btn-delete-deployment').click()
   await page.getByTestId('btn-confirm-delete').click()
   await expect
-    .poll(async () => (await page.request.get(`/api/deployments/${id}`)).status(), { timeout: 5 * 60_000, intervals: [5_000] })
+    .poll(async () => (await session.api(`/deployments/${id}`)).status, { timeout: 5 * 60_000, intervals: [5_000] })
     .toBe(404)
 }
 
