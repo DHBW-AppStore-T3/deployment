@@ -1,48 +1,35 @@
 # Web-LaTeX Editor
 
-Ein browserbasierter LaTeX-Editor, der pro Team eine dedizierte VM mit vollständiger
-LaTeX-Umgebung, Syntax-Highlighting und Live-PDF-Preview bereitstellt. Nutzer melden
-sich mit ihren persönlichen Zugangsdaten an und arbeiten in einem isolierten Workspace.
+Ein browserbasierter LaTeX-Editor mit vollständiger LaTeX-Umgebung, Syntax-Highlighting und
+Live-PDF-Preview. Die App läuft als Pods (App-Vertrag v2), nicht mehr als VMs: **ein
+Editor-Pod je Person** mit eigenem Speicher (2 GiB), HTTPS-Link und eigenem Passwort.
 
 ## User-Management
 
-Jeder Nutzer erhält einen individuellen Account mit E-Mail-Adresse als Benutzername
-und einem automatisch generierten Passwort. Die Zugangsdaten werden nach dem Deployment
-per Mail versendet. Innerhalb eines Teams teilen sich alle Nutzer dieselbe VM, arbeiten
-aber in voneinander getrennten Workspaces — jeder Nutzer hat sein eigenes Projektverzeichnis.
+Jede Person erhält ihren eigenen Pod und damit einen isolierten Workspace mit eigenem
+Projektverzeichnis. Projekte und Einstellungen liegen im persistenten Home-Verzeichnis und
+überstehen Pause/Fortsetzen und Neustart.
 
-## VM-Deployment
+Link, Benutzername und Passwort stehen nach dem Deployment unter „Meine Zugänge“. Der
+Benutzername ist der Plattform-Benutzername, das Passwort wird automatisch generiert.
 
-Es wird **eine VM pro Team** deployed. Bei zwei Teams entstehen zwei VMs.
-Alle Nutzer eines Teams greifen auf dieselbe VM zu, erreichen den Editor jedoch
-auf individuellen Ports (ab Port 8080, aufsteigend pro Nutzer).
+## Deployment
 
-## Deployment-Dauer
-
-| Phase | Dauer |
-|---|---|
-| Packer Image Build | ca. 15–20 Minuten (einmalig) |
-| Terraform Apply (pro Team) | ca. 3–5 Minuten |
-| VM-Boot + cloud-init | ca. 2–3 Minuten |
-| **Gesamt (erstmalig)** | **ca. 20–30 Minuten** |
-
-Bei Deployments mit einem bereits vorhandenen Image entfällt der Packer-Build —
-dann ca. 5–8 Minuten gesamt.
+Es wird **ein Pod pro Person** deployed, nicht mehr eine VM pro Team. Mitglieder desselben
+Teams arbeiten in getrennten Pods und teilen sich nur das Startprojekt (siehe unten).
 
 ## Konfigurierbare Variablen
 
 | Variable | Beschreibung | Pflicht |
 |---|---|---|
-| `assignment_files` | ZIP-Datei pro Team mit dem Startprojekt (LaTeX-Dateien) | **Ja** |
-| `network_uuid` | UUID des internen Netzwerks | Ja (Default vorhanden) |
-| `floating_ip_pool` | Name des External Networks für öffentliche IPs | Ja (Default vorhanden) |
-| `shared_secgroup_id` | ID der Security Group | Ja (Default vorhanden) |
+| `starter` | ZIP-Datei pro Team mit dem Startprojekt (LaTeX-Dateien), `master.tex` im Root, max. 1 MiB | Nein |
 
-### Wichtig: Aufgabendateien (`assignment_files`)
+### Startprojekt (`starter`)
 
-Für jedes Team **muss** eine ZIP-Datei hochgeladen werden. Die ZIP wird beim
-VM-Start entpackt und bildet den initialen LaTeX-Workspace des Teams. Die ZIP muss mindestens
-eine `master.tex` im Root enthalten.
+Pro Team kann eine ZIP-Datei hochgeladen werden. Sie muss mindestens eine `master.tex` im
+Root enthalten und darf höchstens 1 MiB groß sein. Beim ersten Öffnen des Editors wird die ZIP
+im persönlichen Workspace jeder Person des Teams entpackt. Ohne ZIP startet der Editor mit dem
+mitgelieferten Demo-Projekt.
 
 ## Features
 
