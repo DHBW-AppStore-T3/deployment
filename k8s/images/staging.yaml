@@ -12,5 +12,5 @@ images:
     appstoreMcp: "sha256:4b3992741bae983fa2275d5ca322b21f14b5fe22154630fa52157985487727f3"  # sha-3013285
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
-    selfServiceUi: "sha256:0ef450b0dbe08bb375d122c0a9a4312c24a57e60c6597def4940e204e13a10ab"  # sha-949bee0
+    selfServiceUi: "sha256:008c591e2e13e6994808b366d60e3d10d1df28ef9294a28e071c87d22182fc2e"  # sha-688915a
     moodle: "sha256:337a94c5dab5b23db310e8ca62e57ff0674d89bfe8a0df26b39e6ca2aefef931"  # sha-f13fc38
