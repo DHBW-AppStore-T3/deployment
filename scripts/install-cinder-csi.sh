@@ -15,48 +15,70 @@ export KUBECONFIG
 
 echo "==> Reading credentials from $CLOUDS_YAML (cloud: $CLOUD_NAME)"
 
-# Extract fields using python3 (available on macOS without extra installs)
-AUTH_URL=$(python3 -c "
-import yaml, sys
-c = yaml.safe_load(open('$CLOUDS_YAML'))
-clouds = c.get('clouds', c)
-cloud = clouds['$CLOUD_NAME']
-auth = cloud.get('auth', {})
-# Support both application credentials and user/password
-if 'auth_url' in auth:
-    print(auth['auth_url'])
-elif 'auth' in cloud and 'auth_url' in cloud['auth']:
-    print(cloud['auth']['auth_url'])
-else:
-    sys.exit('Cannot find auth_url')
-")
+# Extract fields from clouds.yaml using only Python stdlib (no pyyaml needed).
+# Works for the standard OpenStack Application Credentials format.
+_py_extract() {
+  python3 -I - "$CLOUDS_YAML" "$CLOUD_NAME" "$1" "$2" <<'PYEOF'
+import sys, re
 
-APP_CRED_ID=$(python3 -c "
-import yaml, sys
-c = yaml.safe_load(open('$CLOUDS_YAML'))
-clouds = c.get('clouds', c)
-cloud = clouds['$CLOUD_NAME']
-auth = cloud.get('auth', {})
-v = auth.get('application_credential_id', auth.get('application_credential_secret', ''))
-print(auth.get('application_credential_id', ''))
-" 2>/dev/null || echo "")
+clouds_file, cloud_name, field, default = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
-APP_CRED_SECRET=$(python3 -c "
-import yaml, sys
-c = yaml.safe_load(open('$CLOUDS_YAML'))
-clouds = c.get('clouds', c)
-cloud = clouds['$CLOUD_NAME']
-auth = cloud.get('auth', {})
-print(auth.get('application_credential_secret', ''))
-" 2>/dev/null || echo "")
+with open(clouds_file) as f:
+    lines = f.readlines()
 
-REGION=$(python3 -c "
-import yaml
-c = yaml.safe_load(open('$CLOUDS_YAML'))
-clouds = c.get('clouds', c)
-cloud = clouds['$CLOUD_NAME']
-print(cloud.get('region_name', 'RegionOne'))
-" 2>/dev/null || echo "RegionOne")
+# Find the cloud block, then the auth sub-block, then the field.
+# Simple line-by-line scan — sufficient for the flat OpenStack clouds.yaml format.
+in_clouds = False
+in_cloud = False
+in_auth = False
+cloud_indent = auth_indent = 0
+
+for line in lines:
+    stripped = line.lstrip()
+    indent = len(line) - len(stripped)
+    key_val = stripped.rstrip('\n')
+
+    if re.match(r'^clouds\s*:', key_val):
+        in_clouds = True
+        continue
+
+    if in_clouds and not in_cloud:
+        m = re.match(r'^(' + re.escape(cloud_name) + r')\s*:', key_val)
+        if m and indent > 0:
+            in_cloud = True
+            cloud_indent = indent
+            continue
+
+    if in_cloud:
+        if indent <= cloud_indent and stripped and not stripped.startswith('#'):
+            break  # left the cloud block
+        if re.match(r'^auth\s*:', key_val):
+            in_auth = True
+            auth_indent = indent
+            continue
+        if in_auth:
+            if indent <= auth_indent and stripped and not stripped.startswith('#'):
+                in_auth = False
+            else:
+                m = re.match(r'^' + re.escape(field) + r'\s*:\s*(.+)', key_val)
+                if m:
+                    print(m.group(1).strip().strip('"\''))
+                    sys.exit(0)
+        # region_name is at cloud level, not auth level
+        if field == 'region_name':
+            m = re.match(r'^region_name\s*:\s*(.+)', key_val)
+            if m:
+                print(m.group(1).strip().strip('"\''))
+                sys.exit(0)
+
+print(default)
+PYEOF
+}
+
+AUTH_URL=$(_py_extract auth_url "")
+APP_CRED_ID=$(_py_extract application_credential_id "")
+APP_CRED_SECRET=$(_py_extract application_credential_secret "")
+REGION=$(_py_extract region_name "RegionOne")
 
 echo "==> auth_url: $AUTH_URL  region: $REGION"
 
