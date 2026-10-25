@@ -7,7 +7,8 @@ name: K8s - roll out an image
 # Writes the digest into k8s/images/<staging|prod>.yaml of that branch; Argo CD
 # of that environment follows. The caller passes the digest it pushed, so this
 # workflow needs no read access to the components' (private) packages.
-#   dev   a commit on dev                       -> staging
+#   dev   a pull request on dev, merged at once -> staging (dev takes changes only
+#         through pull requests: ruleset "dev: only through pull requests")
 #   main  a pull request on main                -> prod, merged by a person who
 #         checked it (main requires the Gitleaks check, which this workflow
 #         dispatches on the bump branch). With the repository variable
@@ -82,12 +83,26 @@ jobs:
           # pull_request workflows and left the PR BLOCKED on the required check.
           SKIP=""; [ "$ENV" = staging ] && SKIP=" [skip ci]"
           git commit -m "chore(k8s): roll out ${COMPONENT} ${TAG} on ${ENV}${SKIP}"
-      - name: Staging - push to dev
+      - name: Staging - pull request into dev, merged at once
         if: steps.pin.outputs.changed == 'true' && github.ref_name == 'dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPONENT: ${{ inputs.component }}
+          TAG: ${{ inputs.tag }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          for attempt in 1 2 3; do
-            git pull --rebase origin dev && git push origin HEAD:dev && exit 0
+          # dev accepts changes only through pull requests (no direct push, not even
+          # for this workflow); dev needs no approval, so the bump merges itself.
+          BR="bump/staging-${COMPONENT}-${TAG}-${RUN_ID}"
+          SUBJECT="chore(k8s): roll out ${COMPONENT} ${TAG} on staging [skip ci]"
+          git push origin "HEAD:refs/heads/${BR}"
+          gh pr create --base dev --head "$BR" --title "$SUBJECT" \
+            --body "Written by k8s-bump.yml after the CI of ${COMPONENT} pushed ${TAG} from dev; merges itself."
+          for _ in 1 2 3; do
+            gh pr merge "$BR" --squash --delete-branch --subject "$SUBJECT" && exit 0
+            # dev moved on (another bump): put the commit on top again and retry.
             sleep 5
+            git fetch origin dev && git rebase origin/dev && git push --force origin "HEAD:refs/heads/${BR}"
           done
           exit 1
       - name: Prod - pull request into main

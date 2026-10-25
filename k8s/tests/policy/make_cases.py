@@ -19,6 +19,7 @@ SA = f"system:serviceaccount:{NS}:appstore-t3-pod-deployer"
 ZONE = "t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
 DEPLOYER_ROLE = f"appstore-t3-{NS}-deployer"
 READER_ROLE = f"appstore-t3-{NS}-reader"
+VNC_PROXY_ROLE = f"appstore-t3-{NS}-vnc-proxy"
 DIGEST = "sha256:" + "a" * 64
 
 GROUPS = {
@@ -33,6 +34,8 @@ GROUPS = {
     "Ingress": ("networking.k8s.io", "v1", "ingresses"),
     "NetworkPolicy": ("networking.k8s.io", "v1", "networkpolicies"),
     "RoleBinding": ("rbac.authorization.k8s.io", "v1", "rolebindings"),
+    "ServiceAccount": ("", "v1", "serviceaccounts"),
+    "ReferenceGrant": ("gateway.networking.k8s.io", "v1beta1", "referencegrants"),
 }
 
 fixtures = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -68,13 +71,13 @@ def mutated(obj, fn):
     return out
 
 
-def binding(name, role, account):
+def binding(name, role, account, account_ns=None):
     return {
         "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
         "metadata": {"name": name, "namespace": DEP_NS,
                      "labels": {"appstore.dhbw/deployment-id": dep_id, "app.kubernetes.io/managed-by": "appstore"}},
         "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": role},
-        "subjects": [{"kind": "ServiceAccount", "name": account, "namespace": NS}],
+        "subjects": [{"kind": "ServiceAccount", "name": account, "namespace": account_ns or NS}],
     }
 
 
@@ -88,6 +91,18 @@ for obj in objects[1:]:
 deployer_rb = binding("appstore-deployer", DEPLOYER_ROLE, "appstore-t3-pod-deployer")
 reader_rb = binding("appstore-api-reader", READER_ROLE, "appstore-t3-api")
 case("deployer role binding", "allow", deployer_rb)
+# kubevirt-vm namespaces: the noVNC proxy's own account and its role.
+proxy_sa = {"apiVersion": "v1", "kind": "ServiceAccount",
+            "metadata": {"name": "vnc-proxy", "namespace": DEP_NS,
+                         "labels": {"appstore.dhbw/deployment-id": dep_id, "app.kubernetes.io/managed-by": "appstore"}}}
+case("vnc-proxy service account", "allow", proxy_sa)
+case("vnc-proxy service account, re-apply", "allow", proxy_sa, "UPDATE", old=proxy_sa)
+case("vnc-proxy role binding", "allow", binding("appstore-vnc-proxy", VNC_PROXY_ROLE, "vnc-proxy", DEP_NS))
+case("any other service account", "deny", mutated(proxy_sa, lambda s: s["metadata"].update(name="admin")))
+case("service account with a pull secret", "deny", mutated(proxy_sa, lambda s: s.update(imagePullSecrets=[{"name": "x"}])))
+case("vnc-proxy role bound to a foreign account", "deny", binding("appstore-vnc-proxy", VNC_PROXY_ROLE, "vnc-proxy", "kube-system"))
+case("vnc-proxy role bound to another account", "deny", binding("appstore-vnc-proxy", VNC_PROXY_ROLE, "default", DEP_NS))
+case("vnc-proxy role bound to the pod deployer", "deny", binding("appstore-vnc-proxy", VNC_PROXY_ROLE, "appstore-t3-pod-deployer"))
 case("reader role binding", "allow", reader_rb)
 sts = next(o for o in objects if o["kind"] == "StatefulSet")
 ingress = next(o for o in objects if o["kind"] == "Ingress")
@@ -311,3 +326,45 @@ placement("toleration with Exists", "deny", lambda p: p["tolerations"][0].update
 placement("toleration seconds", "deny", lambda p: p["tolerations"][0].update(tolerationSeconds=10))
 json.dump(cases, open(sys.argv[3], "w", encoding="utf-8"), indent=1)
 print(f"{len(cases)} placement cases")
+
+# ---------------------------------------------------------------- clone grants (own policy)
+cases.clear()
+IMAGE_NS = "vm-poc"
+GRANT_NAME = f"clone-{DEP_NS}"
+
+
+def grant(**over):
+    obj = {
+        "apiVersion": "gateway.networking.k8s.io/v1beta1", "kind": "ReferenceGrant",
+        "metadata": {"name": GRANT_NAME, "namespace": IMAGE_NS},
+        "spec": {"from": [{"group": "", "kind": "PersistentVolumeClaim", "namespace": DEP_NS}],
+                 "to": [{"group": "", "kind": "PersistentVolumeClaim", "name": "windows11-matlab-golden"}]},
+    }
+    for key, value in over.items():
+        obj["spec"][key] = value
+    return obj
+
+
+def grant_case(name, expect, obj=None, operation="CREATE", old=None, **kw):
+    case(f"grant: {name}", expect, obj, operation, old=old, namespace=kw.pop("namespace", IMAGE_NS), **kw)
+
+
+good = grant()
+grant_case("create", "allow", good)
+grant_case("re-apply", "allow", good, "UPDATE", old=good)
+grant_case("delete", "allow", None, "DELETE", old=good)
+grant_case("another identity is not matched", "allow", grant(to=[{"group": "", "kind": "Secret", "name": "x"}]),
+           user="system:serviceaccount:kube-system:somebody")
+grant_case("in the platform namespace", "deny", mutated(good, lambda g: g["metadata"].update(namespace=NS)), namespace=NS)
+grant_case("in kube-system", "deny", mutated(good, lambda g: g["metadata"].update(namespace="kube-system")), namespace="kube-system")
+grant_case("not named after its namespace", "deny", mutated(good, lambda g: g["metadata"].update(name="clone-dep-00000000")))
+grant_case("badly named", "deny", mutated(good, lambda g: g["metadata"].update(name="all")))
+grant_case("for a namespace outside dep-*", "deny", mutated(good, lambda g: (g["metadata"].update(name="clone-kube-system"), g["spec"]["from"][0].update(namespace="kube-system"))))
+grant_case("for two namespaces", "deny", grant(**{"from": good["spec"]["from"] + [{"group": "", "kind": "PersistentVolumeClaim", "namespace": "dep-deadbeef"}]}))
+grant_case("from Secrets", "deny", grant(**{"from": [{"group": "", "kind": "Secret", "namespace": DEP_NS}]}))
+grant_case("to Secrets", "deny", grant(to=[{"group": "", "kind": "Secret", "name": "x"}]))
+grant_case("to two kinds", "deny", grant(to=good["spec"]["to"] + [{"group": "", "kind": "Secret", "name": "x"}]))
+grant_case("to every claim", "deny", grant(to=[{"group": "", "kind": "PersistentVolumeClaim"}]))
+grant_case("delete a foreign grant", "deny", None, "DELETE", old=mutated(good, lambda g: g["metadata"].update(name="keep-me")))
+json.dump(cases, open(sys.argv[4], "w", encoding="utf-8"), indent=1)
+print(f"{len(cases)} grant cases")

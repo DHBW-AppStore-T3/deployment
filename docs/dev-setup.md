@@ -213,6 +213,8 @@ Pod-Deployments über `FakeKube` generieren echte `terraform_outputs` mit Zugang
 
 Der Realm wird beim allerersten Start aus `keycloak/dhbw-realm.json` importiert (Strategy: `IGNORE_EXISTING`). Änderungen an der Datei greifen erst nach `make clean-dev && make init`, da Keycloak einen vorhandenen Realm nicht überschreibt.
 
+Das Login-Theme `dhbw` liegt in `k8s/manifests/platform/files/themes/dhbw` und wird von hier und von Staging/Prod gemeinsam genutzt.
+
 Wer den Realm manuell geändert hat (z.B. neuen User über die Admin Console angelegt) und den Stand in die JSON-Datei zurückschreiben will:
 
 ```bash

@@ -101,7 +101,11 @@ through the AppStore and run as pods; see the app-registry repository.
   master realm's login pages are built for <http://localhost:8080> (the job
   `keycloak-admin-url` gives the master realm that frontend URL after each
   sync). Realm files are imported into a new database only; a running realm
-  is changed in the admin console. Demo users only on staging.
+  is changed in the admin console, except `loginTheme`: the job `keycloak-config`
+  sets it in the live realm after each sync. The login page is the theme `dhbw`
+  (T3 look, `manifests/platform/files/themes/dhbw`, mounted from ConfigMaps
+  `keycloak-theme*`; the local dev stack mounts the same files; a changed theme
+  restarts Keycloak). Demo users only on staging.
 
 ## The second UI: self-service-ui
 

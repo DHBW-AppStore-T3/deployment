@@ -25,6 +25,8 @@ services:
       - "${KEYCLOAK_PORT:-8081}:8081"
     volumes:
       - ./keycloak/dhbw-realm.json:/opt/keycloak/data/import/dhbw-realm.json:ro
+      # Login theme dhbw; the same files the k8s platform chart mounts in staging and prod.
+      - ./k8s/manifests/platform/files/themes:/opt/keycloak/themes:ro
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q 'UP' <&3"]
       interval: 10s
@@ -74,7 +76,6 @@ services:
       OIDC_ALLOWED_CLIENTS: "appstore-frontend"
       OIDC_AUDIENCE: "appstore-api"
       LTI13_SESSION_SECRET: "change-me-in-dev"
-      HANDOFF_SESSION_SECRET: "change-me-in-dev"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

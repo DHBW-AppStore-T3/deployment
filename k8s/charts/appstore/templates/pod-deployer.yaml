@@ -63,6 +63,7 @@ spec:
             # for the API (rbac.yaml).
             - { name: K8S_DEPLOYER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "deployer") | quote }} }
             - { name: K8S_READER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "reader") | quote }} }
+            - { name: K8S_VNC_PROXY_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "vnc-proxy") | quote }} }
             - { name: K8S_WORKER_SERVICE_ACCOUNT, value: {{ $name | quote }} }
             - { name: K8S_WORKER_NAMESPACE, value: {{ .Release.Namespace | quote }} }
             - { name: K8S_API_SERVICE_ACCOUNT, value: {{ include "appstore.name" (dict "context" . "component" "api") | quote }} }

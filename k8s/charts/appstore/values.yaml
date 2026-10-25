@@ -90,6 +90,13 @@ podApps:
   maxCpu: "4"
   maxMemory: 8Gi
   maxStorage: 20Gi
+  # Namespaces a kubevirt-vm may clone its golden image from. The pod deployer
+  # grants each deployment's claim access to the image there (a ReferenceGrant
+  # per deployment, see rbac.yaml and admission-policy.yaml); an app naming any
+  # other namespace is refused. Needs CrossNamespaceVolumeDataSource
+  # (scripts/enable-cross-namespace-clone.sh).
+  vmImageNamespaces:
+    - vm-poc
   # Workloads (one per team or person) per deployment, and per owner across
   # their live pod deployments (0: no budget).
   maxWorkloadsPerDeployment: 60
@@ -149,7 +156,11 @@ selfServiceUi:
     # Hard end of a browser session (the access token is renewed every minute
     # while the tab is in use).
     cookieExpire: 8h
-    cookieName: _ssu_oauth2
+    # __Host-: browsers accept the cookie only from this very host (Secure,
+    # Path=/, no Domain), so a page of another host under the same site, e.g. a
+    # student app, cannot plant one (cookie tossing, review S3). Renaming it
+    # signs everybody out once.
+    cookieName: __Host-ssu_oauth2
     resources:
       requests: { cpu: 10m, memory: 32Mi }
       limits: { cpu: 200m, memory: 64Mi }
