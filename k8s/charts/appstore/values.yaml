@@ -97,6 +97,16 @@ podApps:
   # (scripts/enable-cross-namespace-clone.sh).
   vmImageNamespaces:
     - vm-poc
+  # What a kubevirt-vm namespace may contain (admission-policy.yaml). The
+  # renderer never asks for more: VmSpec allows 1-16 cores, 2-32 GiB and
+  # 40-200 GiB of disk.
+  vmMaxCores: 16
+  vmMaxMemory: 32Gi
+  vmMaxDisk: 200Gi
+  vmStorageClass: cinder
+  # The noVNC proxy Deployment of a kubevirt-vm namespace: its image must be this
+  # repository, followed by nothing, a :tag or an @digest.
+  vncProxyImagePrefix: ghcr.io/dhbw-appstore-t3/novnc-proxy
   # Workloads (one per team or person) per deployment, and per owner across
   # their live pod deployments (0: no budget).
   maxWorkloadsPerDeployment: 60
@@ -226,3 +236,20 @@ network:
   # Addresses the API and the VM executor may reach although they are in a
   # private range (e.g. an internal OpenStack endpoint); CIDRs.
   extraEgressAllow: []
+
+# ClamAV virus scanner for uploaded files. Disabled by default; enable per environment
+# once you have decided on resources (1-2 GiB RAM for the signature database) and who
+# watches the freshclam staleness alert. When enabled the API fails closed: a scanner
+# outage blocks all file uploads (503 upload_scan_unavailable).
+# See the API settings CLAMD_HOST / CLAMD_PORT / CLAMD_TIMEOUT and .github#13.
+clamav:
+  enabled: false
+  replicas: 2
+  # Pin by digest before enabling in production.
+  # Latest stable: docker.io/clamav/clamav (check https://hub.docker.com/r/clamav/clamav/tags)
+  image: "clamav/clamav:1.4"
+  resources:
+    requests: { cpu: 100m, memory: 1536Mi }
+    # clamd holds the old and the new database side by side while it reloads
+    # after a freshclam update (~1 GiB in use, about double at the peak).
+    limits: { cpu: "1", memory: 3Gi }

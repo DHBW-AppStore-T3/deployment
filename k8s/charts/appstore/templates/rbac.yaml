@@ -102,10 +102,24 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "list", "watch", "create", "patch"]
-  # KubeVirt VMs for runtime kubevirt-vm
+  # KubeVirt VMs for runtime kubevirt-vm. The platform applies VirtualMachines
+  # and nothing else:
+  #   get/list/watch  read the VM back (app/k8s/kube.py)
+  #   create, patch   server-side apply of the rendered VirtualMachine (create
+  #                   the first time, patch afterwards; pause/resume of a VM
+  #                   is a patch of runStrategy)
+  #   update          replace of an existing VM (not used by the renderer today)
+  #   delete          removing a single VM; normally the namespace goes as a whole
   - apiGroups: ["kubevirt.io"]
-    resources: ["virtualmachines", "virtualmachineinstances"]
+    resources: ["virtualmachines"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # VirtualMachineInstances are made and removed by KubeVirt's controller from
+  # the VirtualMachine, never by the pod deployer (a VMI created directly would
+  # bypass the VirtualMachine content check of the admission policy). Read only:
+  # the worker lists them to wait for "Running" (app/k8s/kube.py::_vmis).
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachineinstances"]
+    verbs: ["get", "list", "watch"]
 ---
 # Bound by the pod deployer to the noVNC proxy's service account in each
 # kubevirt-vm namespace: to open the VNC stream of the VMs there, nothing else.

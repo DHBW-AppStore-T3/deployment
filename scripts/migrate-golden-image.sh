@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Migrate the win11 PoC PVC to a Cinder Golden-Image PVC in namespace vm-images.
+# Migrate the win11 PoC PVC to a Cinder Golden-Image PVC in namespace vm-poc
+# (podApps.vmImageNamespaces, the namespace a kubevirt-vm may clone from).
 #
 # What this does:
-#   1. Creates namespace vm-images (if not exists)
+#   1. Creates namespace vm-poc (if not exists)
 #   2. Creates a Cinder PVC windows11-matlab-golden (90 Gi)
 #   3. Starts a migration pod that dd-copies from local-path PVC to Cinder PVC
 #   4. Verifies integrity via block count
 #
 # Prerequisites: Cinder CSI installed (run install-cinder-csi.sh first)
-# Usage: bash deployment/scripts/migrate-golden-image.sh
+# Usage: KUBECONFIG=/path/to/kubeconfig bash scripts/migrate-golden-image.sh
 set -euo pipefail
 
-KUBECONFIG="${KUBECONFIG:-/Users/I751109/Documents/coding-projects/DHBW-AppStore/k8s-credentials/kubeconfig-ma_wwi_24sea_appstore_g3.yaml}"
+KUBECONFIG="${KUBECONFIG:?set KUBECONFIG to the kubeconfig of the cluster}"
 export KUBECONFIG
-K="kubectl --kubeconfig $KUBECONFIG"
+K="kubectl"
 
 SRC_NS="vm-poc"
 SRC_PVC="win11-disk"
@@ -25,7 +26,7 @@ CINDER_SC="cinder"
 # 90 Gi = win11-disk (88 Gi) + 2 Gi margin
 DISK_SIZE="90Gi"
 
-echo "==> Step 1: Ensure vm-images namespace exists"
+echo "==> Step 1: Ensure the $DST_NS namespace exists"
 $K create namespace "$DST_NS" --dry-run=client -o yaml | $K apply -f -
 
 echo "==> Step 2: Verify Cinder StorageClass exists"
@@ -79,7 +80,8 @@ metadata:
   namespace: ${DST_NS}
 spec:
   restartPolicy: Never
-  # Run privileged so dd can access raw block if needed
+  # Runs as root (not privileged) to read the source volume's files; the
+  # destination is a filesystem volume, not a raw block device.
   securityContext:
     runAsUser: 0
   containers:
@@ -126,7 +128,7 @@ spec:
 EOF
 
 echo "==> Step 7: Wait for migration pod to complete (this takes ~5-15 minutes for 88 GiB)"
-echo "    Watch live: kubectl --kubeconfig $KUBECONFIG logs -f golden-image-migrator -n $DST_NS"
+echo "    Watch live: kubectl logs -f golden-image-migrator -n $DST_NS"
 for i in $(seq 1 180); do
   PHASE=$($K get pod golden-image-migrator -n "$DST_NS" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
   echo "  [$i/180] pod phase: $PHASE"
@@ -152,5 +154,5 @@ echo ""
 echo "Next steps:"
 echo "  1. Restart the win11 PoC VM (optional): kubectl patch vm win11 -n vm-poc --type=merge -p '{\"spec\":{\"runStrategy\":\"Always\"}}'"
 echo "  2. Set imageRef: $DST_PVC in your appstore.yaml vm block"
-echo "  3. The render.py will clone from vm-images/$DST_PVC via dataSourceRef for each deployment"
+echo "  3. The render.py will clone from $DST_NS/$DST_PVC via dataSourceRef for each deployment"
 echo "======================================================"
