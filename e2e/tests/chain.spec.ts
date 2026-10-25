@@ -127,8 +127,18 @@ for (const chain of CHAINS) {
       // Each step is waited for before the next click: a click on a step that is still changing is lost.
       await page.getByRole('button', { name: 'Deployen', exact: true }).click()
 
-      await expect(page).toHaveURL(/\/deployments\/[0-9a-f-]{36}/, { timeout: 60_000 })
-      deploymentId = page.url().match(/deployments\/([0-9a-f-]{36})/)![1]
+      // The app returns to the list; the id comes from the API, by the name this run gave it.
+      await expect(page).toHaveURL(/\/deployments$/, { timeout: 60_000 })
+      await expect
+        .poll(
+          async () => {
+            const list = await dozent.api<{ deploymentId: string; name: string }[]>('/deployments/')
+            deploymentId = list.body?.find((d) => d.name === deploymentName)?.deploymentId ?? ''
+            return deploymentId
+          },
+          { timeout: 60_000, message: 'the new deployment is not in the list' },
+        )
+        .not.toBe('')
     })
 
     test('it runs, and the link answers', async () => {
