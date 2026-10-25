@@ -13,6 +13,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'https://appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site',
+    // Locally the installed Chrome can be used (E2E_CHANNEL=chrome) instead of downloading Chromium.
+    channel: process.env.E2E_CHANNEL || undefined,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ignoreHTTPSErrors: false,
