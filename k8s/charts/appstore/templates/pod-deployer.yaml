@@ -4,9 +4,9 @@
 {{- $v := .Values.podDeployer -}}
 # The pod deployer (.github#4): the jobs of pod apps (queue "pods"). It renders
 # every Kubernetes object itself from the app's validated appstore.yaml and
-# runs nothing from the app repositories: image worker-pods, no OpenTofu,
-# Packer or OpenStack CLI, no root. Its account may act only in the dep-*
-# namespaces it creates (rbac.yaml, admission-policy.yaml).
+# runs nothing from the app repositories: image worker-pods, no root.
+# Its account may act only in the dep-* namespaces it creates
+# (rbac.yaml, admission-policy.yaml).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
