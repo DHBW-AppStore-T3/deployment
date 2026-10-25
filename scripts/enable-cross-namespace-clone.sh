@@ -10,8 +10,11 @@
 #   2. cinder-csi: the same gate on the external-provisioner, and its right to read
 #      ReferenceGrants. `helm upgrade` of cinder-csi resets both: run this again after it.
 #
-# Usage: bash scripts/enable-cross-namespace-clone.sh   (KUBECONFIG must point at the cluster)
+# Usage: KUBECONFIG=/path/to/kubeconfig bash scripts/enable-cross-namespace-clone.sh
 set -euo pipefail
+
+: "${KUBECONFIG:?set KUBECONFIG to the kubeconfig of the cluster}"
+export KUBECONFIG
 
 GATE="CrossNamespaceVolumeDataSource"
 DROPIN=/host/etc/rancher/k3s/config.yaml.d/20-cross-namespace-volume-datasource.yaml

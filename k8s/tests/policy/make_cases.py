@@ -1,6 +1,6 @@
 """Admission requests for the pod deployer's policy, and what it must answer.
 
-    python make_cases.py fixtures.json cases.json placement.json
+    python make_cases.py fixtures.json cases.json placement.json grants.json vm.json
 
 fixtures.json holds what the renderer produces (render_fixtures.py); every
 request the pod deployer really sends with it must be allowed, every variant
@@ -35,6 +35,9 @@ GROUPS = {
     "NetworkPolicy": ("networking.k8s.io", "v1", "networkpolicies"),
     "RoleBinding": ("rbac.authorization.k8s.io", "v1", "rolebindings"),
     "ServiceAccount": ("", "v1", "serviceaccounts"),
+    "Deployment": ("apps", "v1", "deployments"),
+    "VirtualMachine": ("kubevirt.io", "v1", "virtualmachines"),
+    "VirtualMachineInstance": ("kubevirt.io", "v1", "virtualmachineinstances"),
     "ReferenceGrant": ("gateway.networking.k8s.io", "v1beta1", "referencegrants"),
 }
 
@@ -368,3 +371,255 @@ grant_case("to every claim", "deny", grant(to=[{"group": "", "kind": "Persistent
 grant_case("delete a foreign grant", "deny", None, "DELETE", old=mutated(good, lambda g: g["metadata"].update(name="keep-me")))
 json.dump(cases, open(sys.argv[4], "w", encoding="utf-8"), indent=1)
 print(f"{len(cases)} grant cases")
+
+# ---------------------------------------------------------------- kubevirt-vm namespace (own cases)
+# Hand-written from app/k8s/render.py::render_vm of the backend (fixtures.json
+# holds pod renders only): what the platform really creates in a VM namespace,
+# and every way a misused token could abuse the privileged namespace.
+cases.clear()
+vm_ns = mutated(ns_obj, lambda n: n["metadata"]["labels"].update({
+    "pod-security.kubernetes.io/enforce": "privileged", "appstore.dhbw/vm-namespace": "true"}))
+ROLE = "appstore.dhbw/role"
+PREFIX = "ghcr.io/dhbw-appstore-t3/novnc-proxy"
+base_labels = {"appstore.dhbw/deployment-id": dep_id, "app.kubernetes.io/managed-by": "appstore"}
+
+
+def vm_case(name, expect, obj=None, operation="CREATE", old=None, **kw):
+    kind = kw.pop("kind", None)
+    case(name, expect, obj, operation, old=old, ns_object=vm_ns, kind=kind, **kw)
+
+
+def vm_meta(name):
+    return {"name": name, "namespace": DEP_NS, "labels": dict(base_labels)}
+
+
+vm_pvc = {"apiVersion": "v1", "kind": "PersistentVolumeClaim", "metadata": vm_meta("win-disk"),
+          "spec": {"storageClassName": "cinder", "accessModes": ["ReadWriteOnce"],
+                   "resources": {"requests": {"storage": "80Gi"}},
+                   "dataSourceRef": {"apiGroup": "", "kind": "PersistentVolumeClaim",
+                                     "name": "windows11-matlab-golden", "namespace": "vm-poc"}}}
+virtual_machine = {
+    "apiVersion": "kubevirt.io/v1", "kind": "VirtualMachine", "metadata": vm_meta("win"),
+    "spec": {"runStrategy": "Always", "template": {
+        "metadata": {"labels": {"vm.kubevirt.io/name": "win", ROLE: "vm"}},
+        "spec": {
+            "domain": {
+                "cpu": {"cores": 4}, "memory": {"guest": "8Gi"},
+                "devices": {"disks": [{"name": "root", "disk": {"bus": "sata"}}],
+                            "interfaces": [{"name": "default", "masquerade": {}, "model": "e1000e"}],
+                            "inputs": [{"name": "tablet", "type": "tablet", "bus": "usb"}], "tpm": {}},
+                "features": {"hyperv": {}, "acpi": {}},
+                "firmware": {"bootloader": {"efi": {"secureBoot": False}}}},
+            "networks": [{"name": "default", "pod": {}}],
+            "volumes": [{"name": "root", "persistentVolumeClaim": {"claimName": "win-disk"}}]}}},
+}
+proxy_deploy = {
+    "apiVersion": "apps/v1", "kind": "Deployment", "metadata": vm_meta("win-novnc"),
+    "spec": {"replicas": 1,
+             "selector": {"matchLabels": {"appstore.dhbw/workload": "win-novnc"}},
+             "template": {"metadata": {"labels": {ROLE: "vnc-proxy"}}, "spec": {
+                 "serviceAccountName": "vnc-proxy", "automountServiceAccountToken": True, "enableServiceLinks": False,
+                 "schedulerName": "default-scheduler",
+                 "securityContext": {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000,
+                                     "seccompProfile": {"type": "RuntimeDefault"}},
+                 "containers": [{
+                     "name": "novnc", "image": f"{PREFIX}:latest",
+                     "ports": [{"name": "http", "containerPort": 8080, "protocol": "TCP"}],
+                     "env": [{"name": "VM_NAME", "value": "win"}],
+                     "securityContext": {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
+                                         "runAsNonRoot": True, "capabilities": {"drop": ["ALL"]},
+                                         "seccompProfile": {"type": "RuntimeDefault"}},
+                     "resources": {"requests": {"cpu": "50m", "memory": "64Mi"}, "limits": {"cpu": "200m", "memory": "128Mi"}},
+                     "readinessProbe": {"tcpSocket": {"port": "http"}}}]}}},
+}
+
+
+def vm_netpol(name, spec):
+    return {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": vm_meta(name), "spec": spec}
+
+
+VMSEL = {"matchLabels": {ROLE: "vm"}}
+PROXYSEL = {"matchLabels": {ROLE: "vnc-proxy"}}
+vm_nps = {
+    "default-deny": vm_netpol("default-deny", {"podSelector": {}, "policyTypes": ["Ingress", "Egress"]}),
+    "allow-ingress-controller": vm_netpol("allow-ingress-controller", {
+        "podSelector": PROXYSEL, "policyTypes": ["Ingress"],
+        "ingress": [{"from": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}}],
+                     "ports": [{"protocol": "TCP", "port": 8080}]}]}),
+    "allow-dns": vm_netpol("allow-dns", {"podSelector": {}, "policyTypes": ["Egress"], "egress": [{
+        "to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
+                "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}}}],
+        "ports": [{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}]}]}),
+    "allow-vnc-proxy-to-apiserver": vm_netpol("allow-vnc-proxy-to-apiserver", {
+        "podSelector": PROXYSEL, "policyTypes": ["Egress"],
+        "egress": [{"to": [{"ipBlock": {"cidr": "0.0.0.0/0"}}, {"ipBlock": {"cidr": "::/0"}}],
+                    "ports": [{"protocol": "TCP", "port": 443}, {"protocol": "TCP", "port": 6443}]}]}),
+    "allow-egress-internet": vm_netpol("allow-egress-internet", {
+        "podSelector": VMSEL, "policyTypes": ["Egress"],
+        "egress": copy.deepcopy(internet["spec"]["egress"])}),
+    "allow-intra-namespace": vm_netpol("allow-intra-namespace", {
+        "podSelector": VMSEL, "policyTypes": ["Ingress", "Egress"],
+        "ingress": [{"from": [{"podSelector": VMSEL}]}], "egress": [{"to": [{"podSelector": VMSEL}]}]}),
+}
+# The ingress controller's namespace is what podApps.ingressNamespace says (see the pod cases).
+vm_nps["allow-ingress-controller"]["spec"]["ingress"][0]["from"] = copy.deepcopy(ingress_np["spec"]["ingress"][0]["from"])
+
+vm_case("vm namespace create", "allow", vm_ns)
+vm_case("vm namespace re-apply", "allow", vm_ns, "UPDATE", old=vm_ns)
+for obj in (vm_pvc, virtual_machine, proxy_deploy, proxy_sa, secret, service, ingress, *vm_nps.values()):
+    label = f"{obj['kind']} {obj['metadata']['name']}"
+    vm_case(f"vm: {label} create", "allow", obj)
+    vm_case(f"vm: {label} re-apply", "allow", obj, "UPDATE", old=obj)
+vm_case("vm: the proxy as the API server defaults it (tag :v1, digest)", "allow",
+        mutated(proxy_deploy, lambda d: d["spec"]["template"]["spec"]["containers"][0].update(image=f"{PREFIX}@{DIGEST}")))
+vm_case("vm: the proxy scaled to 0", "allow", mutated(proxy_deploy, lambda d: d["spec"].update(replicas=0)))
+vm_case("vm: the bound claim, re-applied", "allow", mutated(vm_pvc, lambda c: c["spec"].update(volumeName="pvc-1234")), "UPDATE", old=vm_pvc)
+vm_case("vm: claim without a clone source", "allow", mutated(vm_pvc, lambda c: c["spec"].pop("dataSourceRef")))
+vm_case("vm: VM with defaults KubeVirt adds (sockets/threads 1, machine type)", "allow",
+        mutated(virtual_machine, lambda v: (v["spec"]["template"]["spec"]["domain"]["cpu"].update(sockets=1, threads=1),
+                                            v["spec"]["template"]["spec"]["domain"].update(machine={"type": "q35"}))))
+vm_case("vm: halt the VM (runStrategy)", "allow", mutated(virtual_machine, lambda v: v["spec"].update(runStrategy="Halted")), "UPDATE", old=virtual_machine)
+vm_case("vm: delete the VM", "allow", None, "DELETE", old=virtual_machine)
+vm_case("vm: delete the claim (reset)", "allow", None, "DELETE", old=vm_pvc)
+vm_case("vm: the VM's own pod is not matched", "allow",
+        mutated(pod, lambda p: p["spec"]["containers"][0]["securityContext"].update(privileged=True)),
+        user="system:serviceaccount:kube-system:replicaset-controller")
+
+
+def proxy_variant(name, fn):
+    vm_case(f"vm deployment: {name}", "deny", mutated(proxy_deploy, lambda d: fn(d["spec"]["template"]["spec"])))
+
+
+pc = lambda p: p["containers"][0]  # noqa: E731
+proxy_variant("privileged container", lambda p: pc(p)["securityContext"].update(privileged=True))
+proxy_variant("hostPath volume", lambda p: p.update(volumes=[{"name": "root", "hostPath": {"path": "/"}}]))
+proxy_variant("secret volume", lambda p: p.update(volumes=[{"name": "s", "secret": {"secretName": "x"}}]))
+proxy_variant("emptyDir without a limit", lambda p: p.update(volumes=[{"name": "e", "emptyDir": {}}]))
+proxy_variant("hostNetwork", lambda p: p.update(hostNetwork=True))
+proxy_variant("hostPID", lambda p: p.update(hostPID=True))
+proxy_variant("hostIPC", lambda p: p.update(hostIPC=True))
+proxy_variant("wrong service account", lambda p: p.update(serviceAccountName="appstore-t3-pod-deployer"))
+proxy_variant("default service account", lambda p: p.pop("serviceAccountName"))
+proxy_variant("image outside the prefix", lambda p: pc(p).update(image=f"docker.io/evil/img@{DIGEST}"))
+proxy_variant("another platform image", lambda p: pc(p).update(image="ghcr.io/dhbw-appstore-t3/backend:latest"))
+proxy_variant("lookalike image", lambda p: pc(p).update(image=f"{PREFIX}-evil:latest"))
+proxy_variant("added capability", lambda p: pc(p)["securityContext"].update(capabilities={"drop": ["ALL"], "add": ["SYS_ADMIN"]}))
+proxy_variant("capabilities not dropped", lambda p: pc(p)["securityContext"].pop("capabilities"))
+proxy_variant("host port", lambda p: pc(p)["ports"][0].update(hostPort=80))
+proxy_variant("privilege escalation", lambda p: pc(p)["securityContext"].update(allowPrivilegeEscalation=True))
+proxy_variant("may run as root (container)", lambda p: pc(p)["securityContext"].update(runAsNonRoot=False))
+proxy_variant("may run as root (pod)", lambda p: p["securityContext"].update(runAsNonRoot=False))
+proxy_variant("writable root file system", lambda p: pc(p)["securityContext"].update(readOnlyRootFilesystem=False))
+proxy_variant("second container", lambda p: p["containers"].append(dict(copy.deepcopy(pc(p)), name="two")))
+proxy_variant("privileged init container", lambda p: p.update(initContainers=[dict(copy.deepcopy(pc(p)), name="init", securityContext={"privileged": True})]))
+proxy_variant("pinned to a node", lambda p: p.update(nodeName="k3s-server"))
+proxy_variant("priority class", lambda p: p.update(priorityClassName="system-node-critical"))
+proxy_variant("runtime class", lambda p: p.update(runtimeClassName="x"))
+proxy_variant("no limits", lambda p: pc(p)["resources"].pop("limits"))
+proxy_variant("cpu above the ceiling", lambda p: pc(p)["resources"]["limits"].update(cpu="64"))
+vm_case("vm deployment: 2 replicas", "deny", mutated(proxy_deploy, lambda d: d["spec"].update(replicas=2)))
+vm_case("vm deployment: 100 replicas", "deny", mutated(proxy_deploy, lambda d: d["spec"].update(replicas=100)))
+case("deployment in an ordinary app namespace", "deny", proxy_deploy)
+vm_case("vm deployment: delete", "deny", None, "DELETE", old=proxy_deploy)
+
+
+def vm_variant(name, fn):
+    vm_case(f"vm: VirtualMachine {name}", "deny", mutated(virtual_machine, lambda v: fn(v["spec"]["template"]["spec"], v)))
+
+
+vm_variant("with a host disk", lambda s, v: (s["volumes"].append({"name": "h", "hostDisk": {"path": "/x", "type": "Disk"}}),
+                                             s["domain"]["devices"]["disks"].append({"name": "h", "disk": {"bus": "sata"}})))
+vm_variant("with a container disk", lambda s, v: s["volumes"].append({"name": "c", "containerDisk": {"image": "evil/img"}}))
+vm_variant("with cloud-init (no cloud)", lambda s, v: s["volumes"].append({"name": "ci", "cloudInitNoCloud": {"userData": "x"}}))
+vm_variant("with cloud-init (config drive)", lambda s, v: s["volumes"].append({"name": "ci", "cloudInitConfigDrive": {"userData": "x"}}))
+vm_variant("with a secret volume", lambda s, v: s["volumes"].append({"name": "sec", "secret": {"secretName": "x"}}))
+vm_variant("with a config map volume", lambda s, v: s["volumes"].append({"name": "cm", "configMap": {"name": "x"}}))
+vm_variant("with a service account volume", lambda s, v: s["volumes"].append({"name": "sa", "serviceAccount": {"serviceAccountName": "x"}}))
+vm_variant("with a data volume", lambda s, v: s["volumes"].append({"name": "dv", "dataVolume": {"name": "x"}}))
+vm_variant("claim volume that is also a host disk", lambda s, v: s["volumes"][0].update(hostDisk={"path": "/x", "type": "Disk"}))
+vm_variant("with host devices", lambda s, v: s["domain"]["devices"].update(hostDevices=[{"name": "d", "deviceName": "x/y"}]))
+vm_variant("with a GPU", lambda s, v: s["domain"]["devices"].update(gpus=[{"name": "g", "deviceName": "nvidia.com/x"}]))
+vm_variant("with a file system share", lambda s, v: s["domain"]["devices"].update(filesystems=[{"name": "f", "virtiofs": {}}]))
+vm_variant("with a virtio disk bus", lambda s, v: s["domain"]["devices"]["disks"][0]["disk"].update(bus="virtio"))
+vm_variant("with a LUN", lambda s, v: (s["domain"]["devices"]["disks"][0].pop("disk"), s["domain"]["devices"]["disks"][0].update(lun={"bus": "sata"})))
+vm_variant("with a bridge interface", lambda s, v: (s["domain"]["devices"]["interfaces"][0].pop("masquerade"), s["domain"]["devices"]["interfaces"][0].update(bridge={})))
+vm_variant("with an SR-IOV interface", lambda s, v: s["domain"]["devices"]["interfaces"][0].update(sriov={}))
+vm_variant("with a multus network", lambda s, v: s["networks"].append({"name": "m", "multus": {"networkName": "x"}}))
+vm_variant("with a keyboard input", lambda s, v: s["domain"]["devices"]["inputs"][0].update(type="keyboard"))
+vm_variant("64 cores", lambda s, v: s["domain"]["cpu"].update(cores=64))
+vm_variant("4 sockets", lambda s, v: s["domain"]["cpu"].update(sockets=4))
+vm_variant("without a core count", lambda s, v: s["domain"]["cpu"].pop("cores"))
+vm_variant("dedicated CPUs", lambda s, v: s["domain"]["cpu"].update(dedicatedCpuPlacement=True))
+vm_variant("128Gi of memory", lambda s, v: s["domain"]["memory"].update(guest="128Gi"))
+vm_variant("without guest memory", lambda s, v: s["domain"].pop("memory"))
+vm_variant("huge pages", lambda s, v: s["domain"]["memory"].update(hugepages={"pageSize": "2Mi"}))
+vm_variant("a memory request above the ceiling", lambda s, v: s["domain"].update(resources={"requests": {"memory": "256Gi"}}))
+vm_variant("a cpu limit above the ceiling", lambda s, v: s["domain"].update(resources={"limits": {"cpu": "64"}}))
+vm_variant("kernel boot from an image", lambda s, v: s["domain"]["firmware"].update(kernelBoot={"container": {"image": "evil/img"}}))
+vm_variant("tolerating the control plane", lambda s, v: s.update(tolerations=[{"key": "node-role.kubernetes.io/control-plane", "operator": "Exists"}]))
+vm_variant("with a node selector", lambda s, v: s.update(nodeSelector={"a": "b"}))
+vm_variant("with a priority class", lambda s, v: s.update(priorityClassName="system-node-critical"))
+vm_variant("with access credentials", lambda s, v: s.update(accessCredentials=[{"sshPublicKey": {}}]))
+vm_variant("with a hook sidecar", lambda s, v: v["spec"]["template"]["metadata"].update(annotations={"hooks.kubevirt.io/hookSidecars": '[{"image":"evil"}]'}))
+vm_variant("with data volume templates", lambda s, v: v["spec"].update(dataVolumeTemplates=[{"metadata": {"name": "x"}}]))
+vm_variant("with an instance type", lambda s, v: v["spec"].update(instancetype={"name": "huge"}))
+case("vm: VirtualMachine in an ordinary app namespace", "deny", virtual_machine)
+vmi = {"apiVersion": "kubevirt.io/v1", "kind": "VirtualMachineInstance", "metadata": vm_meta("win"),
+       "spec": copy.deepcopy(virtual_machine["spec"]["template"]["spec"])}
+vm_case("vm: VirtualMachineInstance create", "deny", vmi)
+vm_case("vm: VirtualMachineInstance update", "deny", vmi, "UPDATE", old=vmi)
+vm_case("vm: VirtualMachineInstance delete", "deny", None, "DELETE", old=vmi)
+
+# claims
+vm_case("vm: claim of 500Gi", "deny", mutated(vm_pvc, lambda c: c["spec"]["resources"]["requests"].update(storage="500Gi")))
+vm_case("vm: claim without a size", "deny", mutated(vm_pvc, lambda c: c["spec"].pop("resources")))
+vm_case("vm: claim of another storage class", "deny", mutated(vm_pvc, lambda c: c["spec"].update(storageClassName="local-path")))
+vm_case("vm: claim without a storage class", "deny", mutated(vm_pvc, lambda c: c["spec"].pop("storageClassName")))
+vm_case("vm: claim cloned from kube-system", "deny", mutated(vm_pvc, lambda c: c["spec"]["dataSourceRef"].update(namespace="kube-system")))
+vm_case("vm: claim cloned from the platform namespace", "deny", mutated(vm_pvc, lambda c: c["spec"]["dataSourceRef"].update(namespace=NS)))
+vm_case("vm: claim cloned from a snapshot", "deny", mutated(vm_pvc, lambda c: c["spec"]["dataSourceRef"].update(kind="VolumeSnapshot", apiGroup="snapshot.storage.k8s.io")))
+vm_case("vm: claim cloned from a secret", "deny", mutated(vm_pvc, lambda c: c["spec"]["dataSourceRef"].update(kind="Secret")))
+vm_case("vm: claim cloned from a claim of the own namespace (no namespace)", "deny", mutated(vm_pvc, lambda c: c["spec"]["dataSourceRef"].pop("namespace")))
+vm_case("vm: claim from another API group", "deny", mutated(vm_pvc, lambda c: c["spec"]["dataSourceRef"].update(apiGroup="evil.example")))
+vm_case("vm: claim with a dataSource from another group", "deny", mutated(vm_pvc, lambda c: c["spec"].update(dataSource={"kind": "VolumeSnapshot", "apiGroup": "snapshot.storage.k8s.io", "name": "x"})))
+vm_case("vm: claim bound to a chosen volume", "deny", mutated(vm_pvc, lambda c: c["spec"].update(volumeName="pv-of-someone-else")))
+vm_case("vm: claim with a selector", "deny", mutated(vm_pvc, lambda c: c["spec"].update(selector={"matchLabels": {"a": "b"}})))
+vm_case("vm: claim ReadWriteMany", "deny", mutated(vm_pvc, lambda c: c["spec"].update(accessModes=["ReadWriteMany"])))
+
+# network policies
+
+
+def vm_np_variant(name, base, fn):
+    vm_case(f"vm network policy: {name}", "deny", mutated(vm_nps[base], fn))
+
+
+vm_np_variant("ingress from everywhere", "allow-ingress-controller", lambda n: n["spec"]["ingress"][0].pop("from"))
+vm_np_variant("ingress from 0.0.0.0/0", "allow-ingress-controller", lambda n: n["spec"]["ingress"][0].update({"from": [{"ipBlock": {"cidr": "0.0.0.0/0"}}]}))
+vm_np_variant("ingress from every pod of the namespace", "allow-ingress-controller", lambda n: n["spec"]["ingress"][0].update({"from": [{"podSelector": {}}]}))
+vm_np_variant("ingress rule open to all peers", "default-deny", lambda n: n["spec"].update(ingress=[{}]))
+vm_np_variant("ingress from 0.0.0.0/0 on a policy selecting the VMs", "allow-intra-namespace", lambda n: n["spec"]["ingress"].append({"from": [{"ipBlock": {"cidr": "0.0.0.0/0"}}]}))
+vm_np_variant("selects other pods", "allow-dns", lambda n: n["spec"].update(podSelector={"matchLabels": {"app": "x"}}))
+vm_np_variant("selects by expression", "allow-dns", lambda n: n["spec"].update(podSelector={"matchExpressions": [{"key": ROLE, "operator": "Exists"}]}))
+vm_np_variant("selects a role and more", "allow-dns", lambda n: n["spec"].update(podSelector={"matchLabels": {ROLE: "vm", "a": "b"}}))
+vm_np_variant("egress everywhere", "allow-egress-internet", lambda n: n["spec"]["egress"][0].pop("to"))
+vm_np_variant("egress to a private range", "allow-egress-internet", lambda n: n["spec"]["egress"][0]["to"][0]["ipBlock"].pop("except"))
+vm_np_variant("egress to the metadata service", "allow-egress-internet", lambda n: n["spec"]["egress"][0]["to"][0]["ipBlock"]["except"].remove("169.254.0.0/16"))
+vm_np_variant("apiserver rule on every port", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0].pop("ports"))
+vm_np_variant("apiserver rule with port 22", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "TCP", "port": 22}))
+vm_np_variant("apiserver rule with UDP", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0]["ports"][0].update(protocol="UDP"))
+vm_np_variant("apiserver rule with a port range", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0]["ports"][0].update(port=1, endPort=65535))
+vm_np_variant("apiserver rule for every pod", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"].update(podSelector={}))
+vm_np_variant("apiserver rule for the VMs", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"].update(podSelector=VMSEL))
+vm_np_variant("apiserver rule to a namespace", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0]["to"].append({"namespaceSelector": {}}))
+vm_np_variant("apiserver-like rule under another name", "allow-vnc-proxy-to-apiserver", lambda n: n["metadata"].update(name="allow-anything"))
+vm_np_variant("intra-namespace for every pod", "allow-intra-namespace", lambda n: n["spec"].update(podSelector={}))
+vm_np_variant("intra-namespace towards every pod (egress)", "allow-intra-namespace", lambda n: n["spec"]["egress"][0]["to"][0].update(podSelector={}))
+vm_np_variant("intra-namespace towards the proxies (egress)", "allow-intra-namespace", lambda n: n["spec"]["egress"][0]["to"][0].update(podSelector=PROXYSEL))
+vm_np_variant("intra-namespace plus a namespace selector", "allow-intra-namespace", lambda n: n["spec"]["egress"][0]["to"][0].update(namespaceSelector={}))
+vm_np_variant("intra-namespace plus an address block", "allow-intra-namespace", lambda n: n["spec"]["egress"][0]["to"].append({"ipBlock": {"cidr": "0.0.0.0/0"}}))
+vm_np_variant("VM peer rule under another name", "allow-intra-namespace", lambda n: n["metadata"].update(name="allow-vms"))
+vm_np_variant("egress to kube-system as a whole", "allow-dns", lambda n: n["spec"]["egress"][0]["to"][0].pop("podSelector"))
+vm_case("vm network policy: delete", "deny", None, "DELETE", old=vm_nps["allow-dns"])
+
+json.dump(cases, open(sys.argv[5], "w", encoding="utf-8"), indent=1)
+print(f"{len(cases)} vm cases")
