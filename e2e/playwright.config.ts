@@ -1,5 +1,12 @@
 import { defineConfig } from '@playwright/test'
 
+// Local runs: passwords and options in e2e/.env.local (not in git), so nothing has to be typed on the command line.
+try {
+  process.loadEnvFile('.env.local')
+} catch {
+  /* CI passes them as environment variables */
+}
+
 /**
  * The chain runs against a real environment (staging). One worker, one test at a time: the
  * Windows VM needs the cluster's whole quota, and the chain creates and removes real apps.

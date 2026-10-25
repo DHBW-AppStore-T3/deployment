@@ -4,7 +4,8 @@
   "description": "End-to-end chain on staging: app registered, submitted and approved in the UI, deployed, checked, cleaned up",
   "scripts": {
     "test": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:local": "playwright test --timeout=420000"
   },
   "devDependencies": {
     "@playwright/test": "1.49.1",
