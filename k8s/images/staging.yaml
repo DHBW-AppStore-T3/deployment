@@ -5,7 +5,7 @@
 # comment behind a digest is the tag (sha-<commit>) it was built from.
 images:
   tags:
-    backend: "sha256:c8e5bc87a85aea8a8f6b3bf8919d57ee96509b0b6f0372d6823e05d286b67bd4"  # sha-4e70387
+    backend: "sha256:1864e3b89675ae5559c52c4c0aa4a5df0e8a58967f08dcd9c8d745dff715ab35"  # sha-0c7a565
     worker: "sha256:d08a3c5d02d7cf5f0a21f4a645ce403cec01c7aa07701edf0724801febde2afc"  # sha-d1b324e
     workerPods: "sha256:9b12a22a2a4b505c259d65e2840bce74fac4305fa16a9ed6b14b9eb65c7ea670"  # sha-d1b324e
     frontend: "sha256:03a6ceea0be03651bfed91f9deee3d1b20a0f049259c75a9c6a5d1fe333527c2"  # sha-c68fcb6
