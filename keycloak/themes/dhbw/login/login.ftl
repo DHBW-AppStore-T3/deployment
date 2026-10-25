@@ -175,6 +175,7 @@
     .alert-error   { background: #fde8e8; border: 1px solid #fbd5d5; color: #b91c1c; }
     .alert-warning { background: #fef3c7; border: 1px solid #fde68a; color: #b45309; }
     .alert-info    { background: #dbeafe; border: 1px solid #bfdbfe; color: #1d4ed8; }
+    .alert-success { background: #dcfce7; border: 1px solid #bbf7d0; color: #15803d; }
 
     /* ── Form ── */
     .form-group { margin-bottom: calc(12 * var(--u)); }
@@ -407,7 +408,7 @@
 
       <p class="description" id="desc">Der DHBW AppStore stellt vorkonfigurierte Anwendungen und Umgebungen für Lehre, Forschung und Verwaltung bereit.</p>
 
-      <#if displayMessage?? && message?has_content>
+      <#if message?has_content>
         <div class="alert alert-${message.type}">${kcSanitize(message.summary)?no_esc}</div>
       </#if>
 
