@@ -5,6 +5,7 @@
 {{- $api := include "appstore.name" (dict "context" . "component" "api") -}}
 {{- $deployer := include "appstore.clusterName" (dict "context" . "component" "deployer") -}}
 {{- $reader := include "appstore.clusterName" (dict "context" . "component" "reader") -}}
+{{- $vncProxy := include "appstore.clusterName" (dict "context" . "component" "vnc-proxy") -}}
 {{- $name := include "appstore.clusterName" (dict "context" . "component" "confine-pod-deployer") -}}
 {{- $appDomain := default (printf "apps.%s" (required "podApps.zone is required" $p.zone)) $p.appDomain -}}
 {{- $v4 := concat (include "appstore.privateV4" . | fromJsonArray) (list) -}}
@@ -31,7 +32,7 @@ spec:
       - apiGroups: [""]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE", "DELETE"]
-        resources: ["namespaces", "secrets", "services", "persistentvolumeclaims", "resourcequotas", "limitranges", "pods"]
+        resources: ["namespaces", "secrets", "services", "persistentvolumeclaims", "resourcequotas", "limitranges", "pods", "serviceaccounts"]
       - apiGroups: ["apps"]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE", "DELETE"]
@@ -126,8 +127,14 @@ spec:
             (object.roleRef.name == {{ $deployer | squote }} &&
              object.subjects[0].name == {{ $deployerSa | squote }} && object.subjects[0].namespace == {{ $ns | squote }}) ||
             (object.roleRef.name == {{ $reader | squote }} &&
-             object.subjects[0].name == {{ $api | squote }} && object.subjects[0].namespace == {{ $ns | squote }})))
-      message: "role bindings only of the deployer role to the pod deployer, or of the reader role to the API"
+             object.subjects[0].name == {{ $api | squote }} && object.subjects[0].namespace == {{ $ns | squote }}) ||
+            (object.roleRef.name == {{ $vncProxy | squote }} &&
+             object.subjects[0].name == 'vnc-proxy' && object.subjects[0].namespace == request.namespace)))
+      message: "role bindings only of the deployer role to the pod deployer, of the reader role to the API, or of the vnc-proxy role to the proxy's own account"
+    - expression: >-
+        variables.resource != 'serviceaccounts' || request.operation == 'DELETE' || (
+          object.metadata.name == 'vnc-proxy' && !has(object.secrets) && !has(object.imagePullSecrets))
+      message: "the only service account is the noVNC proxy's, vnc-proxy"
     - expression: "variables.resource != 'secrets' || request.operation == 'DELETE' || !has(object.type) || object.type == 'Opaque'"
       message: "only Opaque secrets"
     - expression: >-

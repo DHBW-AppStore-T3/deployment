@@ -116,6 +116,9 @@ helm upgrade --install "$HELM_RELEASE" cpo/openstack-cinder-csi \
   --set secret.name=cloud-config \
   --wait --timeout=5m
 
+echo "==> Cross-namespace clone for kubevirt-vm golden images"
+bash "$(dirname "$0")/enable-cross-namespace-clone.sh"
+
 echo "==> Applying Cinder StorageClass"
 kubectl apply -f "$(dirname "$0")/../k8s/cinder/storageclass.yaml"
 
