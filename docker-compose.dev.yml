@@ -78,7 +78,6 @@ services:
       OIDC_ALLOWED_CLIENTS: "appstore-frontend"
       OIDC_AUDIENCE: "appstore-api"
       LTI13_SESSION_SECRET: "change-me-in-dev"
-      HANDOFF_SESSION_SECRET: "change-me-in-dev"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
