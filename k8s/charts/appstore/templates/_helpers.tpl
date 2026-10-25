@@ -78,6 +78,7 @@ seccompProfile:
 - { name: APP_MAX_CPU, value: {{ $p.maxCpu | quote }} }
 - { name: APP_MAX_MEMORY, value: {{ $p.maxMemory | quote }} }
 - { name: APP_MAX_STORAGE, value: {{ $p.maxStorage | quote }} }
+- { name: APP_VM_IMAGE_NAMESPACES, value: {{ join "," $p.vmImageNamespaces | quote }} }
 - { name: K8S_MAX_WORKLOADS_PER_DEPLOYMENT, value: {{ $p.maxWorkloadsPerDeployment | quote }} }
 - { name: K8S_ZONE, value: {{ $p.zone | quote }} }
 - { name: K8S_APP_DOMAIN, value: {{ $p.appDomain | quote }} }

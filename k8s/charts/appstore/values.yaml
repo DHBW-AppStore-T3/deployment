@@ -94,6 +94,13 @@ podApps:
   maxCpu: "4"
   maxMemory: 8Gi
   maxStorage: 20Gi
+  # Namespaces a kubevirt-vm may clone its golden image from. The pod deployer
+  # grants each deployment's claim access to the image there (a ReferenceGrant
+  # per deployment, see rbac.yaml and admission-policy.yaml); an app naming any
+  # other namespace is refused. Needs CrossNamespaceVolumeDataSource
+  # (scripts/enable-cross-namespace-clone.sh).
+  vmImageNamespaces:
+    - vm-poc
   # Workloads (one per team or person) per deployment, and per owner across
   # their live pod deployments (0: no budget).
   maxWorkloadsPerDeployment: 60
