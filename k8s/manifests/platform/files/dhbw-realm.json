@@ -2,6 +2,7 @@
   "realm": "dhbw",
   "displayName": "DHBW AppStore",
   "enabled": true,
+  "loginTheme": "dhbw",
   "sslRequired": "external",
   "registrationAllowed": false,
   "resetPasswordAllowed": false,
