@@ -3,7 +3,7 @@
 # Manages frontend, backend, worker, keycloak, postgres services
 #
 # Local dev runs via docker-compose.dev.yml (simulate mode for
-# OpenStack & Kubernetes, local Keycloak on :8081 — .github#6).
+# Kubernetes, local Keycloak on :8081 — .github#6).
 #
 # Staging and production run on Kubernetes (k8s/, rolled out by
 # Argo CD).

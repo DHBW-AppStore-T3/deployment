@@ -1,6 +1,6 @@
 # Lokales Dev Setup
 
-Der AppStore läuft lokal mit echtem Keycloak (Realm `dhbw`) und echter OIDC-Authentifizierung — so nah wie möglich an Prod. OpenStack-Aufrufe werden simuliert (Dummy-Daten), Kubernetes-Deployments laufen über FakeKube (In-Memory).
+Der AppStore läuft lokal mit echtem Keycloak (Realm `dhbw`) und echter OIDC-Authentifizierung — so nah wie möglich an Prod. Kubernetes-Deployments laufen über FakeKube (In-Memory).
 
 ## Voraussetzungen
 
@@ -198,15 +198,14 @@ Oder im Browser:
 
 ## Was ist Simulation Mode?
 
-Lokal laufen zwei Subsysteme als Fake — Keycloak läuft jetzt echt:
+Lokal läuft der Kubernetes-Cluster als Fake — Keycloak läuft echt:
 
 | Produktions-Dienst | Lokal |
 |---|---|
 | Keycloak (JWT-Auth) | **Echter Keycloak** auf Port 8081, Realm `dhbw` |
-| OpenStack (Credential-Validierung + Ressourcen) | Statische Dummy-Daten |
 | Kubernetes-Cluster (Pod-Deployments) | `FakeKube` (In-Memory) |
 
-Der komplette Code-Pfad von HTTP-Request bis zum Worker-Task läuft durch — nur die letzten Netzwerkaufrufe gegen OpenStack und Kubernetes werden abgefangen.
+Der komplette Code-Pfad von HTTP-Request bis zum Worker-Task läuft durch — nur die letzten Netzwerkaufrufe gegen Kubernetes werden abgefangen.
 
 Pod-Deployments über `FakeKube` generieren echte `terraform_outputs` mit Zugangsdaten, sodass „Meine Zugänge" im Frontend auch lokal funktioniert. Der In-Memory-State von FakeKube ist nach einem Worker-Neustart weg.
 

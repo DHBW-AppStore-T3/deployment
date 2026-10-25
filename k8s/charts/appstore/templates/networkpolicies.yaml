@@ -47,7 +47,7 @@ spec:
   podSelector:
     matchExpressions:
       - { key: app.kubernetes.io/part-of, operator: In, values: [{{ $part }}] }
-      - { key: app.kubernetes.io/component, operator: In, values: [api, pod-deployer, vm-executor, migrate, orphans, seed] }
+      - { key: app.kubernetes.io/component, operator: In, values: [api, pod-deployer, migrate, orphans, seed] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -119,7 +119,7 @@ spec:
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
-        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "frontend" "vm-executor" "self-service-ui")) | nindent 8 }}
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "frontend" "self-service-ui")) | nindent 8 }}
       ports:
         - { protocol: TCP, port: 8000 }
   egress:
@@ -177,23 +177,4 @@ spec:
   egress:
     {{- include "appstore.kubeApi" $n.kubeApi | nindent 4 }}
   {{- end }}
----
-# The VM executor runs app code: the API (state backend, own task token
-# only) and the internet (OpenStack, Git hosts, SSH/WinRM to its build VMs).
-# No Keycloak, no Kubernetes API, no cluster addresses.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ $part }}-vm-executor
-  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels: {{- include "appstore.selectorLabels" (dict "context" . "component" "vm-executor") | nindent 6 }}
-  policyTypes: [Egress]
-  egress:
-    - to:
-        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "api")) | nindent 8 }}
-      ports:
-        - { protocol: TCP, port: 8000 }
-    {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow) | nindent 4 }}
 {{- end }}
