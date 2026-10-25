@@ -1,34 +1,27 @@
 # pgAdmin 4 – PostgreSQL-Administration mit Beispieldatenbank
 
-Eine pgAdmin4-Instanz pro Team mit einer vorinstallierten PostgreSQL-Datenbank (Pagila-Beispieldatensatz). Jedes Team erhält eine eigene VM mit einem dedizierten pgAdmin-Login und direktem Datenbankzugriff.
+Eine pgAdmin4-Instanz pro Team mit einer vorinstallierten PostgreSQL-Datenbank
+(Pagila-Beispieldatensatz). Die App läuft als Pods (App-Vertrag v2), nicht mehr als VMs:
+**ein Pod pro Team** mit zwei Containern, pgAdmin 4 (per HTTPS-Link erreichbar) und PostgreSQL
+mit der Pagila-Beispieldatenbank. Beide teilen sich ein Volume (2 GiB), sodass Konfiguration und
+Daten Pause/Fortsetzen und Neustart überstehen.
 
 ## User-Management
 
-Es wird **ein pgAdmin-Account pro Team** erstellt — alle Mitglieder eines Teams teilen sich denselben Login. Die Login-E-Mail hat die Form `<teamname>@example.com`, das Passwort wird automatisch generiert. Zugangsdaten werden nach dem Deployment per Mail an alle Teammitglieder versendet. Der pgAdmin-Account wird direkt in die interne SQLite-Datenbank geschrieben (PBKDF2-SHA512).
+Es wird **ein pgAdmin-Account pro Team** erstellt, alle Mitglieder eines Teams teilen sich
+denselben Login.
 
-Die VM enthält außerdem eine lokale PostgreSQL-Instanz mit der **Pagila-Beispieldatenbank** (Film-/Videoverleih-Schema), die im pgAdmin-Account bereits vorkonfiguriert ist. Das Passwort dazu ist "pagila".
+- **Login:** Benutzername `pgadmin@dhbw.de` (für alle Teams gleich), das Passwort wird von der
+  Plattform erzeugt und steht nach dem Deployment unter „Meine Zugänge“.
+- **Datenbank:** Der Server „pagila (local)“ (Film-/Videoverleih-Schema) ist im pgAdmin-Account
+  vorkonfiguriert. Das Passwort für `pagila_user` ist `pagila` und wird beim ersten Verbinden
+  abgefragt.
 
-## VM-Deployment
+## Deployment
 
-Es wird **eine VM pro Team** deployed. Bei zwei Teams entstehen zwei VMs, jede mit eigener Floating IP und eigenem pgAdmin-Login. Flavor: `gp1.small`.
-
-## Deployment-Dauer
-
-| Phase | Dauer |
-|---|---|
-| Packer Image Build (einmalig) | ca. 8–14 Min |
-| Terraform Apply | ca. 2–4 Min |
-| VM-Boot + cloud-init (User-Anlage, Apache-Start) | ca. 3–6 Min |
-| **Gesamt erstmalig** | **ca. 15–25 Min** |
-
-Bei vorhandenem Packer-Image entfällt der Build — dann ca. **5–10 Minuten** gesamt.
+Es wird **ein Pod pro Team** deployed. Bei zwei Teams entstehen zwei Pods mit eigenem Link und
+eigenem pgAdmin-Login. Pagila wird beim Bau des Images geladen, nicht beim Start.
 
 ## Konfigurierbare Variablen
 
-| Variable | Beschreibung | Pflicht |
-|---|---|---|
-| `network_uuid` | UUID des internen Netzwerks | Ja (Default vorhanden) |
-| `floating_ip_pool` | Name des External Networks für die öffentliche IP | Ja (Default vorhanden) |
-| `shared_secgroup_id` | ID der Security Group | Ja (Default vorhanden) |
-
-Kein File-Upload. Alle Defaults sind auf die DHBW-OpenStack-Infrastruktur vorkonfiguriert.
+Keine. Kein File-Upload, alle Einstellungen stehen in der `appstore.yaml` der App.
