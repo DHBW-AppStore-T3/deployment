@@ -24,8 +24,11 @@ spec:
       {{- include "appstore.podDefaults" . | nindent 6 }}
       automountServiceAccountToken: false
       securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
+        # The image's clamav user (100:101) owns /var/log/clamav; any other uid
+        # cannot open freshclam's log and the pod crashes.
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -33,24 +36,31 @@ spec:
           # Pin by digest: clamav/clamav on Docker Hub.
           image: {{ .Values.clamav.image }}
           imagePullPolicy: IfNotPresent
+          # The default entrypoint (/init) needs root (mkdir /run/clamav);
+          # /init-unprivileged is the same without it.
+          command: ["/init-unprivileged"]
           ports:
             - { name: clamd, containerPort: 3310, protocol: TCP }
           env:
-            # freshclam checks every 12 hours by default; keep the database fresh.
+            # freshclam checks per day (image default: 1); 2 = every 12 hours.
             - { name: FRESHCLAM_CHECKS, value: "2" }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false  # clamd writes to /var/lib/clamav
             capabilities: { drop: [ALL] }
           resources: {{- toYaml .Values.clamav.resources | nindent 12 }}
+          # The first start downloads the whole database (~1.5 min, longer on a
+          # slow mirror); clamd listens only after it is loaded.
+          startupProbe:
+            tcpSocket: { port: clamd }
+            periodSeconds: 10
+            failureThreshold: 60  # up to 10 minutes
           readinessProbe:
             tcpSocket: { port: clamd }
-            initialDelaySeconds: 120  # database load can take a while
             periodSeconds: 20
-            failureThreshold: 9
+            failureThreshold: 3
           livenessProbe:
             tcpSocket: { port: clamd }
-            initialDelaySeconds: 180
             periodSeconds: 30
             failureThreshold: 3
           volumeMounts:

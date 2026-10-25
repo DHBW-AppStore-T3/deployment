@@ -251,4 +251,6 @@ clamav:
   image: "clamav/clamav:1.4"
   resources:
     requests: { cpu: 100m, memory: 1536Mi }
-    limits: { cpu: "1", memory: 2Gi }
+    # clamd holds the old and the new database side by side while it reloads
+    # after a freshclam update (~1 GiB in use, about double at the peak).
+    limits: { cpu: "1", memory: 3Gi }

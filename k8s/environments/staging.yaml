@@ -21,6 +21,7 @@ appstore:
   # Pin the image by digest once the first staging rollout is verified.
   clamav:
     enabled: true
+  # Demo course and catalog apps after every sync (charts/appstore/templates/seed-job.yaml).
   seed:
     enabled: true
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
