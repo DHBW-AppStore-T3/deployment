@@ -1,7 +1,6 @@
 {{- $theme := "files/themes/dhbw/login" }}
-# The login theme `dhbw` of the realm (files/themes/dhbw, a copy of
-# keycloak/themes/dhbw that the dev stack mounts; the k8s-chart workflow fails
-# when the two differ). keycloak.yaml projects the three ConfigMaps into
+# The login theme `dhbw` of the realm (files/themes/dhbw, which the local dev
+# stack mounts as well). keycloak.yaml projects the three ConfigMaps into
 # /opt/keycloak/themes/dhbw. They are split because one ConfigMap is limited to
 # 1 MiB and the background photo and the font are binary (base64 in binaryData).
 # The realm setting `loginTheme` is in files/dhbw-realm.json (new realm) and is
