@@ -1,0 +1,50 @@
+import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
+
+export type Role = 'admin' | 'dozent'
+
+const USERS: Record<Role, { name: string; passwordEnv: string }> = {
+  admin: { name: 'admin.demo', passwordEnv: 'E2E_ADMIN_PASSWORD' },
+  dozent: { name: 'dozent.demo', passwordEnv: 'E2E_DOZENT_PASSWORD' },
+}
+
+/** A person signed in through Keycloak, with the bearer token the app uses so the test can ask the API. */
+export interface Session {
+  context: BrowserContext
+  page: Page
+  api: <T = unknown>(path: string) => Promise<{ status: number; body: T }>
+}
+
+export async function signIn(browser: Browser, role: Role): Promise<Session> {
+  const password = process.env[USERS[role].passwordEnv]
+  if (!password) throw new Error(`${USERS[role].passwordEnv} is not set`)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  let token = ''
+  page.on('request', (request) => {
+    const header = request.headers()['authorization']
+    if (header?.startsWith('Bearer ') && request.url().includes('/api/')) token = header
+  })
+  await page.goto('/')
+  await page.locator('#username').fill(USERS[role].name)
+  await page.locator('#password').fill(password)
+  await page.locator('#kc-login').click()
+  await expect(page.getByRole('link', { name: 'Apps' }).first()).toBeVisible({ timeout: 60_000 })
+  await expect.poll(() => token, { message: 'the app never called the API with a token' }).not.toBe('')
+
+  const api = async <T,>(path: string) => {
+    const response = await page.request.get(`/api${path}`, { headers: { Authorization: token } })
+    const text = await response.text()
+    return { status: response.status(), body: (text ? JSON.parse(text) : null) as T }
+  }
+  return { context, page, api }
+}
+
+/** Switch on the admin view (the app store tab and version management only exist there). */
+export async function enableAdminView(page: Page): Promise<void> {
+  await page.goto('/admin/settings')
+  const toggle = page.getByRole('switch').first()
+  if ((await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+}
+
+export const runId = (process.env.GITHUB_RUN_ID ?? String(Date.now())).slice(-8)

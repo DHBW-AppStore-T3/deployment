@@ -1,0 +1,83 @@
+name: "E2E - chain on staging"
+
+# The chain people actually walk through, once for a pod app and once for a kubevirt-vm app:
+# the admin registers an app, submits and approves a version in the UI, a teacher deploys it
+# to a student, the deployment is checked from outside, and everything is removed again.
+# It runs after every image roll-out to staging (a push to dev of backend, worker or frontend
+# ends there), every night, and on demand. Secrets: E2E_ADMIN_PASSWORD, E2E_DOZENT_PASSWORD.
+on:
+  workflow_run:
+    workflows: ["K8s - roll out an image"]
+    types: [completed]
+    branches: [dev]
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      wait_minutes:
+        description: "Minutes to wait for Argo CD to roll the new images out first"
+        default: "0"
+      vm:
+        description: "Run the Windows VM chain (needs the cluster's one free Windows quota)"
+        type: boolean
+        default: true
+
+# One chain at a time: the VM needs the quota, and the chain creates and removes real apps.
+concurrency:
+  group: e2e-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  chain:
+    name: "Chain on staging"
+    # A roll-out that itself failed has nothing new to test.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: e2e
+    env:
+      E2E_BASE_URL: https://appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_DOZENT_PASSWORD: ${{ secrets.E2E_DOZENT_PASSWORD }}
+      E2E_VM: ${{ github.event_name == 'workflow_dispatch' && !inputs.vm && '0' || '1' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Secrets present?
+        run: |
+          [ -n "$E2E_ADMIN_PASSWORD" ] && [ -n "$E2E_DOZENT_PASSWORD" ] || {
+            echo "::error::set the repository secrets E2E_ADMIN_PASSWORD and E2E_DOZENT_PASSWORD"; exit 1; }
+
+      # Argo CD takes a few minutes after the bump commit to roll the new images out.
+      - name: Wait for Argo CD
+        if: github.event_name == 'workflow_run' || inputs.wait_minutes != '0'
+        run: sleep "$(( ${{ github.event_name == 'workflow_run' && '8' || inputs.wait_minutes }} * 60 ))"
+
+      - name: Staging is up
+        run: curl --fail --silent --show-error --retry 10 --retry-delay 15 --retry-all-errors "$E2E_BASE_URL/" -o /dev/null
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run typecheck
+
+      - name: The chain
+        run: npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
