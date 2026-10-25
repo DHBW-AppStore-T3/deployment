@@ -51,7 +51,7 @@ for (const chain of CHAINS) {
     test.beforeAll(async ({ browser }) => {
       admin = await signIn(browser, 'admin')
       dozent = await signIn(browser, 'dozent')
-      await sweepStale(admin)
+      await sweepStale(admin, dozent)
       await enableAdminView(admin.page)
     })
 

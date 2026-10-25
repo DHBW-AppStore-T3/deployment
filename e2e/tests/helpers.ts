@@ -59,10 +59,13 @@ export async function signIn(browser: Browser, role: Role): Promise<Session> {
 }
 
 /** Apps and deployments a failed earlier run left behind: everything named e2e-*, removed before a new chain starts. */
-export async function sweepStale(admin: Session): Promise<void> {
-  // Deployments first, by their own name: their app may be gone already.
-  const deployments = await admin.api<{ deploymentId: string; name: string }[]>('/deployments/')
-  for (const d of deployments.body ?? []) if (d.name.startsWith('E2E-')) await admin.remove(`/deployments/${d.deploymentId}`)
+export async function sweepStale(admin: Session, teacher: Session): Promise<void> {
+  // Deployments first, by their own name and with the eyes of the one who owns them (the teacher):
+  // the list only shows a person's own, and the app they belong to may be gone already.
+  for (const session of [teacher, admin]) {
+    const deployments = await session.api<{ deploymentId: string; name: string }[]>('/deployments/')
+    for (const d of deployments.body ?? []) if (d.name.startsWith('E2E-')) await session.remove(`/deployments/${d.deploymentId}`)
+  }
   const apps = await admin.api<{ appId: string; name: string }[]>('/apps/?limit=200')
   for (const app of apps.body ?? []) if (app.name.startsWith('e2e-')) await admin.remove(`/apps/${app.appId}`)
 }
