@@ -17,7 +17,9 @@ K="kubectl --kubeconfig $KUBECONFIG"
 
 SRC_NS="vm-poc"
 SRC_PVC="win11-disk"
-DST_NS="vm-images"
+# Pod must run in same namespace as both PVCs — cross-namespace mounts are not allowed.
+# We create the golden image PVC in vm-poc alongside win11-disk.
+DST_NS="vm-poc"
 DST_PVC="windows11-matlab-golden"
 CINDER_SC="cinder"
 # 90 Gi = win11-disk (88 Gi) + 2 Gi margin
@@ -94,15 +96,15 @@ spec:
       dd if=/dev/zero of=/dst/ZEROS bs=1M count=1 2>/dev/null || true
       rm -f /dst/ZEROS
       # Copy the raw disk image file
-      SRC_FILE=$(find /src -maxdepth 2 -name "*.img" -o -name "disk.img" 2>/dev/null | head -1)
-      if [ -z "$SRC_FILE" ]; then
+      SRC_FILE=\$(find /src -maxdepth 2 -name "*.img" -o -name "disk.img" 2>/dev/null | head -1)
+      if [ -z "\$SRC_FILE" ]; then
         # local-path stores the raw PVC data directly in the mount
         SRC_FILE="/src"
-        echo "Copying directory tree from $SRC_FILE to /dst"
+        echo "Copying directory tree from \$SRC_FILE to /dst"
         cp -a /src/. /dst/
       else
-        echo "Copying image file: $SRC_FILE"
-        dd if="$SRC_FILE" of=/dst/disk.img bs=4M status=progress 2>&1
+        echo "Copying image file: \$SRC_FILE"
+        dd if="\$SRC_FILE" of=/dst/disk.img bs=4M 2>&1
       fi
       echo ""
       echo "Done. Destination contents:"
