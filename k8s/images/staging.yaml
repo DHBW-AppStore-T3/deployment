@@ -15,4 +15,4 @@ images:
     moodle: "sha256:90b8e57aaed2db36b5fb7bdaa6d4600e6f0af99f6e56522f7826890f19bb45b0"  # sha-e60f8f4
     # noVNC proxy of kubevirt-vm deployments (docker/novnc-proxy, bumped by its workflow).
     # Empty until the first bump: the chart then falls back to the unpinned :latest.
-    novncProxy: "sha256:fa1a778ecb362bcb7f7dafa0d5fa746096e723afd4b8ef465a0362b4b32923fb"  # sha-5998abf
+    novncProxy: "sha256:c8c0ac2915afdda55d75f2c1c50fcc9037af33994e5ca5a4e8868188b6059f51"  # sha-5553b9c
