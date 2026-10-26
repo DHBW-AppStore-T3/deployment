@@ -64,6 +64,8 @@ spec:
             - { name: K8S_DEPLOYER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "deployer") | quote }} }
             - { name: K8S_READER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "reader") | quote }} }
             - { name: K8S_VNC_PROXY_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "vnc-proxy") | quote }} }
+            # The proxy of kubevirt-vm deployments, pinned by digest (k8s/images/<env>.yaml, novncProxy).
+            - { name: K8S_VNC_PROXY_IMAGE, value: {{ include "appstore.vncProxyImage" . | quote }} }
             - { name: K8S_WORKER_SERVICE_ACCOUNT, value: {{ $name | quote }} }
             - { name: K8S_WORKER_NAMESPACE, value: {{ .Release.Namespace | quote }} }
             - { name: K8S_API_SERVICE_ACCOUNT, value: {{ include "appstore.name" (dict "context" . "component" "api") | quote }} }

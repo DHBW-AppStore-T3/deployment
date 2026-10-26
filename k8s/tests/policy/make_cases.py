@@ -472,6 +472,14 @@ for obj in (vm_pvc, virtual_machine, proxy_deploy, proxy_sa, secret, service, in
     vm_case(f"vm: {label} re-apply", "allow", obj, "UPDATE", old=obj)
 vm_case("vm: the proxy as the API server defaults it (tag :v1, digest)", "allow",
         mutated(proxy_deploy, lambda d: d["spec"]["template"]["spec"]["containers"][0].update(image=f"{PREFIX}@{DIGEST}")))
+PINNED = "sha256:" + "0123456789abcdef" * 4
+vm_case("vm: the proxy pinned by digest (K8S_VNC_PROXY_IMAGE)", "allow",
+        mutated(proxy_deploy, lambda d: d["spec"]["template"]["spec"]["containers"][0].update(image=f"{PREFIX}@{PINNED}")))
+vm_case("vm: the proxy pinned by digest, rolled over from :latest", "allow",
+        mutated(proxy_deploy, lambda d: d["spec"]["template"]["spec"]["containers"][0].update(image=f"{PREFIX}@{PINNED}")),
+        "UPDATE", old=proxy_deploy)
+vm_case("vm: lookalike image pinned by digest", "deny",
+        mutated(proxy_deploy, lambda d: d["spec"]["template"]["spec"]["containers"][0].update(image=f"{PREFIX}-evil@{PINNED}")))
 vm_case("vm: the proxy scaled to 0", "allow", mutated(proxy_deploy, lambda d: d["spec"].update(replicas=0)))
 vm_case("vm: the bound claim, re-applied", "allow", mutated(vm_pvc, lambda c: c["spec"].update(volumeName="pvc-1234")), "UPDATE", old=vm_pvc)
 vm_case("vm: claim without a clone source", "allow", mutated(vm_pvc, lambda c: c["spec"].pop("dataSourceRef")))

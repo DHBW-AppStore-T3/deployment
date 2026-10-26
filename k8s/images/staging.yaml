@@ -13,3 +13,6 @@ images:
     # (the chart renders the component only with a digest).
     selfServiceUi: "sha256:fb2100dfd5dcaca4390cbfffa0dc759f38ce4880daa92ecdee8f21999aebc987"  # sha-1e67bd1
     moodle: "sha256:337a94c5dab5b23db310e8ca62e57ff0674d89bfe8a0df26b39e6ca2aefef931"  # sha-f13fc38
+    # noVNC proxy of kubevirt-vm deployments (docker/novnc-proxy, bumped by its workflow).
+    # Empty until the first bump: the chart then falls back to the unpinned :latest.
+    novncProxy: ""
