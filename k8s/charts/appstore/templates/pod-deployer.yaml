@@ -4,9 +4,9 @@
 {{- $v := .Values.podDeployer -}}
 # The pod deployer (.github#4): the jobs of pod apps (queue "pods"). It renders
 # every Kubernetes object itself from the app's validated appstore.yaml and
-# runs nothing from the app repositories: image worker-pods, no OpenTofu,
-# Packer or OpenStack CLI, no root. Its account may act only in the dep-*
-# namespaces it creates (rbac.yaml, admission-policy.yaml).
+# runs nothing from the app repositories: image worker-pods, no root.
+# Its account may act only in the dep-* namespaces it creates
+# (rbac.yaml, admission-policy.yaml).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -63,6 +63,9 @@ spec:
             # for the API (rbac.yaml).
             - { name: K8S_DEPLOYER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "deployer") | quote }} }
             - { name: K8S_READER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "reader") | quote }} }
+            - { name: K8S_VNC_PROXY_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "vnc-proxy") | quote }} }
+            # The proxy of kubevirt-vm deployments, pinned by digest (k8s/images/<env>.yaml, novncProxy).
+            - { name: K8S_VNC_PROXY_IMAGE, value: {{ include "appstore.vncProxyImage" . | quote }} }
             - { name: K8S_WORKER_SERVICE_ACCOUNT, value: {{ $name | quote }} }
             - { name: K8S_WORKER_NAMESPACE, value: {{ .Release.Namespace | quote }} }
             - { name: K8S_API_SERVICE_ACCOUNT, value: {{ include "appstore.name" (dict "context" . "component" "api") | quote }} }

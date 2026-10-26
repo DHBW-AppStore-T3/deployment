@@ -3,7 +3,7 @@
 # Manages frontend, backend, worker, keycloak, postgres services
 #
 # Local dev runs via docker-compose.dev.yml (simulate mode for
-# OpenStack & Kubernetes, local Keycloak on :8081 — .github#6).
+# Kubernetes, local Keycloak on :8081 — .github#6).
 #
 # Staging and production run on Kubernetes (k8s/, rolled out by
 # Argo CD).
@@ -215,11 +215,31 @@ prune: ## ⚠️  docker system prune -af --volumes
 # ----------------------------------------------------------------
 # Testing & Quality (Backend)
 # ----------------------------------------------------------------
-test-backend: ## Run backend pytest
-	$(DC_DEV) exec backend poetry run pytest
+# Tests run in the own database `backend_test` with the environment of CI (the
+# container's own environment breaks the settings tests; the tests TRUNCATE their
+# database). Pass DB_USER / DB_PASSWORD / DB_NAME to make if compose runs with other values.
+# test_migrations sets the password of the cluster-wide role appstore_worker: the
+# targets restore the dev login afterwards, or new worker connections fail.
+DB_USER     ?= postgres
+DB_PASSWORD ?= postgres
+DB_NAME     ?= backend_dev
+BACKEND_TEST_ENV := env -i HOME=/root PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin \
+	DATABASE_URL=postgresql://$(DB_USER):$(DB_PASSWORD)@postgres:5432/backend_test \
+	CREDENTIAL_ENCRYPTION_KEY=Q1PNlFd4It9oQPtjCcXcmB7wGDkY4w8KwpIRNSF4u7U= DISABLE_BACKGROUND_TASKS=1 # gitleaks:allow (throwaway test key, same as backend CI)
 
-test-backend-cov: ## Run backend pytest with HTML coverage
-	$(DC_DEV) exec backend poetry run pytest --cov=. --cov-report=html
+# pytest's exit code wins; a failed restore fails the target when the tests passed.
+define run-backend-tests
+	@$(DC_DEV) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -tc "SELECT 1 FROM pg_database WHERE datname='backend_test'" | grep -q 1 \
+		|| $(DC_DEV) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -c "CREATE DATABASE backend_test"
+	$(DC_DEV) exec -T backend $(BACKEND_TEST_ENV) poetry run pytest -m "unit or integration" -q $(1); rc=$$?; \
+		$(DC_DEV) exec -T backend poetry run python -m app.worker_db_role || { [ $$rc -ne 0 ] || rc=1; }; exit $$rc
+endef
+
+test-backend: ## Backend tests in the database backend_test
+	$(call run-backend-tests,--no-cov)
+
+test-backend-cov: ## Backend tests with HTML coverage (backend/htmlcov)
+	$(call run-backend-tests,--cov=. --cov-report=html)
 
 lint-backend: ## ruff check
 	$(DC_DEV) exec backend poetry run ruff check .

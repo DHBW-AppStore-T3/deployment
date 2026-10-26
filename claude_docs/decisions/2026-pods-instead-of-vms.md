@@ -3,6 +3,10 @@
 > Ergänzt durch `2026-appstore-on-kubernetes.md` (unser Stack auf k8s); dort geändert: Punkt 3 (der Worker bindet
 > zwei Rollen) und Punkt 7 (jeder Host gehört seinem Deployment).
 
+> **Teilweise abgelöst durch .github#12 (OpenStack-VM-Pfad entfernt):** Es gibt keine VM-Apps mehr außerhalb des
+> Clusters und keine Spalte `os_project_id`. Überholt sind Entscheidung 5 (Koexistenz, `os_project_id`) und die Zeile
+> „Windows-Desktop bleibt VM“ unter „Offen“: der Windows-Desktop läuft als KubeVirt-VM (`runtime: kubevirt-vm`).
+
 ## Kontext
 Apps liefen als OpenTofu/Packer-Code, den der Worker ausführt. Das ist eine Lizenzfrage (BSL) und vor allem ein
 Sicherheitsproblem (fremder Code im Worker), dazu langsam (Packer-Builds) und betriebsintensiv. Der Cluster ist da.

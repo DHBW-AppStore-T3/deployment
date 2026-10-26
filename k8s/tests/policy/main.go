@@ -51,7 +51,8 @@ type testCase struct {
 	NamespaceObject map[string]interface{} `json:"namespaceObject"`
 }
 
-func loadPolicy(path string) (*admissionregistrationv1.ValidatingAdmissionPolicy, error) {
+// loadPolicy returns the first ValidatingAdmissionPolicy of the file whose name contains want.
+func loadPolicy(path, want string) (*admissionregistrationv1.ValidatingAdmissionPolicy, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -61,7 +62,7 @@ func loadPolicy(path string) (*admissionregistrationv1.ValidatingAdmissionPolicy
 	for {
 		doc, err := reader.Read()
 		if err == io.EOF {
-			return nil, fmt.Errorf("no ValidatingAdmissionPolicy in %s", path)
+			return nil, fmt.Errorf("no ValidatingAdmissionPolicy named *%s* in %s", want, path)
 		}
 		if err != nil {
 			return nil, err
@@ -72,6 +73,9 @@ func loadPolicy(path string) (*admissionregistrationv1.ValidatingAdmissionPolicy
 		var policy admissionregistrationv1.ValidatingAdmissionPolicy
 		if err := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(doc), 4096).Decode(&policy); err != nil {
 			return nil, err
+		}
+		if !strings.Contains(policy.Name, want) {
+			continue
 		}
 		return &policy, nil
 	}
@@ -166,7 +170,12 @@ func run(validator validating.Validator, c testCase) (string, string) {
 }
 
 func main() {
-	policy, err := loadPolicy(os.Args[1])
+	// Which policy of the rendered file: the pod deployer's (default) or another by name.
+	which := "confine-pod-deployer"
+	if len(os.Args) > 3 {
+		which = os.Args[3]
+	}
+	policy, err := loadPolicy(os.Args[1], which)
 	if err != nil {
 		panic(err)
 	}

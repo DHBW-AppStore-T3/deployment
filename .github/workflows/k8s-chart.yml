@@ -61,9 +61,11 @@ jobs:
         working-directory: k8s/tests/policy
         run: |
           set -euo pipefail
-          python make_cases.py fixtures.json /tmp/cases.json /tmp/placement-cases.json
+          python make_cases.py fixtures.json /tmp/cases.json /tmp/placement-cases.json /tmp/grant-cases.json /tmp/vm-cases.json
           go run . ../../../rendered/staging.yaml /tmp/cases.json
           go run . ../../../rendered/placement.yaml /tmp/placement-cases.json
+          go run . ../../../rendered/staging.yaml /tmp/grant-cases.json confine-clone-grants
+          go run . ../../../rendered/staging.yaml /tmp/vm-cases.json confine-pod-deployer
       - uses: actions/upload-artifact@v4
         with:
           name: rendered-manifests

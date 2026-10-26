@@ -2,10 +2,13 @@
 
 Our AppStore (backend, worker, frontend) on the k3s cluster of OpenStack
 project `ma_wwi_24sea_appstore_g3`, deployed by Argo CD. Linux apps run as
-pods in a namespace `dep-<id>` per deployment; the Windows desktop still runs
-as OpenStack VMs, through the VM executor. This is the only deployment of the
-AppStore: there is no compose stack and no vendored third-party code in this
-repository any more.
+pods in a namespace `dep-<id>` per deployment; Windows desktop apps run as
+KubeVirt VMs in such a namespace (`runtime: kubevirt-vm`, golden image in the
+namespace `vm-poc`, volumes on Cinder; `scripts/install-cinder-csi.sh`,
+`scripts/migrate-golden-image.sh`, `scripts/enable-cross-namespace-clone.sh`,
+noVNC proxy image from `docker/novnc-proxy`). This is the only deployment of
+the AppStore (staging, prod); the local development stack is
+`docker-compose.dev.yml` with `docs/dev-setup.md`.
 
 ## Environments
 
@@ -21,16 +24,26 @@ Moodle: `moodle.<zone>` (prod) and `moodle-staging.<zone>` (staging).
 share the one k3s node.
 
 ```
-push to dev  of backend / worker / frontend            push to main of backend / worker / frontend
-   └─ CI: lint, test, scan, build, push to ghcr.io        └─ the same
-   └─ k8s-bump.yml (ref dev): digest -> k8s/images/       └─ k8s-bump.yml (ref main): PR with the digest
-      staging.yaml, commit on dev                            -> k8s/images/prod.yaml, auto-merged after
-                  │ Argo CD (staging-root, tracks dev)       the required checks
-                  ▼                                                      │ Argo CD (prod-root, tracks main)
-              STAGING                                                    ▼
-                                                                       PROD
+push to dev  of a component (backend, worker, ...)     push to main of a component
+   └─ CI: lint, test, scan, build, push to ghcr.io,       └─ the same
+      sign the image's origin (attestation)
+   └─ k8s-bump.yml (ref dev, started with a token of      └─ k8s-bump.yml (ref main): checks the origin,
+      the GitHub App, see below): checks the origin,         PR with the digest -> k8s/images/prod.yaml;
+      PR with the digest -> k8s/images/staging.yaml,         a person approves and merges it
+      merged at once                                                     │ Argo CD (prod-root, tracks main)
+                  │ Argo CD (staging-root, tracks dev)                    ▼
+                  ▼                                                     PROD
+              STAGING
 push to dev of this repository (charts, policy, platform) -> staging; k8s/promote.sh: PR dev -> main -> prod
 ```
+
+**Image provenance.** Only images our CI built are rolled out:
+- Each component's CI signs, for the digest it pushed, which repository, workflow, branch and commit built it (`actions/attest`, keyless).
+- Before pinning, `k8s-bump.yml` runs `.github/scripts/verify-image.sh`. A digest whose signature does not name the component's CI, the environment's branch (dev: staging, main: prod) and the commit of the tag is refused.
+- Pull requests that change `images/*.yaml` by hand get the same verification from `image-provenance.yml` (required check "🔏 Image provenance"). The bump PRs get that check from `k8s-bump.yml`.
+- The packages are private: each grants this repository read access (package settings → *Manage Actions access* → `deployment`: Read), because `gh` resolves the image on ghcr.io.
+
+**Starting the bump.** The component CIs start `k8s-bump.yml` with a one-hour token of the GitHub App *DHBW AppStore deploy*. That app is installed only on this repository and has only *Actions: write*. Its client ID is the organisation variable `DEPLOY_APP_CLIENT_ID`, its private key the organisation secret `DEPLOY_APP_PRIVATE_KEY`; both are visible to the six component repositories only.
 
 `appstore-mcp` (`charts/appstore-mcp`, Application `<env>-mcp`, host
 `appstore-mcp[-staging].<zone>`): a read-only remote MCP server for agents
@@ -56,14 +69,12 @@ through the AppStore and run as pods; see the app-registry repository.
 | --- | --- | --- | --- | --- |
 | `api` (2 replicas) | `backend` | UID 10001, read-only root | read namespaces; in `dep-*` only the reader role (no Secrets) | Postgres, Keycloak, Kubernetes API, internet |
 | `pod-deployer` | `worker-pods` | UID 10001, read-only root | creates/deletes `dep-*` namespaces and binds two roles in them; confined by the admission policy | Postgres, Kubernetes API |
-| `vm-executor` | `worker` | root with 6 capabilities, to run each slot's tools as UID 20000+n | none (no token) | Postgres, the API (state backend), internet |
 | `frontend` (2 replicas) | `frontend` | UID 101, read-only root | none | the API |
 | `migrate` (hook) | `backend` | UID 10001 | none | Postgres |
 | `orphans` (hourly) | `backend` | UID 10001, the API's account | as the API | Postgres, Kubernetes API |
 
 - **One Ingress per host**, to the frontend. Its nginx is the gateway for
-  `/api` (prefix stripped, as Caddy does on the VMs) and answers
-  `/api/internal/` (OpenTofu's state backend) with 404. The API has no Ingress.
+  `/api` (prefix stripped, as Caddy does on the VMs). The API has no Ingress.
 - **Migrations** run before every sync (Helm pre-install/pre-upgrade hook =
   Argo CD PreSync), as the database owner. Afterwards only roles that were
   granted `CONNECT` may open the database.
@@ -71,12 +82,9 @@ through the AppStore and run as pods; see the app-registry repository.
   login comes from the Secret `appstore-worker-db`); the migrations grant it
   only the queue, task events and task results. `python -m app.worker_db_role`
   is not used here.
-- **Two Fernet keys** (Secret `appstore-t3`): `credential-encryption-key`
-  (OpenStack credentials at rest, the VM jobs' credential envelopes and state
-  tokens) for the API and the VM executor; `results-encryption-key` (task
-  results) for the API and both workers. The pod deployer has only the
-  second: as a worker it can read the job queue, where the VM jobs'
-  envelopes travel.
+- **Two Fernet keys** (Secret `appstore-t3`): `credential-encryption-key` for
+  the API only (it opens task results sealed before the results key existed);
+  `results-encryption-key` (task results) for the API and the pod deployer.
 - **NetworkPolicies**: deny by default, then only the flows in the table.
   "Internet" excludes the private and link-local ranges (the metadata service
   among them) and the cluster's own ranges (`podApps.extraEgressExcept`).
@@ -214,21 +222,18 @@ Once per environment (the cluster has no other state that is not in git):
    only) and applies the environment's root Application. Run it again whenever
    the chart gains a Secret key; it never rotates existing ones. The generated
    logins are printed once (`show-credentials.sh <env>` prints them later).
-2. Settings in `environments/<env>.yaml`: `appstore.api.openstackAllowedAuthUrls`
-   (the DHBW Keystone, from the GitHub secrets; without it no VM app runs),
-   the LTI settings if Moodle should launch the AppStore, and check
+2. Settings in `environments/<env>.yaml`: the LTI settings if Moodle should launch the AppStore, and check
    `appstore.network.kubeApi` with `kubectl get svc,endpoints kubernetes -n default`.
 3. Check: `kubectl -n argocd get applications | grep <env>`.
 
-Rolling back an image: set its digest in `images/<env>.yaml` back (commit on
-`dev`, or a PR on `main`); Argo CD follows. Rolling back anything else: revert
-the commit.
+Rolling back an image: set its digest in `images/<env>.yaml` back, with its tag
+comment (a PR on `dev` or `main`); Argo CD follows. The required check accepts
+only images whose CI signed their origin, i.e. built after the image provenance
+was introduced (2026-10). An older image needs the check suspended by an admin
+for that one PR. Rolling back anything else: revert the commit.
 
 ## Operating notes
 
-- **Real OpenStack only for the Windows desktop**: a teacher adds an
-  application credential under Settings. Use a separate credential for
-  staging.
 - **Demo users** (staging): `dozent.demo` (teacher), `admin.demo` (admin),
   `student1.demo` ... `student4.demo`; password: `show-credentials.sh staging`.
   Production has none: create the first admin in the admin console

@@ -4,6 +4,7 @@
 {{- $podDeployer := include "appstore.clusterName" (dict "context" . "component" "pod-deployer") -}}
 {{- $deployer := include "appstore.clusterName" (dict "context" . "component" "deployer") -}}
 {{- $reader := include "appstore.clusterName" (dict "context" . "component" "reader") -}}
+{{- $vncProxy := include "appstore.clusterName" (dict "context" . "component" "vnc-proxy") -}}
 {{- $apiCluster := include "appstore.clusterName" (dict "context" . "component" "api") -}}
 # Who may do what in the cluster (.github#4, 2.4). Only the API and the pod
 # deployer talk to the Kubernetes API; every other pod of the chart runs
@@ -47,7 +48,7 @@ rules:
     verbs: ["get", "create", "patch"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterroles"]
-    resourceNames: [{{ $deployer | quote }}, {{ $reader | quote }}]
+    resourceNames: [{{ $deployer | quote }}, {{ $reader | quote }}, {{ $vncProxy | quote }}]
     verbs: ["bind"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -73,6 +74,10 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create", "patch"]
+  # The noVNC proxy of a kubevirt-vm deployment runs as its own account.
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "patch"]
   - apiGroups: [""]
     resources: ["services", "resourcequotas", "limitranges"]
     verbs: ["get", "list", "watch", "create", "patch"]
@@ -97,10 +102,62 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "list", "watch", "create", "patch"]
-  # KubeVirt VMs for runtime kubevirt-vm
+  # KubeVirt VMs for runtime kubevirt-vm. The platform applies VirtualMachines
+  # and nothing else:
+  #   get/list/watch  read the VM back (app/k8s/kube.py)
+  #   create, patch   server-side apply of the rendered VirtualMachine (create
+  #                   the first time, patch afterwards; pause/resume of a VM
+  #                   is a patch of runStrategy)
+  #   update          replace of an existing VM (not used by the renderer today)
+  #   delete          removing a single VM; normally the namespace goes as a whole
   - apiGroups: ["kubevirt.io"]
-    resources: ["virtualmachines", "virtualmachineinstances"]
+    resources: ["virtualmachines"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # VirtualMachineInstances are made and removed by KubeVirt's controller from
+  # the VirtualMachine, never by the pod deployer (a VMI created directly would
+  # bypass the VirtualMachine content check of the admission policy). Read only:
+  # the worker lists them to wait for "Running" (app/k8s/kube.py::_vmis).
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachineinstances"]
+    verbs: ["get", "list", "watch"]
+---
+# Bound by the pod deployer to the noVNC proxy's service account in each
+# kubevirt-vm namespace: to open the VNC stream of the VMs there, nothing else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $vncProxy }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+rules:
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources: ["virtualmachineinstances/vnc"]
+    verbs: ["get"]
+{{- range .Values.podApps.vmImageNamespaces }}
+---
+# A kubevirt-vm deployment clones the golden image of this namespace; the pod
+# deployer lets each deployment's claim do that with one ReferenceGrant here,
+# removed with the deployment (the admission policy confines what it may grant).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $deployer }}-image-grants
+  namespace: {{ . }}
+  labels: {{- include "appstore.labels" (dict "context" $ "component" "pod-deployer") | nindent 4 }}
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["referencegrants"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $deployer }}-image-grants
+  namespace: {{ . }}
+  labels: {{- include "appstore.labels" (dict "context" $ "component" "pod-deployer") | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $deployer }}-image-grants }
+subjects:
+  - { kind: ServiceAccount, name: {{ $deployerSa }}, namespace: {{ $ns }} }
+{{- end }}
 ---
 # Bound by the pod deployer in each dep-* namespace for the API's account:
 # the live view of a deployment (app/services/k8s_status.py). No Secrets.

@@ -42,6 +42,18 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 {{- end }}
 
+{{/* The noVNC proxy image the pod deployer puts into kubevirt-vm deployments:
+pinned by digest (images.tags.novncProxy, written by k8s-bump). Until the
+first bump it is the unpinned :latest, as before. */}}
+{{- define "appstore.vncProxyImage" -}}
+{{- $tag := .Values.images.tags.novncProxy | default "" -}}
+{{- if not $tag -}}
+{{- printf "%s/novnc-proxy:latest" .Values.images.registry -}}
+{{- else -}}
+{{- include "appstore.image" (dict "context" . "key" "novncProxy" "name" "novnc-proxy") -}}
+{{- end -}}
+{{- end }}
+
 {{- define "appstore.podDefaults" -}}
 {{- with .Values.images.pullSecrets }}
 imagePullSecrets:
@@ -78,6 +90,7 @@ seccompProfile:
 - { name: APP_MAX_CPU, value: {{ $p.maxCpu | quote }} }
 - { name: APP_MAX_MEMORY, value: {{ $p.maxMemory | quote }} }
 - { name: APP_MAX_STORAGE, value: {{ $p.maxStorage | quote }} }
+- { name: APP_VM_IMAGE_NAMESPACES, value: {{ join "," $p.vmImageNamespaces | quote }} }
 - { name: K8S_MAX_WORKLOADS_PER_DEPLOYMENT, value: {{ $p.maxWorkloadsPerDeployment | quote }} }
 - { name: K8S_ZONE, value: {{ $p.zone | quote }} }
 - { name: K8S_APP_DOMAIN, value: {{ $p.appDomain | quote }} }
@@ -110,7 +123,6 @@ to start in production without them (.github#7 O).
 {{- end }}
 - { name: APP_BASE_URL, value: {{ printf "https://%s" (required "host is required" .Values.host) | quote }} }
 - { name: APP_GIT_ALLOWED_HOSTS, value: {{ .Values.api.gitAllowedHosts | quote }} }
-- { name: OPENSTACK_ALLOWED_AUTH_URLS, value: {{ .Values.api.openstackAllowedAuthUrls | quote }} }
 - { name: LTI13_PLATFORM_ISSUER, value: {{ .Values.api.lti.platformIssuer | quote }} }
 - { name: LTI13_CLIENT_ID, value: {{ .Values.api.lti.clientId | quote }} }
 - { name: LTI13_DEPLOYMENT_ID, value: {{ .Values.api.lti.deploymentId | quote }} }
@@ -120,13 +132,16 @@ to start in production without them (.github#7 O).
 {{ include "appstore.podLimitsEnv" . }}
 - { name: K8S_MAX_WORKLOADS_PER_OWNER, value: {{ .Values.podApps.maxWorkloadsPerOwner | quote }} }
 - { name: TEMP_REPO_BASE_PATH, value: /tmp/repos }
+{{- if .Values.clamav.enabled }}
+# ClamAV: when CLAMD_HOST is set the API scans every upload and fails closed.
+- { name: CLAMD_HOST, value: {{ include "appstore.name" (dict "context" . "component" "clamav") | quote }} }
+- { name: CLAMD_PORT, value: "3310" }
+{{- end }}
 {{- end }}
 
 {{/*
-Both workers seal task results with the results key. Only the VM executor
-also gets the credential key (vm-executor.yaml): the pod deployer can read
-the job queue, where the VM jobs' credential envelopes travel, and has no
-business decrypting them.
+The pod deployer seals task results with the results key. It gets no
+credential key.
 */}}
 {{- define "appstore.workerEnv" -}}
 - { name: APP_ENV, value: production }

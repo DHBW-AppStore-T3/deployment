@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Install the OpenStack Cinder CSI driver on the cluster.
-# Usage: bash deployment/scripts/install-cinder-csi.sh
-# Prereqs: helm, kubectl, yq (or python3), ~/Downloads/clouds.yaml
+# Usage: KUBECONFIG=/path/to/kubeconfig bash scripts/install-cinder-csi.sh
+# Prereqs: helm, kubectl, python3, ~/Downloads/clouds.yaml (or CLOUDS_YAML=...)
 set -euo pipefail
 
-KUBECONFIG="${KUBECONFIG:-/Users/I751109/Documents/coding-projects/DHBW-AppStore/k8s-credentials/kubeconfig-ma_wwi_24sea_appstore_g3.yaml}"
+KUBECONFIG="${KUBECONFIG:?set KUBECONFIG to the kubeconfig of the cluster}"
 CLOUDS_YAML="${CLOUDS_YAML:-$HOME/Downloads/clouds.yaml}"
 CLOUD_NAME="${CLOUD_NAME:-openstack}"
 CSI_NAMESPACE="cinder-csi"
@@ -99,10 +99,16 @@ echo "==> Creating namespace $CSI_NAMESPACE"
 kubectl create namespace "$CSI_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> Creating cloud-config secret"
+# The application credential goes through a private temp file, never onto a
+# command line (visible in `ps` and shell history).
+CONF_FILE="$(umask 077 && mktemp)"
+trap 'rm -f "$CONF_FILE"' EXIT
+printf '%s' "$CLOUD_CONF" > "$CONF_FILE"
 kubectl create secret generic cloud-config \
   --namespace="$CSI_NAMESPACE" \
-  --from-literal=cloud.conf="$CLOUD_CONF" \
+  --from-file=cloud.conf="$CONF_FILE" \
   --dry-run=client -o yaml | kubectl apply -f -
+rm -f "$CONF_FILE"
 
 echo "==> Adding OpenStack Helm repo"
 helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack --force-update
@@ -115,6 +121,9 @@ helm upgrade --install "$HELM_RELEASE" cpo/openstack-cinder-csi \
   --set secret.enabled=true \
   --set secret.name=cloud-config \
   --wait --timeout=5m
+
+echo "==> Cross-namespace clone for kubevirt-vm golden images"
+bash "$(dirname "$0")/enable-cross-namespace-clone.sh"
 
 echo "==> Applying Cinder StorageClass"
 kubectl apply -f "$(dirname "$0")/../k8s/cinder/storageclass.yaml"

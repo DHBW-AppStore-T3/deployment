@@ -30,10 +30,6 @@ appstore:
   images:
     pullSecrets: [ghcr-pull]
   api:
-    # The DHBW Keystone (OPENSTACK_ALLOWED_AUTH_URLS); empty: no OpenStack
-    # credential can be saved, so no VM app (the Windows desktop) runs.
-    # TODO before VM apps: the URL from the GitHub secret PROD_OS_AUTH_URL.
-    openstackAllowedAuthUrls: ""
     # LTI 1.3 from Moodle (off while clientId is empty). Moodle's tool URLs:
     # https://<host>/api/lti13/login and https://<host>/api/lti13/launch.
     lti:

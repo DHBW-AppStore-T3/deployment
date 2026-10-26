@@ -6,8 +6,8 @@ vm:
   cpuCores: 4
   memoryGiB: 8
   diskGiB: 80
-  # Name of the PVC in namespace vm-images that serves as the golden image.
-  # Create it once via: kubectl create pvc windows11-matlab-golden -n vm-images ...
+  # Name of the PVC in namespace vm-poc that serves as the golden image.
+  # Create it once via: kubectl create pvc windows11-matlab-golden -n vm-poc ...
   # then populate it from the Glance image using the install-cinder-csi.sh script.
   imageRef: windows11-matlab-golden
   storageClass: cinder
