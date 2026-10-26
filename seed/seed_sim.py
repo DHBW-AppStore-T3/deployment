@@ -45,13 +45,13 @@ APPS = [
         "name": "Online-IDE",
         "description": "Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person.",
         "gitLink": "https://github.com/DHBW-AppStore-T3/Online-IDE",
-        "versions": ["v2.0.1"],
+        "versions": ["v2.2.0"],
     },
     {
         "name": "Web-LaTeX",
         "description": "LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person.",
         "gitLink": "https://github.com/DHBW-AppStore-T3/Web-LaTeX",
-        "versions": ["v2.0.2"],
+        "versions": ["v2.0.4"],
     },
     {
         "name": "Jupyter-Notebook",

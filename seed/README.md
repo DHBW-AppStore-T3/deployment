@@ -10,8 +10,8 @@
 
 | App | Version |
 |---|---|
-| Online-IDE | v2.0.1 |
-| Web-LaTeX | v2.0.2 |
+| Online-IDE | v2.2.0 |
+| Web-LaTeX | v2.0.4 |
 | Jupyter-Notebook | v2.0.0 |
 | pgAdmin | v2.0.1 |
 | template-app | v2.0.1 |
