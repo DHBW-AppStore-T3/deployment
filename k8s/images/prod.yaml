@@ -11,7 +11,7 @@ images:
     appstoreMcp: "sha256:2e1838b83c487ab36d20b3477e00b24405dbcc45ee8b9660c0fb88f3505007b9"  # sha-c1fc79d
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
-    selfServiceUi: "sha256:e2aa3534681c48978f201350b38e5f829063dd567c091fe884259e4547c7584e"  # sha-728d910
+    selfServiceUi: "sha256:7a82e8b461e1748df78c3ad46d910abada431ac09aee99efbed6f3591955af14"  # sha-ed82192
     moodle: "sha256:d4cf22aaffc1f2bc15e9251086ef448ea35b84432128df3775e6e79858b85b6b"  # sha-c560275
     # noVNC proxy of kubevirt-vm deployments (docker/novnc-proxy, bumped by its workflow).
     # Empty until the first bump: the chart then falls back to the unpinned :latest.
