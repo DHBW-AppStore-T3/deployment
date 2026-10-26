@@ -20,7 +20,6 @@ ORG=DHBW-AppStore-T3   # exact spelling: gh compares repository and workflow cas
 
 case "$COMPONENT" in
   backend)         REPO=backend         PACKAGE=backend         WORKFLOW=ci.yml ;;
-  worker)          REPO=worker          PACKAGE=worker          WORKFLOW=ci.yml ;;
   worker-pods)     REPO=worker          PACKAGE=worker-pods     WORKFLOW=ci.yml ;;
   frontend)        REPO=frontend        PACKAGE=frontend        WORKFLOW=ci.yml ;;
   appstore-mcp)    REPO=appstore-mcp    PACKAGE=appstore-mcp    WORKFLOW=ci.yml ;;
