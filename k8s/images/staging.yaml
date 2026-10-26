@@ -6,7 +6,7 @@
 images:
   tags:
     backend: "sha256:79cbc504318921617575368a81fec7d55b3a78bb7395c6dd87fc61c4990e3685"  # sha-30e49ac
-    workerPods: "sha256:724727ce595a06b9b6a497e6cd6abce0477a108becd9b59a25eb3caf6ba8be85"  # sha-9656dbc
+    workerPods: "sha256:c8c0b359add0fc4c72b4260d29be8c76678da1a643a4353f79f21e9b80fb2dac"  # sha-049467e
     frontend: "sha256:7c47aaf9cba52690c2e6b415d3a2cef6fe71f973ab167afa138272a1fc4f119a"  # sha-bffc394
     appstoreMcp: "sha256:afc5f059642fba50dd95f86bfa6723b2c8779515efbff1e09abd499b5cd0c955"  # sha-65ab85f
     # Empty until the first image of the self-service-ui repository is rolled out
