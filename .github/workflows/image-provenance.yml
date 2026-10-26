@@ -33,7 +33,8 @@ jobs:
         run: |
           set -euo pipefail
           declare -A COMPONENT=([backend]=backend [workerPods]=worker-pods
-            [frontend]=frontend [appstoreMcp]=appstore-mcp [selfServiceUi]=self-service-ui [moodle]=moodle)
+            [frontend]=frontend [appstoreMcp]=appstore-mcp [selfServiceUi]=self-service-ui [moodle]=moodle
+            [novncProxy]=novnc-proxy)
           PIN='^    ([A-Za-z]+): "(sha256:[0-9a-f]{64})"  # (sha-[0-9a-f]{7,40})$'
           checked=0 logged_in=false
           for env in staging prod; do
