@@ -37,8 +37,14 @@ on:
         required: true
         type: string
 
+# One queue per branch and component. GitHub keeps one running and one waiting run per group and cancels
+# an older waiting run when a newer one arrives: with one group per branch, bumps of different components
+# that arrived together replaced each other (2026-10-26: frontend's rollout was lost). Per component, only
+# an older bump of the same component can be replaced, and the newer one supersedes it anyway. Bumps of
+# different components run side by side: each changes its own line, the staging step merges with rebase
+# and retry, the prod step opens one pull request each.
 concurrency:
-  group: k8s-bump-${{ github.ref_name }}
+  group: k8s-bump-${{ github.ref_name }}-${{ inputs.component }}
   cancel-in-progress: false
 
 permissions:
