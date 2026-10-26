@@ -1,13 +1,9 @@
 # Entscheidung: Der AppStore läuft auf Kubernetes (Migrationsplan Phase 0, D1–D10)
 
 > **Teilweise abgelöst durch .github#12 (OpenStack-VM-Pfad entfernt):** Es gibt keinen VM-Executor, keine Queue `vm`,
-> keine OpenStack-Zugangsdaten, kein State-Backend und keinen Credential-Schlüssel. Alle Apps laufen als Pods oder
-> KubeVirt-VMs über den Pod-Deployer. Überholt sind D2, D3, „Beim Bauen entschieden“ Punkt 5 und 6, der Abschnitt
-> „Restrisiko VM-Pfad“ und die VM-States in Plan-Phase 7. Der Rest gilt.
-
-**Status:** angenommen und umgesetzt. Staging läuft aus `dev`, Prod seit 2026-10-23 aus `main` (backend, worker,
-frontend, deployment; die `spike/*`-Branches sind gemergt). Ergänzt `2026-pods-instead-of-vms.md` und ändert dort
-Punkt 3 (zwei Rollen statt einer) und Punkt 7 (jeder Host gehört seinem Deployment). Nachträge: siehe unten.
+> keine OpenStack-Zugangsdaten, kein State-Backend und keinen Credential-Schlüssel für OpenStack-Zugangsdaten. Alle
+> Apps laufen als Pods oder KubeVirt-VMs über den Pod-Deployer. Überholt sind D2, D3, „Beim Bauen entschieden“ Punkt 4
+> (nur `/api/internal/`), 5 und 6, der Abschnitt „Restrisiko VM-Pfad“ und die VM-States in Plan-Phase 7. Der Rest gilt.
 
 ## Kontext
 Unser Stack lief mit Compose und Ansible auf VMs, alle Apps als OpenTofu/Packer-VMs. Das Pod-MVP (#4) gab es nur als

@@ -176,6 +176,8 @@ Die Tests liegen in den Repos `backend` und `worker`; Befehle und Test-Datenbank
 | `make test-backend` | Unit- und Integrationstests des Backends, mit der Umgebung von CI gegen die eigene Datenbank `backend_test` (wird angelegt); die Dev-Datenbank bleibt unberührt |
 | `make test-backend-cov` | dasselbe mit HTML-Coverage (`backend/htmlcov/`) |
 
+Läuft Compose mit anderem `DB_USER`/`DB_PASSWORD`, beides auch an `make` übergeben (`DB_USER=… DB_PASSWORD=… make test-backend`); `make` liest die `.env` nicht.
+
 Worker-Tests: Rezept in `worker/README.md`, Abschnitt Tests.
 
 ## 9. Was echt ist und was simuliert
