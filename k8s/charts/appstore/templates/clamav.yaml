@@ -31,7 +31,8 @@ spec:
     type: RollingUpdate
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete
-    whenScaled: Delete
+    # Scaling down keeps the volume (and its signature DB) for the next scale-up.
+    whenScaled: Retain
   selector:
     matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
   template:
