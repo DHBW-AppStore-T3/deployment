@@ -31,4 +31,6 @@ spec:
     namespace: {{ .Values.env.namespace }}
   syncPolicy:
     automated: { prune: true, selfHeal: true }
-    syncOptions: [CreateNamespace=true]
+    # PruneLast: a resource that the chart no longer renders is removed only after
+    # the new ones are healthy (the ClamAV Deployment -> StatefulSet switch).
+    syncOptions: [CreateNamespace=true, PruneLast=true]
