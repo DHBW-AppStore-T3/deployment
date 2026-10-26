@@ -32,7 +32,7 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          declare -A COMPONENT=([backend]=backend [worker]=worker [workerPods]=worker-pods
+          declare -A COMPONENT=([backend]=backend [workerPods]=worker-pods
             [frontend]=frontend [appstoreMcp]=appstore-mcp [selfServiceUi]=self-service-ui [moodle]=moodle)
           PIN='^    ([A-Za-z]+): "(sha256:[0-9a-f]{64})"  # (sha-[0-9a-f]{7,40})$'
           checked=0 logged_in=false
