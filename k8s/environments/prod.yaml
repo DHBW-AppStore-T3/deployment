@@ -25,6 +25,12 @@ appstore:
   # A new app version is submitted and approved in the UI.
   seed:
     enabled: false
+  # ClamAV scans every upload; fail-closed (503 when scanner is down). Block storage
+  # that outlives the node, so the signature DB survives a node loss.
+  clamav:
+    enabled: true
+    persistence:
+      storageClassName: cinder
   # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
   # this docker-registry Secret from a read:packages token.
   images:
