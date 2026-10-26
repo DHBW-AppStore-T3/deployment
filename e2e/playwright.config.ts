@@ -1,0 +1,32 @@
+import { defineConfig } from '@playwright/test'
+
+// Local runs: passwords and options in e2e/.env.local (not in git), so nothing has to be typed on the command line.
+try {
+  process.loadEnvFile('.env.local')
+} catch {
+  /* CI passes them as environment variables */
+}
+if (!process.env.E2E_ADMIN_PASSWORD || !process.env.E2E_DOZENT_PASSWORD) {
+  throw new Error('E2E_ADMIN_PASSWORD and E2E_DOZENT_PASSWORD are not set: copy e2e/.env.local.example to e2e/.env.local and fill it in')
+}
+
+/**
+ * The chain runs against a real environment (staging). One worker, one test at a time: the
+ * Windows VM needs the cluster's whole quota, and the chain creates and removes real apps.
+ */
+export default defineConfig({
+  testDir: './tests',
+  timeout: 20 * 60 * 1000, // a Windows VM boots for minutes
+  expect: { timeout: 20_000 },
+  workers: 1,
+  retries: 0,
+  reporter: [['list'], ['html', { open: 'never' }]],
+  use: {
+    baseURL: process.env.E2E_BASE_URL ?? 'https://appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site',
+    // Locally the installed Chrome can be used (E2E_CHANNEL=chrome) instead of downloading Chromium.
+    channel: process.env.E2E_CHANNEL || undefined,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    ignoreHTTPSErrors: false,
+  },
+})
