@@ -18,7 +18,6 @@ appstore:
   selfServiceUi:
     enabled: true
   # ClamAV: enabled on staging so uploads are scanned; fail-closed (503 when scanner is down).
-  # Pin the image by digest once the first staging rollout is verified.
   clamav:
     enabled: true
   # Demo course and catalog apps after every sync (charts/appstore/templates/seed-job.yaml).

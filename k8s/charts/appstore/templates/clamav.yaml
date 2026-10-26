@@ -33,7 +33,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: clamav
-          # Pin by digest: clamav/clamav on Docker Hub.
+          # Pinned by digest in values.yaml (clamav/clamav on Docker Hub).
           image: {{ .Values.clamav.image }}
           imagePullPolicy: IfNotPresent
           # The default entrypoint (/init) needs root (mkdir /run/clamav);

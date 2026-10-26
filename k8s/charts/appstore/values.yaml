@@ -245,9 +245,10 @@ network:
 clamav:
   enabled: false
   replicas: 2
-  # Pin by digest before enabling in production.
-  # Latest stable: docker.io/clamav/clamav (check https://hub.docker.com/r/clamav/clamav/tags)
-  image: "clamav/clamav:1.4"
+  # Pinned by digest (multi-arch index of clamav/clamav:1.4, checked 2026-10-26 with
+  # `docker buildx imagetools inspect clamav/clamav:1.4`). The tag is kept for readability;
+  # Kubernetes pulls by digest. Bump both together; tags: https://hub.docker.com/r/clamav/clamav/tags
+  image: "clamav/clamav:1.4@sha256:982e28f90061d0e66eb03276419f589a47c9fa601e985e472fc2f6c64b497ca0"
   resources:
     requests: { cpu: 100m, memory: 1536Mi }
     # clamd holds the old and the new database side by side while it reloads
