@@ -8,13 +8,30 @@
 # The signature database (~250 MiB compressed, ~1 GiB in memory) is loaded on
 # startup. freshclam updates it in-process; its egress is open to the ClamAV
 # mirrors but closed for everything else (.github#13).
+#
+# A StatefulSet with one RWO volume per replica keeps the database across pod
+# restarts: a restart then loads it from disk and freshclam only fetches the
+# delta, instead of downloading everything again (~1.5 min, and the mirrors rate
+# limit repeated full downloads; .github#15). The pod labels are the same as
+# those of the Deployment this replaced, so the Service and the NetworkPolicy
+# select old and new pods alike during the switch; the Application prunes the
+# old Deployment last (PruneLast), after the new pods are ready.
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ $name }}
   labels: {{- include "appstore.labels" $comp | nindent 4 }}
 spec:
+  serviceName: {{ $name }}
   replicas: {{ .Values.clamav.replicas }}
+  # Both pods start at once (no ordinal wait); a rolling update still replaces
+  # them one at a time and waits for readiness, so one scanner stays up.
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
   selector:
     matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
   template:
@@ -29,6 +46,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 100
         runAsGroup: 101
+        # Makes the volume group-writable for the clamav group.
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -65,12 +84,21 @@ spec:
             failureThreshold: 3
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
-            - { name: db, mountPath: /var/lib/clamav }
+            # subPath: keeps the filesystem's lost+found out of the database directory.
+            - { name: db, mountPath: /var/lib/clamav, subPath: db }
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: db
-          emptyDir: {}  # lost on restart; freshclam re-downloads
+  volumeClaimTemplates:
+    - metadata:
+        name: db
+        labels: {{- include "appstore.selectorLabels" $comp | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: {{ required "clamav.persistence.storageClassName is required" .Values.clamav.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.clamav.persistence.size }}
 ---
 apiVersion: v1
 kind: Service

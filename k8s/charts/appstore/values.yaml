@@ -245,6 +245,15 @@ network:
 clamav:
   enabled: false
   replicas: 2
+  # The signature database (~350 MiB, twice that while clamd reloads) on a volume
+  # of its own per replica (StatefulSet volumeClaimTemplates, ReadWriteOnce), so
+  # a restart does not download everything again. Expanding later is possible
+  # (the classes allow it), shrinking is not.
+  persistence:
+    size: 2Gi
+    # Explicit, no cluster default: "cinder" (k8s/cinder/storageclass.yaml) is
+    # block storage that outlives the node; "local-path" is k3s's node-local default.
+    storageClassName: cinder
   # Pinned by digest (multi-arch index of clamav/clamav:1.4, checked 2026-10-26 with
   # `docker buildx imagetools inspect clamav/clamav:1.4`). The tag is kept for readability;
   # Kubernetes pulls by digest. Bump both together; tags: https://hub.docker.com/r/clamav/clamav/tags
