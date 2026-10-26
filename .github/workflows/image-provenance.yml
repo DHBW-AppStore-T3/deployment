@@ -1,0 +1,62 @@
+name: Image provenance
+
+# Every image a pull request pins in k8s/images/<env>.yaml must have been built by
+# the CI of its component, from the branch of that environment (staging: dev,
+# prod: main), at the commit of its tag (.github/scripts/verify-image.sh). Required
+# for pull requests into dev and main. The bump pull requests of k8s-bump.yml get
+# this check from k8s-bump.yml itself, after the same verification: a pull request
+# opened with the GITHUB_TOKEN starts no workflow.
+#
+# Runs for every pull request (no path filter): a required check that does not
+# run blocks the pull request. Without a changed image line it passes at once.
+on:
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+  packages: read   # gh resolves the images on ghcr.io
+
+jobs:
+  verify:
+    name: "🔏 Image provenance"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify every image line the pull request adds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          declare -A COMPONENT=([backend]=backend [workerPods]=worker-pods
+            [frontend]=frontend [appstoreMcp]=appstore-mcp [selfServiceUi]=self-service-ui [moodle]=moodle
+            [novncProxy]=novnc-proxy)
+          PIN='^    ([A-Za-z]+): "(sha256:[0-9a-f]{64})"  # (sha-[0-9a-f]{7,40})$'
+          checked=0 logged_in=false
+          for env in staging prod; do
+            branch=dev; [ "$env" = prod ] && branch=main
+            # What the pull request adds to the file (its net change against the base).
+            added=$(git diff --unified=0 "$BASE...$HEAD" -- "k8s/images/$env.yaml" | sed -n 's/^+\([^+]\)/\1/p; s/^+$//p')
+            while IFS= read -r line; do
+              if [[ "$line" =~ ^[[:space:]]*(#.*)?$ || "$line" =~ ^(images|"  tags"):[[:space:]]*$ ||
+                    "$line" =~ ^"    "[A-Za-z]+:\ \"\"$ ]]; then
+                continue   # comment, structure, or a component switched off ("")
+              fi
+              # Anything else must be a digest pin with its tag: a plain tag would
+              # deploy whatever that tag points to later, unverified.
+              [[ "$line" =~ $PIN ]] || { echo "k8s/images/$env.yaml: not a digest pin with its tag: $line" >&2; exit 1; }
+              key=${BASH_REMATCH[1]} digest=${BASH_REMATCH[2]} tag=${BASH_REMATCH[3]}
+              [ -n "${COMPONENT[$key]:-}" ] || { echo "k8s/images/$env.yaml: unknown image key '$key'" >&2; exit 1; }
+              if [ "$logged_in" = false ]; then
+                echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+                logged_in=true
+              fi
+              bash .github/scripts/verify-image.sh "${COMPONENT[$key]}" "$tag" "$digest" "$branch"
+              checked=$((checked + 1))
+            done <<< "$added"
+          done
+          echo "$checked image pin(s) verified"

@@ -24,16 +24,26 @@ Moodle: `moodle.<zone>` (prod) and `moodle-staging.<zone>` (staging).
 share the one k3s node.
 
 ```
-push to dev  of backend / worker / frontend            push to main of backend / worker / frontend
-   └─ CI: lint, test, scan, build, push to ghcr.io        └─ the same
-   └─ k8s-bump.yml (ref dev): digest -> k8s/images/       └─ k8s-bump.yml (ref main): PR with the digest
-      staging.yaml, commit on dev                            -> k8s/images/prod.yaml, auto-merged after
-                  │ Argo CD (staging-root, tracks dev)       the required checks
-                  ▼                                                      │ Argo CD (prod-root, tracks main)
-              STAGING                                                    ▼
-                                                                       PROD
+push to dev  of a component (backend, worker, ...)     push to main of a component
+   └─ CI: lint, test, scan, build, push to ghcr.io,       └─ the same
+      sign the image's origin (attestation)
+   └─ k8s-bump.yml (ref dev, started with a token of      └─ k8s-bump.yml (ref main): checks the origin,
+      the GitHub App, see below): checks the origin,         PR with the digest -> k8s/images/prod.yaml;
+      PR with the digest -> k8s/images/staging.yaml,         a person approves and merges it
+      merged at once                                                     │ Argo CD (prod-root, tracks main)
+                  │ Argo CD (staging-root, tracks dev)                    ▼
+                  ▼                                                     PROD
+              STAGING
 push to dev of this repository (charts, policy, platform) -> staging; k8s/promote.sh: PR dev -> main -> prod
 ```
+
+**Image provenance.** Only images our CI built are rolled out:
+- Each component's CI signs, for the digest it pushed, which repository, workflow, branch and commit built it (`actions/attest`, keyless).
+- Before pinning, `k8s-bump.yml` runs `.github/scripts/verify-image.sh`. A digest whose signature does not name the component's CI, the environment's branch (dev: staging, main: prod) and the commit of the tag is refused.
+- Pull requests that change `images/*.yaml` by hand get the same verification from `image-provenance.yml` (required check "🔏 Image provenance"). The bump PRs get that check from `k8s-bump.yml`.
+- The packages are private: each grants this repository read access (package settings → *Manage Actions access* → `deployment`: Read), because `gh` resolves the image on ghcr.io.
+
+**Starting the bump.** The component CIs start `k8s-bump.yml` with a one-hour token of the GitHub App *DHBW AppStore deploy*. That app is installed only on this repository and has only *Actions: write*. Its client ID is the organisation variable `DEPLOY_APP_CLIENT_ID`, its private key the organisation secret `DEPLOY_APP_PRIVATE_KEY`; both are visible to the six component repositories only.
 
 `appstore-mcp` (`charts/appstore-mcp`, Application `<env>-mcp`, host
 `appstore-mcp[-staging].<zone>`): a read-only remote MCP server for agents
@@ -216,9 +226,11 @@ Once per environment (the cluster has no other state that is not in git):
    `appstore.network.kubeApi` with `kubectl get svc,endpoints kubernetes -n default`.
 3. Check: `kubectl -n argocd get applications | grep <env>`.
 
-Rolling back an image: set its digest in `images/<env>.yaml` back (commit on
-`dev`, or a PR on `main`); Argo CD follows. Rolling back anything else: revert
-the commit.
+Rolling back an image: set its digest in `images/<env>.yaml` back, with its tag
+comment (a PR on `dev` or `main`); Argo CD follows. The required check accepts
+only images whose CI signed their origin, i.e. built after the image provenance
+was introduced (2026-10). An older image needs the check suspended by an admin
+for that one PR. Rolling back anything else: revert the commit.
 
 ## Operating notes
 

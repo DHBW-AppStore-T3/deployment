@@ -21,6 +21,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write       # sign the image's origin (Sigstore, keyless)
+      attestations: write   # store that signature with GitHub
     outputs:
       digest: ${{ steps.build.outputs.digest }}
 
@@ -58,6 +60,16 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # Signs which repository, workflow, branch and commit built this digest (SLSA
+      # build provenance, keyless); k8s-bump.yml rolls out only images that have it
+      # (.github/scripts/verify-image.sh).
+      - name: Attest the image's origin
+        if: github.event_name != 'pull_request' && steps.build.outputs.digest != ''
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
 
   # Pins the image just pushed (by digest) in k8s/images/<staging|prod>.yaml:
   # k8s-bump.yml (this repository) writes it, a PR on dev merges itself, a PR on
