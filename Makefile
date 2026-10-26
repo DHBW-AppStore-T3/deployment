@@ -217,19 +217,20 @@ prune: ## ⚠️  docker system prune -af --volumes
 # ----------------------------------------------------------------
 # Tests run in the own database `backend_test` with the environment of CI (the
 # container's own environment breaks the settings tests; the tests TRUNCATE their
-# database). Pass DB_USER / DB_PASSWORD to make if compose runs with other values.
+# database). Pass DB_USER / DB_PASSWORD / DB_NAME to make if compose runs with other values.
 # test_migrations sets the password of the cluster-wide role appstore_worker: the
 # targets restore the dev login afterwards, or new worker connections fail.
 DB_USER     ?= postgres
 DB_PASSWORD ?= postgres
+DB_NAME     ?= backend_dev
 BACKEND_TEST_ENV := env -i HOME=/root PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin \
 	DATABASE_URL=postgresql://$(DB_USER):$(DB_PASSWORD)@postgres:5432/backend_test \
 	CREDENTIAL_ENCRYPTION_KEY=Q1PNlFd4It9oQPtjCcXcmB7wGDkY4w8KwpIRNSF4u7U= DISABLE_BACKGROUND_TASKS=1 # gitleaks:allow (throwaway test key, same as backend CI)
 
 # pytest's exit code wins; a failed restore fails the target when the tests passed.
 define run-backend-tests
-	@$(DC_DEV) exec -T postgres psql -U $(DB_USER) -tc "SELECT 1 FROM pg_database WHERE datname='backend_test'" | grep -q 1 \
-		|| $(DC_DEV) exec -T postgres psql -U $(DB_USER) -c "CREATE DATABASE backend_test"
+	@$(DC_DEV) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -tc "SELECT 1 FROM pg_database WHERE datname='backend_test'" | grep -q 1 \
+		|| $(DC_DEV) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -c "CREATE DATABASE backend_test"
 	$(DC_DEV) exec -T backend $(BACKEND_TEST_ENV) poetry run pytest -m "unit or integration" -q $(1); rc=$$?; \
 		$(DC_DEV) exec -T backend poetry run python -m app.worker_db_role || { [ $$rc -ne 0 ] || rc=1; }; exit $$rc
 endef

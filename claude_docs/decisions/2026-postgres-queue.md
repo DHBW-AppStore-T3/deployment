@@ -3,7 +3,7 @@
 > **Teilweise abgelöst durch .github#12 (OpenStack-VM-Pfad entfernt):** Der Worker ist nur noch der Pod-Deployer. Es
 > gibt keine VM-Jobs, keine OpenStack-CLI, keine Tabelle `user_openstack_credentials`, keine Slot-UIDs, keinen
 > Packer-Build-Lock und keinen OpenTofu-State in der API. Überholt sind die Rollen-Zeile (`user_openstack_credentials`),
-> der Build-Lock sowie die Abweichungen 6 (Werkzeuge beim Cancel) und 8 (Slot-UIDs, `PG_CONN_STR`). Queue, Lease,
+> der Build-Lock, `killpg` des Werkzeugs beim Cancel sowie die Abweichungen 6 (Werkzeuge beim Cancel) und 8 (Slot-UIDs, `PG_CONN_STR`). Queue, Lease,
 > Events, Cancel, Finalizer und die Rolle `appstore_worker` gelten unverändert.
 
 ## Kontext
