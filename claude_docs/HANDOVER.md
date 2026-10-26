@@ -20,9 +20,13 @@ Jede Session liest dieses Dokument zu Beginn und aktualisiert es vor dem Abschlu
 
 ## 2. In Arbeit & Nächste Schritte
 
+<<<<<<< HEAD
 - [x] **KubeVirt-VM-Pfad (Windows-Matlab v2.1.0, 2026-10-25):** läuft auf Staging (`dep-01d72eac`, bleibt als Test stehen). Chart: Rolle `vnc-proxy`, Admission-Policy für ServiceAccount `vnc-proxy` und `ReferenceGrant`s (`admission-policy-clone-grants.yaml`, Testfälle in `k8s/tests/policy/make_cases.py`), Wert `podApps.vmImageNamespaces`. Proxy: `docker/novnc-proxy` (aiohttp, VNC über die Subresource `virtualmachineinstances/vnc`, Basic-Auth, IPv4+IPv6). Cluster-Seite: `scripts/enable-cross-namespace-clone.sh` (k3s-Feature-Gate + CSI-Provisioner; nach `helm upgrade` von cinder-csi erneut ausführen). **Nur eine Windows-VM gleichzeitig** (Cinder-Quota 256 GB, Golden 90 + VM 90).
 - [ ] **E2E-Kette auf Staging (`e2e/`, `.github/workflows/e2e-staging.yml`, PR #158):** Playwright, Pod-App und VM-App: Admin legt an/reicht ein/genehmigt, Dozent deployt, API/Live-Ansicht/Link geprüft, Aufräumen auch nach Fehlern (`sweepStale` entfernt `e2e-*`-Reste). Lokal: `E2E_CHANNEL=chrome E2E_ADMIN_PASSWORD=… E2E_DOZENT_PASSWORD=… E2E_VM=0 npx playwright test`. **Offen:** erster vollständiger Lauf (Selektoren ab `deploys`-Schritt ungeprüft), Repo-Secrets `E2E_ADMIN_PASSWORD`/`E2E_DOZENT_PASSWORD` setzen, VM-Kette erst aktivieren wenn kein Hand-Deployment die Windows-Quota hält.
 - Bekannte Falle: parallele Backend-Builds überschreiben sich in `k8s/images/staging.yaml` (langsamerer älterer Lauf setzt den Digest zurück) — `gh run rerun` des neuesten Laufs behebt es.
+=======
+- [x] **Admission-Policy der kubevirt-vm-Namespaces gehärtet (fix/vm-namespace-policy):** Deployments nur noch proxy-förmig, VirtualMachine-/PVC-/NetworkPolicy-Inhaltsprüfung, VMI-Create/Update/Delete für den Pod-Deployer verboten (RBAC: VMI nur lesen). Neue Werte `podApps.vmMax{Cores,Memory,Disk}`, `vmStorageClass`, `vncProxyImagePrefix`. Fälle: `k8s/tests/policy/make_cases.py` (5. Argument, `vm-cases.json`). Nach dem Rollout einen VM-Deploy auf Staging prüfen (KubeVirt-Mutating-Webhook kann Felder ergänzen, die die Policy ablehnt).
+>>>>>>> origin/dev
 - [x] Reengineering auf 2 Flows im Deployment-Repo: `staging.yml` auf `dev`-Trigger umgestellt.
 - [x] Staging Health-Check & Discord-Notification (`notify_staging_health.py`) implementiert.
 - [ ] **GitHub MCP & OpenStack MCP aktivieren:** Liegen vorkonfiguriert in `agent/config.yaml`, warten auf Read-Only-PAT bzw. `clouds.yaml`.

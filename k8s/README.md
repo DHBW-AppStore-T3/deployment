@@ -1,9 +1,9 @@
 # The AppStore on Kubernetes
 
 Our AppStore (backend, worker, frontend) on the k3s cluster of OpenStack
-project `ma_wwi_24sea_appstore_g3`, deployed by Argo CD. Linux apps run as
-pods in a namespace `dep-<id>` per deployment; the Windows desktop still runs
-as OpenStack VMs, through the VM executor. This is the only deployment of the
+project `ma_wwi_24sea_appstore_g3`, deployed by Argo CD. Every app runs as
+pods in a namespace `dep-<id>` per deployment (the Windows desktop will run on
+KubeVirt, a topic of its own). This is the only deployment of the
 AppStore: there is no compose stack and no vendored third-party code in this
 repository any more.
 
@@ -56,14 +56,12 @@ through the AppStore and run as pods; see the app-registry repository.
 | --- | --- | --- | --- | --- |
 | `api` (2 replicas) | `backend` | UID 10001, read-only root | read namespaces; in `dep-*` only the reader role (no Secrets) | Postgres, Keycloak, Kubernetes API, internet |
 | `pod-deployer` | `worker-pods` | UID 10001, read-only root | creates/deletes `dep-*` namespaces and binds two roles in them; confined by the admission policy | Postgres, Kubernetes API |
-| `vm-executor` | `worker` | root with 6 capabilities, to run each slot's tools as UID 20000+n | none (no token) | Postgres, the API (state backend), internet |
 | `frontend` (2 replicas) | `frontend` | UID 101, read-only root | none | the API |
 | `migrate` (hook) | `backend` | UID 10001 | none | Postgres |
 | `orphans` (hourly) | `backend` | UID 10001, the API's account | as the API | Postgres, Kubernetes API |
 
 - **One Ingress per host**, to the frontend. Its nginx is the gateway for
-  `/api` (prefix stripped, as Caddy does on the VMs) and answers
-  `/api/internal/` (OpenTofu's state backend) with 404. The API has no Ingress.
+  `/api` (prefix stripped, as Caddy does on the VMs). The API has no Ingress.
 - **Migrations** run before every sync (Helm pre-install/pre-upgrade hook =
   Argo CD PreSync), as the database owner. Afterwards only roles that were
   granted `CONNECT` may open the database.
@@ -71,12 +69,9 @@ through the AppStore and run as pods; see the app-registry repository.
   login comes from the Secret `appstore-worker-db`); the migrations grant it
   only the queue, task events and task results. `python -m app.worker_db_role`
   is not used here.
-- **Two Fernet keys** (Secret `appstore-t3`): `credential-encryption-key`
-  (OpenStack credentials at rest, the VM jobs' credential envelopes and state
-  tokens) for the API and the VM executor; `results-encryption-key` (task
-  results) for the API and both workers. The pod deployer has only the
-  second: as a worker it can read the job queue, where the VM jobs'
-  envelopes travel.
+- **Two Fernet keys** (Secret `appstore-t3`): `credential-encryption-key` for
+  the API only (it opens task results sealed before the results key existed);
+  `results-encryption-key` (task results) for the API and the pod deployer.
 - **NetworkPolicies**: deny by default, then only the flows in the table.
   "Internet" excludes the private and link-local ranges (the metadata service
   among them) and the cluster's own ranges (`podApps.extraEgressExcept`).
@@ -214,9 +209,7 @@ Once per environment (the cluster has no other state that is not in git):
    only) and applies the environment's root Application. Run it again whenever
    the chart gains a Secret key; it never rotates existing ones. The generated
    logins are printed once (`show-credentials.sh <env>` prints them later).
-2. Settings in `environments/<env>.yaml`: `appstore.api.openstackAllowedAuthUrls`
-   (the DHBW Keystone, from the GitHub secrets; without it no VM app runs),
-   the LTI settings if Moodle should launch the AppStore, and check
+2. Settings in `environments/<env>.yaml`: the LTI settings if Moodle should launch the AppStore, and check
    `appstore.network.kubeApi` with `kubectl get svc,endpoints kubernetes -n default`.
 3. Check: `kubectl -n argocd get applications | grep <env>`.
 
@@ -226,9 +219,6 @@ the commit.
 
 ## Operating notes
 
-- **Real OpenStack only for the Windows desktop**: a teacher adds an
-  application credential under Settings. Use a separate credential for
-  staging.
 - **Demo users** (staging): `dozent.demo` (teacher), `admin.demo` (admin),
   `student1.demo` ... `student4.demo`; password: `show-credentials.sh staging`.
   Production has none: create the first admin in the admin console

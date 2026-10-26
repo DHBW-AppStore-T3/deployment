@@ -1,0 +1,120 @@
+{{- if .Values.clamav.enabled }}
+{{- $comp := dict "context" . "component" "clamav" -}}
+{{- $name := include "appstore.name" $comp -}}
+# ClamAV virus scanner (clamd). The API reaches it at port 3310; see CLAMD_HOST
+# in values.yaml. Two replicas so that a pod restart does not block all uploads;
+# a scan that hits a pod that is not yet ready fails closed (503 to the user).
+#
+# The signature database (~250 MiB compressed, ~1 GiB in memory) is loaded on
+# startup. freshclam updates it in-process; its egress is open to the ClamAV
+# mirrors but closed for everything else (.github#13).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  replicas: {{ .Values.clamav.replicas }}
+  selector:
+    matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "appstore.labels" $comp | nindent 8 }}
+    spec:
+      {{- include "appstore.podDefaults" . | nindent 6 }}
+      automountServiceAccountToken: false
+      securityContext:
+        # The image's clamav user (100:101) owns /var/log/clamav; any other uid
+        # cannot open freshclam's log and the pod crashes.
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: clamav
+          # Pinned by digest in values.yaml (clamav/clamav on Docker Hub).
+          image: {{ .Values.clamav.image }}
+          imagePullPolicy: IfNotPresent
+          # The default entrypoint (/init) needs root (mkdir /run/clamav);
+          # /init-unprivileged is the same without it.
+          command: ["/init-unprivileged"]
+          ports:
+            - { name: clamd, containerPort: 3310, protocol: TCP }
+          env:
+            # freshclam checks per day (image default: 1); 2 = every 12 hours.
+            - { name: FRESHCLAM_CHECKS, value: "2" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # clamd writes to /var/lib/clamav
+            capabilities: { drop: [ALL] }
+          resources: {{- toYaml .Values.clamav.resources | nindent 12 }}
+          # The first start downloads the whole database (~1.5 min, longer on a
+          # slow mirror); clamd listens only after it is loaded.
+          startupProbe:
+            tcpSocket: { port: clamd }
+            periodSeconds: 10
+            failureThreshold: 60  # up to 10 minutes
+          readinessProbe:
+            tcpSocket: { port: clamd }
+            periodSeconds: 20
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket: { port: clamd }
+            periodSeconds: 30
+            failureThreshold: 3
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: db, mountPath: /var/lib/clamav }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: db
+          emptyDir: {}  # lost on restart; freshclam re-downloads
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  selector: {{- include "appstore.selectorLabels" $comp | nindent 4 }}
+  ports:
+    - { name: clamd, port: 3310, targetPort: clamd, protocol: TCP }
+---
+# NetworkPolicy: only the API pods may reach clamd (port 3310). freshclam
+# needs the ClamAV mirrors (HTTPS); no other egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "appstore.fullname" . }}-clamav
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- include "appstore.netpolPeers" (dict "part" (include "appstore.fullname" .) "components" (list "api")) | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 3310 }
+  egress:
+    # freshclam signature updates: database.clamav.net and its mirrors (HTTPS/80).
+    # Restricted to internet addresses (private ranges excluded).
+    {{- $n := .Values.network }}
+    {{- $v4 := concat (include "appstore.privateV4" . | fromJsonArray) (list) }}
+    {{- $v6 := concat (include "appstore.privateV6" . | fromJsonArray) (list) }}
+    {{- range .Values.podApps.extraEgressExcept }}
+    {{- if contains ":" . }}{{ $v6 = append $v6 . }}{{ else }}{{ $v4 = append $v4 . }}{{ end }}
+    {{- end }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $v4 }}
+        - ipBlock:
+            cidr: ::/0
+            except: {{ toJson $v6 }}
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 80 }
+{{- end }}
