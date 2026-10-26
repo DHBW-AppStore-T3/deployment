@@ -20,7 +20,7 @@ on:
       vm:
         description: "Run the Windows VM chain (needs the cluster's one free Windows quota)"
         type: boolean
-        default: true
+        default: false
 
 # One chain at a time: the VM needs the quota, and the chain creates and removes real apps.
 concurrency:
@@ -44,7 +44,9 @@ jobs:
       E2E_BASE_URL: https://appstore-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
       E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
       E2E_DOZENT_PASSWORD: ${{ secrets.E2E_DOZENT_PASSWORD }}
-      E2E_VM: ${{ github.event_name == 'workflow_dispatch' && !inputs.vm && '0' || '1' }}
+      # The Windows chain needs the cluster's one free Windows quota: it is off until the repository
+      # variable E2E_VM is set to 1 (a hand-made Windows deployment would make it fail).
+      E2E_VM: ${{ github.event_name == 'workflow_dispatch' && (inputs.vm && '1' || '0') || (vars.E2E_VM == '1' && '1' || '0') }}
     steps:
       - uses: actions/checkout@v4
 
