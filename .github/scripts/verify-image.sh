@@ -25,6 +25,7 @@ case "$COMPONENT" in
   appstore-mcp)    REPO=appstore-mcp    PACKAGE=appstore-mcp    WORKFLOW=ci.yml ;;
   self-service-ui) REPO=self-service-ui PACKAGE=self-service-ui WORKFLOW=ci.yml ;;
   moodle)          REPO=moodle_appstore PACKAGE=moodle_appstore WORKFLOW=moodle-image.yml ;;
+  novnc-proxy)     REPO=deployment      PACKAGE=novnc-proxy     WORKFLOW=novnc-proxy.yml ;;
   *) echo "unknown component '$COMPONENT'" >&2; exit 1 ;;
 esac
 [[ "$TAG" =~ ^sha-([0-9a-f]{7,40})$ ]] || { echo "tag must be sha-<hex>, got '$TAG'" >&2; exit 1; }
