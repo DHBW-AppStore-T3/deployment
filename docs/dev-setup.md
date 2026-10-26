@@ -173,9 +173,10 @@ Die Tests liegen in den Repos `backend` und `worker`; Befehle und Test-Datenbank
 | Befehl | Wirkung |
 |---|---|
 | `make lint-backend` / `lint-backend-fix` / `format-backend` | ruff check / check --fix / format im Backend-Container |
-| `make test-backend` | pytest im Backend-Container |
+| `make test-backend` | Unit- und Integrationstests des Backends, mit der Umgebung von CI gegen die eigene Datenbank `backend_test` (wird angelegt); die Dev-Datenbank bleibt unberührt |
+| `make test-backend-cov` | dasselbe mit HTML-Coverage (`backend/htmlcov/`) |
 
-**Achtung:** `make test-backend` und `make test-backend-cov` laufen gegen die Dev-Datenbank, leeren deren Tabellen (Nutzer, Apps, Deployments; danach `make seed-dev`) und liefern im Dev-Container Fehlschläge, weil dessen Umgebung nicht die von CI ist. Funktionierende Rezepte mit eigener Test-Datenbank: `backend/README.md` und `worker/README.md`, jeweils Abschnitt Tests.
+Worker-Tests: Rezept in `worker/README.md`, Abschnitt Tests.
 
 ## 9. Was echt ist und was simuliert
 

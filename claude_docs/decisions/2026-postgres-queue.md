@@ -1,5 +1,9 @@
 # Entscheidung: Postgres-Queue statt RabbitMQ und Redis, Celery bleibt (.github#5)
 
+> **Teilweise abgelöst durch .github#12 (OpenStack-VM-Pfad entfernt):** Der Worker ist nur noch der Pod-Deployer. Es
+> gibt keine VM-Jobs, keine OpenStack-CLI, keine Tabelle `user_openstack_credentials`, keine Slot-UIDs und keinen
+> OpenTofu-State in der API. Queue, Lease, Events, Cancel, Finalizer und die Rolle `appstore_worker` gelten unverändert.
+
 ## Kontext
 Celery lief über RabbitMQ (Broker) und Redis (Result-Backend). Das kostete drei zustandsbehaftete Dienste und
 hatte Fehler, die im Code belegt sind:

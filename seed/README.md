@@ -25,7 +25,3 @@ Laufender Stack (`make dev-up`), Internetzugang zu `github.com` (das Backend lie
 ## Staging
 
 Auf Staging legt der Helm-Hook-Job `charts/appstore/templates/seed-job.yaml` nach jedem Sync dieselbe Art Demo-Daten an (`python -m app.cli seed`, Werte `appstore.seed.*` in `k8s/environments/staging.yaml`). Auf Produktion ist er aus.
-
-## Ungenutzt
-
-`seed_data.py`, `set_keycloak_urls.py` und `app_descriptions/` werden von keinem Makefile-Target, keiner Compose-Datei und keinem Chart aufgerufen.

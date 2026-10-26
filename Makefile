@@ -215,11 +215,25 @@ prune: ## ⚠️  docker system prune -af --volumes
 # ----------------------------------------------------------------
 # Testing & Quality (Backend)
 # ----------------------------------------------------------------
-test-backend: ## Run backend pytest
-	$(DC_DEV) exec backend poetry run pytest
+# Own database `backend_test` and the environment of CI (the container's own
+# environment breaks the settings tests; the tests TRUNCATE their database).
+# test_migrations sets the password of the cluster-wide role appstore_worker: the
+# targets restore the dev login afterwards, or the dev worker cannot connect.
+BACKEND_TEST_ENV := env -i HOME=/root PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin \
+	DATABASE_URL=postgresql://postgres:postgres@postgres:5432/backend_test \
+	CREDENTIAL_ENCRYPTION_KEY=Q1PNlFd4It9oQPtjCcXcmB7wGDkY4w8KwpIRNSF4u7U= DISABLE_BACKGROUND_TASKS=1
 
-test-backend-cov: ## Run backend pytest with HTML coverage
-	$(DC_DEV) exec backend poetry run pytest --cov=. --cov-report=html
+test-backend: ## Run backend pytest (unit + integration) against its own database backend_test
+	@$(DC_DEV) exec -T postgres psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='backend_test'" | grep -q 1 \
+		|| $(DC_DEV) exec -T postgres psql -U postgres -c "CREATE DATABASE backend_test"
+	$(DC_DEV) exec -T backend $(BACKEND_TEST_ENV) poetry run pytest -m "unit or integration" -q --no-cov; rc=$$?; \
+		$(DC_DEV) exec -T backend poetry run python -m app.worker_db_role; exit $$rc
+
+test-backend-cov: ## Run backend pytest with HTML coverage (htmlcov/ in backend/)
+	@$(DC_DEV) exec -T postgres psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='backend_test'" | grep -q 1 \
+		|| $(DC_DEV) exec -T postgres psql -U postgres -c "CREATE DATABASE backend_test"
+	$(DC_DEV) exec -T backend $(BACKEND_TEST_ENV) poetry run pytest -m "unit or integration" -q --cov=. --cov-report=html; rc=$$?; \
+		$(DC_DEV) exec -T backend poetry run python -m app.worker_db_role; exit $$rc
 
 lint-backend: ## ruff check
 	$(DC_DEV) exec backend poetry run ruff check .
