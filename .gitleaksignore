@@ -14,3 +14,8 @@ ae6597035409374d1fe83f23a7d267a3014ae343:keycloak/keycloak-export.json:generic-a
 # the exact fingerprint of the historical commit — current HEAD does
 # not contain any high-entropy literal in this file.
 ba5dbed0e73e054f8f4044e7d0d36b7a73bf4e76:docs/setup.md:generic-api-key:74
+
+# Throwaway Fernet key of `make test-backend` (same value as in backend CI), added
+# in 3ff1390. gitleaks scans every commit, so the `gitleaks:allow` marker in the
+# Makefile does not cover this commit; it covers the line from later commits on.
+3ff13904eda39b0b57103c12ebdeb0f072a47cff:Makefile:generic-api-key:224

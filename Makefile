@@ -224,7 +224,7 @@ DB_USER     ?= postgres
 DB_PASSWORD ?= postgres
 BACKEND_TEST_ENV := env -i HOME=/root PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin \
 	DATABASE_URL=postgresql://$(DB_USER):$(DB_PASSWORD)@postgres:5432/backend_test \
-	CREDENTIAL_ENCRYPTION_KEY=Q1PNlFd4It9oQPtjCcXcmB7wGDkY4w8KwpIRNSF4u7U= DISABLE_BACKGROUND_TASKS=1
+	CREDENTIAL_ENCRYPTION_KEY=Q1PNlFd4It9oQPtjCcXcmB7wGDkY4w8KwpIRNSF4u7U= DISABLE_BACKGROUND_TASKS=1 # gitleaks:allow (throwaway test key, same as backend CI)
 
 # pytest's exit code wins; a failed restore fails the target when the tests passed.
 define run-backend-tests
