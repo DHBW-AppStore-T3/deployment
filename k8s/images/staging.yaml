@@ -5,14 +5,14 @@
 # comment behind a digest is the tag (sha-<commit>) it was built from.
 images:
   tags:
-    backend: "sha256:5eb7401efed361e6e392c67fe99abf30779afd3359d9d28aedad8a9d3ac5eb67"  # sha-b7103c3
-    workerPods: "sha256:c8c0b359add0fc4c72b4260d29be8c76678da1a643a4353f79f21e9b80fb2dac"  # sha-049467e
-    frontend: "sha256:bf80be0df8c2baf2c522f521140f3e0356489c948deecf36c1214421e567b2a3"  # sha-0005672
-    appstoreMcp: "sha256:afc5f059642fba50dd95f86bfa6723b2c8779515efbff1e09abd499b5cd0c955"  # sha-65ab85f
+    backend: "sha256:5eb7401efed361e6e392c67fe99abf30779afd3359d9d28aedad8a9d3ac5eb67"  # sha-b7103c3a060c39d3307a14ed5d320ccd4ab41cf7
+    workerPods: "sha256:c8c0b359add0fc4c72b4260d29be8c76678da1a643a4353f79f21e9b80fb2dac"  # sha-049467e65c18b18c4686c721ea3b3e653cc64073
+    frontend: "sha256:bf80be0df8c2baf2c522f521140f3e0356489c948deecf36c1214421e567b2a3"  # sha-0005672bf4565568394389374d461d2f2da9c13f
+    appstoreMcp: "sha256:afc5f059642fba50dd95f86bfa6723b2c8779515efbff1e09abd499b5cd0c955"  # sha-65ab85fb88b9915775a425e9f6b39ac8bbb0cf3d
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
-    selfServiceUi: "sha256:98e495d0d6bcd413a78ef989cba34b10be720efa9e8443737f702cbcbed1f3f4"  # sha-54130c3
-    moodle: "sha256:bc24c77aa17b4b94f1a804735b56c98da3073a6a2f0c074e1c738ded7d8df35f"  # sha-5c1ae92
+    selfServiceUi: "sha256:98e495d0d6bcd413a78ef989cba34b10be720efa9e8443737f702cbcbed1f3f4"  # sha-54130c3b872259f551c7a19547755dc8ce171a0a
+    moodle: "sha256:bc24c77aa17b4b94f1a804735b56c98da3073a6a2f0c074e1c738ded7d8df35f"  # sha-5c1ae926ba0cc3bdbe8f1cc8223a447dcf2be44c
     # noVNC proxy of kubevirt-vm deployments (docker/novnc-proxy, bumped by its workflow).
     # Empty until the first bump: the chart then falls back to the unpinned :latest.
     novncProxy: "sha256:fa1a778ecb362bcb7f7dafa0d5fa746096e723afd4b8ef465a0362b4b32923fb"  # sha-5998abf
