@@ -26,6 +26,9 @@ images:
     backend: ""
     workerPods: ""
     frontend: ""
+    # noVNC proxy of kubevirt-vm deployments. Empty: unpinned :latest until the
+    # first k8s-bump of component novnc-proxy.
+    novncProxy: ""
     # Empty: the self-service-ui is not rolled out yet (no image to run).
     selfServiceUi: ""
 

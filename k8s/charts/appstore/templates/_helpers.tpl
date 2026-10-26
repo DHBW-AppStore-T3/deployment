@@ -42,6 +42,18 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 {{- end }}
 
+{{/* The noVNC proxy image the pod deployer puts into kubevirt-vm deployments:
+pinned by digest (images.tags.novncProxy, written by k8s-bump). Until the
+first bump it is the unpinned :latest, as before. */}}
+{{- define "appstore.vncProxyImage" -}}
+{{- $tag := .Values.images.tags.novncProxy | default "" -}}
+{{- if not $tag -}}
+{{- printf "%s/novnc-proxy:latest" .Values.images.registry -}}
+{{- else -}}
+{{- include "appstore.image" (dict "context" . "key" "novncProxy" "name" "novnc-proxy") -}}
+{{- end -}}
+{{- end }}
+
 {{- define "appstore.podDefaults" -}}
 {{- with .Values.images.pullSecrets }}
 imagePullSecrets:

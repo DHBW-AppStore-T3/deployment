@@ -1,6 +1,7 @@
 name: K8s - roll out an image
 
-# Called by the CI of backend, worker (image worker-pods), frontend, appstore-mcp and moodle (moodle_appstore) after they pushed an image
+# Called by the CI of backend, worker (image worker-pods), frontend, appstore-mcp, moodle (moodle_appstore)
+# and this repository (novnc-proxy, .github/workflows/novnc-proxy.yml) after they pushed an image
 # from `dev` (staging) or `main` (prod):
 #   gh workflow run k8s-bump.yml --ref <dev|main> \
 #     -f component=... -f tag=sha-<commit> -f digest=sha256:<64 hex>
@@ -19,10 +20,10 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: "backend | worker-pods | frontend | appstore-mcp | self-service-ui | moodle"
+        description: "backend | worker-pods | frontend | appstore-mcp | self-service-ui | moodle | novnc-proxy"
         required: true
         type: choice
-        options: [backend, worker-pods, frontend, appstore-mcp, self-service-ui, moodle]
+        options: [backend, worker-pods, frontend, appstore-mcp, self-service-ui, moodle, novnc-proxy]
       tag:
         description: "Image tag pushed by the component's CI (sha-<7 hex>)"
         required: true
@@ -66,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$COMPONENT" in
-            backend) KEY=backend ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;; appstore-mcp) KEY=appstoreMcp ;; self-service-ui) KEY=selfServiceUi ;; moodle) KEY=moodle ;;
+            backend) KEY=backend ;; worker-pods) KEY=workerPods ;; frontend) KEY=frontend ;; appstore-mcp) KEY=appstoreMcp ;; self-service-ui) KEY=selfServiceUi ;; moodle) KEY=moodle ;; novnc-proxy) KEY=novncProxy ;;
           esac
           if [ "$BRANCH" = main ]; then ENV=prod; else ENV=staging; fi
           FILE="k8s/images/${ENV}.yaml"
@@ -120,7 +121,7 @@ jobs:
           # No workflow runs for a pull request opened with the GITHUB_TOKEN:
           # report the required check by running it on the branch ourselves.
           gh workflow run secret-scan.yml --ref "$BR"
-          case "$COMPONENT" in worker-pods) REPO=worker ;; moodle) REPO=moodle_appstore ;; *) REPO="$COMPONENT" ;; esac
+          case "$COMPONENT" in worker-pods) REPO=worker ;; novnc-proxy) REPO=deployment ;; moodle) REPO=moodle_appstore ;; *) REPO="$COMPONENT" ;; esac
           SOURCE="https://github.com/DHBW-AppStore-T3/${REPO}/commit/${TAG#sha-}"
           if [ "$AUTO_MERGE" = true ]; then
             NOTE="Merges itself when the Gitleaks check is green (PROD_AUTO_MERGE)."
