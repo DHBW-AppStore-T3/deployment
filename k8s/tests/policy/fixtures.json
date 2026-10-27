@@ -373,7 +373,15 @@
           "containerPort": 8080,
           "protocol": "TCP"
          }
-        ]
+        ],
+        "readinessProbe": {
+         "tcpSocket": {
+          "port": "http"
+         },
+         "periodSeconds": 3,
+         "timeoutSeconds": 2,
+         "failureThreshold": 3
+        }
        }
       ],
       "volumes": [
@@ -632,7 +640,15 @@
           "containerPort": 8080,
           "protocol": "TCP"
          }
-        ]
+        ],
+        "readinessProbe": {
+         "tcpSocket": {
+          "port": "http"
+         },
+         "periodSeconds": 3,
+         "timeoutSeconds": 2,
+         "failureThreshold": 3
+        }
        }
       ],
       "volumes": [
@@ -1097,7 +1113,15 @@
           "containerPort": 8080,
           "protocol": "TCP"
          }
-        ]
+        ],
+        "readinessProbe": {
+         "tcpSocket": {
+          "port": "http"
+         },
+         "periodSeconds": 3,
+         "timeoutSeconds": 2,
+         "failureThreshold": 3
+        }
        }
       ],
       "volumes": [
@@ -1336,7 +1360,15 @@
           "containerPort": 8080,
           "protocol": "TCP"
          }
-        ]
+        ],
+        "readinessProbe": {
+         "tcpSocket": {
+          "port": "http"
+         },
+         "periodSeconds": 3,
+         "timeoutSeconds": 2,
+         "failureThreshold": 3
+        }
        }
       ],
       "volumes": [
