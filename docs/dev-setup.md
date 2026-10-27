@@ -4,7 +4,7 @@ Der lokale Stack läuft in einem `k3d`-Cluster (`k3d-appstore-local`, Namespace 
 
 ## 1. Voraussetzungen
 
-- Docker (Ports `80` und `443` frei)
+- Docker (mind. 4 CPUs, 6 GiB RAM; Ports `80` und `443` frei)
 - `k3d`, `kubectl`, `helm` (v3), `git`, `make`, `openssl`, `python3`, `curl`
 
 ## 2. Repositories klonen
