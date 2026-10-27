@@ -51,25 +51,25 @@ APPS = [
         "name": "Web-LaTeX",
         "description": "LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person.",
         "gitLink": "https://github.com/DHBW-AppStore-T3/Web-LaTeX",
-        "versions": ["v2.0.4"],
+        "versions": ["v2.0.5"],
     },
     {
         "name": "Jupyter-Notebook",
         "description": "JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person.",
         "gitLink": "https://github.com/DHBW-AppStore-T3/Jupyter-Notebook",
-        "versions": ["v2.0.0"],
+        "versions": ["v2.0.2"],
     },
     {
         "name": "pgAdmin",
         "description": "pgAdmin mit PostgreSQL und Pagila-Beispieldatenbank, ein Pod pro Team.",
         "gitLink": "https://github.com/DHBW-AppStore-T3/pgAdmin",
-        "versions": ["v2.0.1"],
+        "versions": ["v2.0.3"],
     },
     {
         "name": "template-app",
         "description": "Vorlage fuer neue AppStore-Apps (nginx-Pod).",
         "gitLink": "https://github.com/DHBW-AppStore-T3/template-app",
-        "versions": ["v2.0.1"],
+        "versions": ["v2.0.2"],
     },
 ]
 
