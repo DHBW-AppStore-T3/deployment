@@ -102,25 +102,6 @@ trust_local_ca() {
   fi
 }
 
-for cmd in docker k3d kubectl helm openssl python3 git; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "ERROR: Required command '$cmd' not found in PATH." >&2
-    exit 1
-  fi
-done
-
-if ! docker info >/dev/null 2>&1; then
-  echo "ERROR: Cannot connect to the Docker daemon. Please start Docker first." >&2
-  exit 1
-fi
-
-for repo in backend worker frontend self-service-ui moodle_appstore; do
-  if [ ! -d "${ROOT_DIR}/${repo}" ]; then
-    echo "ERROR: Sibling repository '${ROOT_DIR}/${repo}' not found. See docs/dev-setup.md for git clone instructions." >&2
-    exit 1
-  fi
-done
-
 # 1. Ensure k3d cluster exists and is running with ports 80/443 exposed
 if ! k3d cluster list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${CLUSTER_NAME}"; then
   echo "==> Creating k3d cluster '${CLUSTER_NAME}' (ports 80 & 443 -> Traefik)..."
@@ -133,18 +114,10 @@ fi
 
 KUBE="kubectl --context ${KUBE_CONTEXT}"
 
-# Determine node architecture inside k3d so docker builds matching images across all architectures (arm64 / amd64)
-NODE_ARCH="$(docker exec "k3d-${CLUSTER_NAME}-server-0" uname -m 2>/dev/null || uname -m)"
-case "${NODE_ARCH}" in
-  aarch64|arm64) TARGET_PLATFORM="linux/arm64" ;;
-  x86_64|amd64)  TARGET_PLATFORM="linux/amd64" ;;
-  *)             TARGET_PLATFORM="linux/${NODE_ARCH}" ;;
-esac
-
 # 2. Build and import local images into k3d containerd (pinned against kubelet GC)
 import_image() {
   local tag="$1"
-  echo "    -> Importing & pinning ${tag} (${TARGET_PLATFORM}) in ${KUBE_CONTEXT}..."
+  echo "    -> Importing & pinning ${tag} in ${KUBE_CONTEXT}..."
   docker save "${tag}" | docker exec -i "k3d-${CLUSTER_NAME}-server-0" ctr -n k8s.io images import - >/dev/null
   docker exec "k3d-${CLUSTER_NAME}-server-0" ctr -n k8s.io images label "${tag}" io.cri-containerd.pinned=pinned >/dev/null
 }
@@ -160,7 +133,7 @@ build_with_progress() {
   local step="$1"
   local label="$2"
   shift 2
-  echo "==> [${step}] Building ${label} (${TARGET_PLATFORM})..."
+  echo "==> [${step}] Building ${label}..."
   local start_ts
   start_ts="$(date +%s)"
   (
@@ -182,29 +155,29 @@ build_with_progress() {
 }
 
 if [ "${SKIP_BUILD}" != "1" ]; then
-  echo "==> Building local images from sibling repositories for ${TARGET_PLATFORM}..."
+  echo "==> Building local images from sibling repositories..."
   build_with_progress "1/5" "backend" \
-    docker build --platform "${TARGET_PLATFORM}" -t ghcr.io/dhbw-appstore-t3/backend:dev "${ROOT_DIR}/backend"
+    docker build -t ghcr.io/dhbw-appstore-t3/backend:dev "${ROOT_DIR}/backend"
   import_image ghcr.io/dhbw-appstore-t3/backend:dev
 
   build_with_progress "2/5" "worker-pods" \
-    docker build --platform "${TARGET_PLATFORM}" --target pod-deployer -t ghcr.io/dhbw-appstore-t3/worker-pods:dev "${ROOT_DIR}/worker"
+    docker build --target pod-deployer -t ghcr.io/dhbw-appstore-t3/worker-pods:dev "${ROOT_DIR}/worker"
   import_image ghcr.io/dhbw-appstore-t3/worker-pods:dev
 
   build_with_progress "3/5" "frontend" \
-    docker build --platform "${TARGET_PLATFORM}" -t ghcr.io/dhbw-appstore-t3/frontend:dev "${ROOT_DIR}/frontend"
+    docker build -t ghcr.io/dhbw-appstore-t3/frontend:dev "${ROOT_DIR}/frontend"
   import_image ghcr.io/dhbw-appstore-t3/frontend:dev
 
   build_with_progress "4/5" "self-service-ui" \
-    docker build --platform "${TARGET_PLATFORM}" -t ghcr.io/dhbw-appstore-t3/self-service-ui:dev "${ROOT_DIR}/self-service-ui"
+    docker build -t ghcr.io/dhbw-appstore-t3/self-service-ui:dev "${ROOT_DIR}/self-service-ui"
   import_image ghcr.io/dhbw-appstore-t3/self-service-ui:dev
 
   MOODLE_STATE_HASH="$({ git -C "${ROOT_DIR}/moodle_appstore" rev-parse HEAD 2>/dev/null; git -C "${ROOT_DIR}/moodle_appstore" status --porcelain 2>/dev/null; git -C "${ROOT_DIR}/moodle_appstore" diff HEAD 2>/dev/null; } | openssl dgst -sha256 | awk '{print $NF}')"
   CURRENT_MOODLE_HASH="$(docker image inspect -f '{{ index .Config.Labels "appstore.local.tree-hash" }}' ghcr.io/dhbw-appstore-t3/moodle_appstore:dev 2>/dev/null || true)"
 
   if [ "${REBUILD_MOODLE:-0}" = "1" ] || [ "${MOODLE_STATE_HASH}" != "${CURRENT_MOODLE_HASH}" ]; then
-    build_with_progress "5/5" "moodle_appstore (first build may take several minutes)" \
-      docker build --platform "${TARGET_PLATFORM}" --label "appstore.local.tree-hash=${MOODLE_STATE_HASH}" -t ghcr.io/dhbw-appstore-t3/moodle_appstore:dev "${ROOT_DIR}/moodle_appstore"
+    build_with_progress "5/5" "moodle_appstore" \
+      docker build --label "appstore.local.tree-hash=${MOODLE_STATE_HASH}" -t ghcr.io/dhbw-appstore-t3/moodle_appstore:dev "${ROOT_DIR}/moodle_appstore"
     import_image ghcr.io/dhbw-appstore-t3/moodle_appstore:dev
   else
     echo "==> [5/5] Reusing cached ghcr.io/dhbw-appstore-t3/moodle_appstore:dev (no changes in moodle_appstore)"
