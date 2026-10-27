@@ -3,16 +3,25 @@
 # push to ghcr.io on every push to `main` and dispatch the bump with the
 # digest they pushed; Argo CD's prod-appstore rolls out what is here. The
 # comment behind a digest is the tag (sha-<commit>) it was built from.
+# A blank line sits between two pins on purpose: git treats edits of neighbouring lines as a
+# conflict, so the bump pull requests of two components (one line each) conflicted when they were
+# merged one after the other. Keep a blank line (or a comment) between any two pins.
 images:
   tags:
     backend: "sha256:f98a0061eb9b1bceee7b6f375b1b155b32f23f1df2756b2374be1e7e373fbc25"  # sha-622c57f
+
     workerPods: "sha256:ff68a4ffa5c339ca10a256609709ef1d555e77d00c9b1dd78fe2b52187cdfa5a"  # sha-1bd5f7a
+
     frontend: "sha256:bdd598d5289b856d9cfc92d7fe38c56d29ef48efe44c828f75b759bf28a6cf83"  # sha-05174a0
+
     appstoreMcp: "sha256:2e1838b83c487ab36d20b3477e00b24405dbcc45ee8b9660c0fb88f3505007b9"  # sha-c1fc79d
+
     # Empty until the first image of the self-service-ui repository is rolled out
     # (the chart renders the component only with a digest).
     selfServiceUi: "sha256:7a82e8b461e1748df78c3ad46d910abada431ac09aee99efbed6f3591955af14"  # sha-ed82192
+
     moodle: "sha256:d4cf22aaffc1f2bc15e9251086ef448ea35b84432128df3775e6e79858b85b6b"  # sha-c560275
+
     # noVNC proxy of kubevirt-vm deployments (docker/novnc-proxy, bumped by its workflow).
     # Empty until the first bump: the chart then falls back to the unpinned :latest.
     novncProxy: "sha256:a519eb6998c082da9d40bc1968f1cdd90e8894f64223741b2f0fdeaa108bb01f"  # sha-442286e
