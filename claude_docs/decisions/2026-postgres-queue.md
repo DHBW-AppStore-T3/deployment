@@ -1,5 +1,13 @@
 # Entscheidung: Postgres-Queue statt RabbitMQ und Redis, Celery bleibt (.github#5)
 
+> **Abgelöst (2026-10-27): Celery ist entfernt.** Die Task-Zeile ist selbst der Queue-Eintrag: `tasks.job` und
+> `tasks.job_kwargs` (Migration `f8b0c2d4e6a8`), `NOTIFY task_queued`; der Worker (`python -m app.runner`) holt
+> PENDING-Zeilen mit `FOR UPDATE SKIP LOCKED` und führt die Jobs in Threads aus. Es gibt keine Tabelle `celery_queue`,
+> keinen Kombu-Transport `pgq`, kein Parken (eine Task wartet, solange eine andere Task desselben Deployments eine Lease
+> hält) und keine verlorenen Dispatches mehr. Lease, Events, Cancel, Finalizer und die Rolle `appstore_worker` gelten
+> weiter. Grund: Mit dem Ende des VM-Pfads (.github#12) blieb von Celery nur Prozessverwaltung und Nachrichtenformat;
+> die doppelte Queue (Nachricht und Task-Zeile, zwei Leases) war der größere Teil des Codes.
+
 > **Teilweise abgelöst durch .github#12 (OpenStack-VM-Pfad entfernt):** Der Worker ist nur noch der Pod-Deployer. Es
 > gibt keine VM-Jobs, keine OpenStack-CLI, keine Tabelle `user_openstack_credentials`, keine Slot-UIDs, keinen
 > Packer-Build-Lock und keinen OpenTofu-State in der API. Überholt sind die Rollen-Zeile (`user_openstack_credentials`),
