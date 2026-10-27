@@ -95,6 +95,8 @@ seccompProfile:
 - { name: K8S_ZONE, value: {{ $p.zone | quote }} }
 - { name: K8S_APP_DOMAIN, value: {{ $p.appDomain | quote }} }
 - { name: K8S_ENVIRONMENT, value: {{ include "appstore.environment" . | quote }} }
+# How long a deploy waits for its pods; the API's live view uses it too.
+- { name: K8S_READY_TIMEOUT_SECONDS, value: {{ $p.readyTimeoutSeconds | quote }} }
 {{- end }}
 
 {{/*

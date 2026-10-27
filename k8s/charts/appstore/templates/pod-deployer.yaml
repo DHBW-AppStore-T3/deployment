@@ -58,7 +58,6 @@ spec:
             - { name: K8S_STUDENT_NODE_SELECTOR, value: {{ $p.studentNodeSelector | toJson | quote }} }
             - { name: K8S_STUDENT_TOLERATIONS, value: {{ $p.studentTolerations | toJson | quote }} }
             - { name: K8S_EXTRA_EGRESS_EXCEPT, value: {{ join "," $p.extraEgressExcept | quote }} }
-            - { name: K8S_READY_TIMEOUT_SECONDS, value: {{ $p.readyTimeoutSeconds | quote }} }
             # Its rights in each namespace it creates, and read access there
             # for the API (rbac.yaml).
             - { name: K8S_DEPLOYER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "deployer") | quote }} }
