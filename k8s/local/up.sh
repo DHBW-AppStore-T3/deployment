@@ -15,6 +15,115 @@ KUBE_CONTEXT="k3d-${CLUSTER_NAME}"
 NS="${LOCAL_K8S_NAMESPACE:-appstore-local}"
 DEMO_PASSWORD="${DEV_DEMO_PASSWORD:-DevLocal1234!}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
+BUILD_ONLY="${BUILD_ONLY:-0}"
+TRUST_CERT_ONLY="${TRUST_CERT_ONLY:-0}"
+
+CERT_DIR="${HERE}/.certs"
+
+ensure_local_certs() {
+  mkdir -p "${CERT_DIR}"
+  if [ ! -f "${CERT_DIR}/local-ca.crt" ] || [ ! -f "${CERT_DIR}/local-ca.key" ]; then
+    echo "==> Generating local Root CA..."
+    cat > "${CERT_DIR}/ca.cnf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+prompt = no
+[req_distinguished_name]
+CN = DHBW AppStore Local Dev CA
+O = DHBW
+[v3_ca]
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer
+basicConstraints = critical, CA:TRUE
+keyUsage = critical, keyCertSign, cRLSign
+EOF
+    openssl req -x509 -new -nodes -newkey rsa:2048 \
+      -keyout "${CERT_DIR}/local-ca.key" -sha256 -days 3650 \
+      -out "${CERT_DIR}/local-ca.crt" -config "${CERT_DIR}/ca.cnf" >/dev/null 2>&1
+  fi
+
+  if [ ! -f "${CERT_DIR}/tls.crt" ] || ! openssl x509 -noout -text -in "${CERT_DIR}/tls.crt" 2>/dev/null | grep -q "DNS:\*.apps.localhost"; then
+    echo "==> Generating *.localhost TLS certificate with explicit SANs..."
+    cat > "${CERT_DIR}/ext.cnf" <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = localhost
+DNS.2 = appstore.localhost
+DNS.3 = sso.localhost
+DNS.4 = self-service.localhost
+DNS.5 = moodle.localhost
+DNS.6 = *.localhost
+DNS.7 = *.apps.localhost
+IP.1 = 127.0.0.1
+IP.2 = ::1
+EOF
+    openssl req -new -nodes -newkey rsa:2048 -keyout "${CERT_DIR}/tls.key" \
+      -out "${CERT_DIR}/tls.csr" -subj "/CN=appstore.localhost/O=DHBW AppStore Local" >/dev/null 2>&1
+    openssl x509 -req -in "${CERT_DIR}/tls.csr" -CA "${CERT_DIR}/local-ca.crt" -CAkey "${CERT_DIR}/local-ca.key" \
+      -CAcreateserial -out "${CERT_DIR}/tls.crt" -days 825 -sha256 -extfile "${CERT_DIR}/ext.cnf" >/dev/null 2>&1
+  fi
+}
+
+# Trust the local Root CA in the host OS certificate store (macOS Keychain,
+# Windows CurrentUser Root store via WSL2/Git-Bash certutil.exe, or Linux CA store)
+# so browsers allow cross-subdomain HTTPS requests (*.localhost).
+trust_local_ca() {
+  if [ "${SKIP_TRUST_CERT:-0}" = "1" ]; then
+    return 0
+  fi
+  local ca_crt="${CERT_DIR}/local-ca.crt"
+  local ca_sha1
+  ca_sha1="$(openssl x509 -noout -fingerprint -sha1 -in "${ca_crt}" 2>/dev/null | sed 's/.*=//;s/://g')"
+
+  if [ "$(uname -s)" = "Darwin" ] && command -v security >/dev/null 2>&1; then
+    local keychain="$HOME/Library/Keychains/login.keychain-db"
+    if ! security find-certificate -a -Z -c "DHBW AppStore Local Dev CA" "${keychain}" 2>/dev/null | grep -qi "${ca_sha1:-__none__}"; then
+      echo "==> Registering local *.localhost Root CA in macOS Keychain (may prompt for TouchID/password once)..."
+      security add-trusted-cert -r trustRoot -k "${keychain}" "${ca_crt}" || \
+        echo "    WARN: Could not automatically trust local CA. Run 'make trust-cert' manually if browser blocks HTTPS."
+    elif [ "${TRUST_CERT_ONLY}" = "1" ]; then
+      echo "==> Local Root CA is already trusted in macOS Keychain (${keychain})."
+    fi
+  elif command -v certutil.exe >/dev/null 2>&1; then
+    local win_cert_path="${ca_crt}"
+    if command -v wslpath >/dev/null 2>&1; then
+      win_cert_path="$(wslpath -w "${ca_crt}")"
+    elif command -v cygpath >/dev/null 2>&1; then
+      win_cert_path="$(cygpath -w "${ca_crt}")"
+    fi
+    if ! certutil.exe -user -verifystore Root "DHBW AppStore Local Dev CA" 2>/dev/null | grep -qi "${ca_sha1:-__none__}"; then
+      echo "==> Registering local *.localhost Root CA in Windows User Certificate Store..."
+      certutil.exe -user -addstore Root "${win_cert_path}" >/dev/null || \
+        echo "    WARN: Could not automatically trust local CA in Windows. Run 'make trust-cert' manually if browser blocks HTTPS."
+    elif [ "${TRUST_CERT_ONLY}" = "1" ]; then
+      echo "==> Local Root CA is already trusted in Windows User Certificate Store."
+    fi
+  elif [ -d /usr/local/share/ca-certificates ] && command -v update-ca-certificates >/dev/null 2>&1; then
+    local target="/usr/local/share/ca-certificates/dhbw-appstore-local-ca.crt"
+    if ! cmp -s "${ca_crt}" "${target}" 2>/dev/null; then
+      echo "==> Registering local *.localhost Root CA in Linux system CA store..."
+      (sudo cp "${ca_crt}" "${target}" && sudo update-ca-certificates >/dev/null) || \
+        echo "    WARN: Could not automatically trust local CA. Run 'make trust-cert' manually."
+    elif [ "${TRUST_CERT_ONLY}" = "1" ]; then
+      echo "==> Local Root CA is already trusted in Linux system CA store."
+    fi
+  fi
+}
+
+if [ "${TRUST_CERT_ONLY}" = "1" ]; then
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "ERROR: Required command 'openssl' not found in PATH." >&2
+    exit 1
+  fi
+  ensure_local_certs
+  trust_local_ca
+  exit 0
+fi
 
 for cmd in docker k3d kubectl helm openssl python3; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -25,15 +134,18 @@ done
 
 # 1. Ensure k3d cluster exists and is running with ports 80/443 exposed
 if command -v podman >/dev/null 2>&1 && docker version 2>/dev/null | grep -qi podman; then
-  # Ensure Podman VM has at least 6 GiB RAM (default 2-3.7 GiB OOM-freezes when deploying student pods)
-  PM_MEM="$(podman machine inspect --format '{{.Resources.Memory}}' 2>/dev/null | head -n1 || echo 8192)"
-  if [ -n "${PM_MEM}" ] && [ "${PM_MEM}" -lt 6144 ] 2>/dev/null; then
-    echo "==> Increasing Podman VM memory from ${PM_MEM} MB to 8192 MB..."
-    podman machine stop >/dev/null 2>&1 || true
-    podman machine set --memory 8192 >/dev/null 2>&1 || true
-    podman machine start >/dev/null 2>&1 || true
+  # On macOS (AppleHV/Libkrun/QEMU), Podman VMs have fixed RAM allocations; ensure at least 6 GiB RAM
+  # (on Windows WSL2, memory is shared dynamically via .wslconfig and `podman machine set --memory` is unsupported).
+  if [ "$(uname -s)" = "Darwin" ]; then
+    PM_MEM="$(podman machine inspect --format '{{.Resources.Memory}}' 2>/dev/null | head -n1 || echo 8192)"
+    if [ -n "${PM_MEM}" ] && [ "${PM_MEM}" -lt 6144 ] 2>/dev/null; then
+      echo "==> Increasing Podman VM memory from ${PM_MEM} MB to 8192 MB..."
+      podman machine stop >/dev/null 2>&1 || true
+      podman machine set --memory 8192 >/dev/null 2>&1 || true
+      podman machine start >/dev/null 2>&1 || true
+    fi
   fi
-  # When `docker` is backed by Podman 5 on macOS, the default `journald` log driver
+  # When `docker` is backed by Podman 5, the default `journald` log driver
   # fails on the Docker-compat `/logs` API ("unable to open a handle to the library"),
   # which breaks `k3d cluster create`. Switch the Podman VM to `k8s-file` and allow ports 80/443.
   podman machine ssh '
@@ -160,52 +272,14 @@ else
   done
 fi
 
+if [ "${BUILD_ONLY}" = "1" ]; then
+  echo "==> Local images built and imported into ${KUBE_CONTEXT}."
+  exit 0
+fi
+
 # 3. Configure Traefik default certificate for *.localhost + Namespace & Secrets
-CERT_DIR="${HERE}/.certs"
-mkdir -p "${CERT_DIR}"
-if [ ! -f "${CERT_DIR}/local-ca.crt" ] || [ ! -f "${CERT_DIR}/local-ca.key" ]; then
-  echo "==> Generating local Root CA..."
-  openssl req -x509 -new -nodes -newkey rsa:2048 -keyout "${CERT_DIR}/local-ca.key" -sha256 -days 3650 \
-    -out "${CERT_DIR}/local-ca.crt" -subj "/CN=DHBW AppStore Local Dev CA/O=DHBW" \
-    -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" >/dev/null 2>&1
-fi
-
-if [ ! -f "${CERT_DIR}/tls.crt" ] || ! openssl x509 -noout -text -in "${CERT_DIR}/tls.crt" 2>/dev/null | grep -q "DNS:\*.apps.localhost"; then
-  echo "==> Generating *.localhost TLS certificate with explicit SANs..."
-  cat > "${CERT_DIR}/ext.cnf" <<EOF
-authorityKeyIdentifier=keyid,issuer
-basicConstraints=CA:FALSE
-keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
-extendedKeyUsage = serverAuth
-subjectAltName = @alt_names
-[alt_names]
-DNS.1 = localhost
-DNS.2 = appstore.localhost
-DNS.3 = sso.localhost
-DNS.4 = self-service.localhost
-DNS.5 = moodle.localhost
-DNS.6 = *.localhost
-DNS.7 = *.apps.localhost
-IP.1 = 127.0.0.1
-IP.2 = ::1
-EOF
-  openssl req -new -nodes -newkey rsa:2048 -keyout "${CERT_DIR}/tls.key" \
-    -out "${CERT_DIR}/tls.csr" -subj "/CN=appstore.localhost/O=DHBW AppStore Local" >/dev/null 2>&1
-  openssl x509 -req -in "${CERT_DIR}/tls.csr" -CA "${CERT_DIR}/local-ca.crt" -CAkey "${CERT_DIR}/local-ca.key" \
-    -CAcreateserial -out "${CERT_DIR}/tls.crt" -days 825 -sha256 -extfile "${CERT_DIR}/ext.cnf" >/dev/null 2>&1
-fi
-
-# Automatically trust the local Root CA in macOS login keychain so browsers allow
-# cross-subdomain HTTPS requests (e.g. https://appstore.localhost -> https://sso.localhost)
-if [ "${SKIP_TRUST_CERT:-0}" != "1" ] && [ "$(uname -s)" = "Darwin" ] && command -v security >/dev/null 2>&1; then
-  KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
-  CA_SHA1="$(openssl x509 -noout -fingerprint -sha1 -in "${CERT_DIR}/local-ca.crt" 2>/dev/null | sed 's/.*=//;s/://g')"
-  if ! security find-certificate -a -Z -c "DHBW AppStore Local Dev CA" "${KEYCHAIN}" 2>/dev/null | grep -qi "${CA_SHA1:-__none__}"; then
-    echo "==> Registering local *.localhost Root CA in macOS Keychain (may prompt for TouchID/password once)..."
-    security add-trusted-cert -r trustRoot -k "${KEYCHAIN}" "${CERT_DIR}/local-ca.crt" || \
-      echo "    WARN: Could not automatically trust local CA. Run 'make trust-cert' manually if browser blocks HTTPS."
-  fi
-fi
+ensure_local_certs
+trust_local_ca
 
 $KUBE -n kube-system create secret tls local-wildcard-tls \
   --cert="${CERT_DIR}/tls.crt" --key="${CERT_DIR}/tls.key" --dry-run=client -o yaml | $KUBE apply -f - >/dev/null
@@ -300,16 +374,6 @@ if ! helm --kube-context "${KUBE_CONTEXT}" -n cnpg-system status cnpg >/dev/null
     --repo https://cloudnative-pg.github.io/charts \
     --version "${CNPG_VERSION}" \
     -n cnpg-system --create-namespace --wait --timeout 5m >/dev/null
-fi
-
-if $KUBE -n "${NS}" get statefulset postgres-cluster >/dev/null 2>&1; then
-  echo "==> Removing legacy StatefulSet/postgres-cluster in favor of CloudNativePG..."
-  $KUBE -n "${NS}" delete statefulset postgres-cluster --ignore-not-found >/dev/null
-  $KUBE -n "${NS}" delete pvc postgres-data-postgres-cluster-0 moodle-data --ignore-not-found >/dev/null
-  $KUBE -n "${NS}" delete svc postgres-cluster-rw --ignore-not-found >/dev/null
-  $KUBE -n "${NS}" delete configmap postgres-local-scripts --ignore-not-found >/dev/null
-  $KUBE -n "${NS}" delete secret postgres-tls --ignore-not-found >/dev/null
-  $KUBE -n "${NS}" delete deployment keycloak moodle-web --ignore-not-found >/dev/null
 fi
 
 echo "==> Deploying PostgreSQL via CloudNativePG (k8s/manifests/platform)..."
@@ -409,6 +473,8 @@ images:
     moodle: dev
 site:
   adminEmail: admin.demo@appstore.example
+cron:
+  schedule: "*/15 * * * *"
 setup:
   site:
     lang: en

@@ -7,8 +7,9 @@ KubeVirt VMs in such a namespace (`runtime: kubevirt-vm`, golden image in the
 namespace `vm-poc`, volumes on Cinder; `scripts/install-cinder-csi.sh`,
 `scripts/migrate-golden-image.sh`, `scripts/enable-cross-namespace-clone.sh`,
 noVNC proxy image from `docker/novnc-proxy`). This is the only deployment of
-the AppStore (staging, prod); the local development stack is
-`docker-compose.dev.yml` with `docs/dev-setup.md`.
+the AppStore: staging and prod run on k3s via Argo CD, and the local
+development stack runs the exact same charts in a local `k3d` cluster via
+`k8s/local/up.sh` (`make init` / `make dev-up`, see `docs/dev-setup.md`).
 
 ## Environments
 

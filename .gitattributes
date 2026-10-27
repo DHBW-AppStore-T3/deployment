@@ -1,1 +1,12 @@
-graphify-out/graph.json merge=graphify
+# Enforce LF line endings so shell scripts, Makefiles, and manifests
+# execute cleanly on both macOS/Linux and Windows (WSL2 / Git Bash).
+* text=auto eol=lf
+*.sh text eol=lf
+Makefile text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.tpl text eol=lf
+*.php text eol=lf
+*.md text eol=lf
