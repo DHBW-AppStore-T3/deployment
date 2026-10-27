@@ -8,7 +8,7 @@
 # merged one after the other. Keep a blank line (or a comment) between any two pins.
 images:
   tags:
-    backend: "sha256:cd166f040806693244c8b8bbc417d0a2dca549099388ea925df570e78f4b0148"  # sha-234a3b8
+    backend: "sha256:af74c49268b8c12d441a13c61538401ead37b77bf3bbb403dcad763f589526fc"  # sha-2a096f4
 
     workerPods: "sha256:44f1d32b5aeade83aec9909c24f837ccd11c627303aaf41d6d253ba0289de707"  # sha-3db8d78
 
