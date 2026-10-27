@@ -1,6 +1,6 @@
 # Deployment
 
-Alles, was die Plattform zum Laufen braucht: Helm-Charts und Argo-CD-Anwendungen für Staging und Produktion (`k8s/`), der lokale Dev-Stack (`docker-compose.dev.yml`, `Makefile`), der Keycloak-Realm und die Seed-Daten.
+Alles, was die Plattform zum Laufen braucht: Helm-Charts und Argo-CD-Anwendungen für Staging und Produktion sowie die lokale Entwicklung im `k3d`-Cluster (`k8s/`, `Makefile`).
 
 Die Anwendung liegt in eigenen Repositories: `backend`, `worker`, `frontend`, `self-service-ui`, `moodle_appstore`, `appstore-mcp`. Hier werden ihre Images zusammengesetzt, konfiguriert und ausgerollt.
 
@@ -8,7 +8,7 @@ Die Anwendung liegt in eigenen Repositories: `backend`, `worker`, `frontend`, `s
 
 | Umgebung | Branch | Ausrollen |
 |---|---|---|
-| lokal | – | `docker-compose.dev.yml` per `make` (Postgres, Keycloak, Backend, Worker, Frontend; Kubernetes simuliert) |
+| lokal | – | Kubernetes (`k3d-appstore-local`) mit denselben Helm-Charts via `make init` / `make dev-up` (`k8s/local/up.sh`) |
 | Staging | `dev` | Kubernetes (k3s), Argo CD `staging-root` verfolgt `dev` |
 | Produktion | `main` | Kubernetes (k3s), Argo CD `prod-root` verfolgt `main` |
 
@@ -16,43 +16,41 @@ Details zu Staging/Produktion: [k8s/README.md](k8s/README.md).
 
 ## Lokal starten
 
-Komplette Anleitung ab Null (Terminal, Git, Docker, make, Repos klonen, Fehlerbilder): [docs/dev-setup.md](docs/dev-setup.md).
+Komplette Anleitung: [docs/dev-setup.md](docs/dev-setup.md).
 
-Kurzfassung, wenn Git, make, Python 3 und Docker laufen:
+Kurzfassung:
 
 ```bash
-mkdir appstore && cd appstore
-for r in deployment backend worker frontend; do git clone -b dev https://github.com/DHBW-AppStore-T3/$r.git; done
 cd deployment
-make init       # .env anlegen, bauen, starten, migrieren, seeden
-make health     # Backend, Frontend, Keycloak
+make init       # Lokale Images bauen, k3d-Cluster starten & Helm-Charts ausrollen
+make urls       # Alle Dev-URLs und Zugangsdaten auf einen Blick
+make health     # AppStore, Self-Service-UI, Moodle, Keycloak und k3d-Cluster prüfen
 ```
 
-Frontend http://localhost:5173 · API-Docs http://localhost:8000/docs · Keycloak http://localhost:8081 (`admin`/`admin`) · Login `dozent.demo`, `admin.demo`, `student1.demo` mit `DevLocal1234!`.
+AppStore <https://appstore.localhost> · Self-Service UI <https://self-service.localhost> · Moodle <https://moodle.localhost> · Keycloak <https://sso.localhost> · Login `admin.demo`, `dozent.demo`, `student1.demo`, `student2.demo` mit `DevLocal1234!`.
 
 | Befehl | Wirkung |
 |---|---|
-| `make dev-up` / `make dev-down` | Stack starten / stoppen (Daten bleiben) |
-| `make dev-logs-backend` (`-frontend`, `-worker`, `-keycloak`) | Logs verfolgen |
-| `make shell-backend` (`-worker`, `-frontend`, `-db`) | Shell im Container / `psql` |
-| `make dev-restart-worker` | Worker neu starten (kein Hot-Reload) |
-| `make migrate-dev` | Migrationen anwenden |
-| `make seed-dev` | Demo-Daten (idempotent) |
+| `make dev-up` / `make dev-down` | Lokalen k3d-Cluster + Helm-Charts starten / stoppen (Volumes bleiben) |
+| `make dev-build` | Lokale Images neu bauen, in k3d importieren und Deployments neu starten |
+| `make dev-logs-backend` (`-frontend`, `-worker`, `-keycloak`, `-moodle`) | Logs verfolgen |
+| `make shell-backend` (`-worker`, `-db`) | Shell im Pod / `psql` |
+| `make dev-restart` (`-backend`, `-worker`, `-frontend`, `-moodle`) | Deployments neu starten |
+| `make migrate-dev` | Alembic-Migrationen im API-Pod anwenden |
+| `make seed-dev` | Demo-Daten im API-Pod laden (idempotent) |
+| `make trust-cert` | Lokale `*.localhost`-Root-CA im macOS-Schlüsselbund registrieren (passiert bei `make init` / `make dev-up` automatisch) |
 | `make help` | alle Targets |
 
 ## Aufbau
 
 ```text
 deployment/
-├── Makefile                  lokaler Einstieg
-├── docker-compose.dev.yml    lokaler Stack
-├── .env.example              Vorlage für .env (Schlüssel)
-├── docs/dev-setup.md         lokales Setup ab Null
-├── keycloak/dhbw-realm.json  Realm für den lokalen Keycloak (Staging/Prod: k8s/manifests/platform/files/dhbw-realm.json)
-├── seed/seed_sim.py          Demo-Daten des lokalen Stacks (Staging: Job in charts/appstore)
+├── Makefile                  lokaler Einstieg (k3d + Helm)
+├── docs/dev-setup.md         lokales Kubernetes-Setup (k3d + Moodle)
 ├── k8s/                      Charts, Argo-CD-Anwendungen, Umgebungswerte, Image-Digests, Policy-Tests
 │   ├── charts/{appstore,appstore-mcp,moodle}
-│   ├── manifests/platform    Postgres (CloudNativePG) + Keycloak
+│   ├── manifests/platform    Postgres (CloudNativePG) + Keycloak (Realm dhbw + DHBW-Theme)
+│   ├── local/up.sh           rollt CNPG + platform + appstore + moodle in k3d aus
 │   ├── argocd/               Cluster-Operator, App-of-Apps, Roots je Umgebung
 │   ├── environments/         staging.yaml, prod.yaml
 │   ├── images/               Image-Digests (nur von CI geschrieben)

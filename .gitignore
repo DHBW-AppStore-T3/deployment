@@ -2,6 +2,7 @@
 .secrets
 .DS_Store
 __pycache__/
+k8s/local/.certs/
 
 graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
 graphify-out/cache/
