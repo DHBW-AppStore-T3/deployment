@@ -67,6 +67,5 @@ health: ## Prüft Erreichbarkeit von AppStore, Self-Service UI, Moodle, Keycloak
 	@printf "  K8s Cluster:     "; kubectl --context "$(KUBE_CTX)" get nodes > /dev/null 2>&1 && echo "healthy" || echo "not healthy"
 
 clean: ## ⚠️  Lokalen k3d-Cluster komplett löschen
-	docker rm -f "k3d-$(K3D_CLUSTER)-ingress" >/dev/null 2>&1 || true
 	k3d cluster delete "$(K3D_CLUSTER)"
 

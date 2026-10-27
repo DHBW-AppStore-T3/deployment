@@ -102,42 +102,27 @@ trust_local_ca() {
   fi
 }
 
-for cmd in docker k3d kubectl helm openssl python3; do
+for cmd in docker k3d kubectl helm openssl python3 git; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "ERROR: Required command '$cmd' not found in PATH." >&2
     exit 1
   fi
 done
 
-# 1. Ensure k3d cluster exists and is running with ports 80/443 exposed
-if command -v podman >/dev/null 2>&1 && docker version 2>/dev/null | grep -qi podman; then
-  # On macOS (AppleHV/Libkrun/QEMU), Podman VMs have fixed RAM allocations; ensure at least 6 GiB RAM
-  # (on Windows WSL2, memory is shared dynamically via .wslconfig and `podman machine set --memory` is unsupported).
-  if [ "$(uname -s)" = "Darwin" ]; then
-    PM_MEM="$(podman machine inspect --format '{{.Resources.Memory}}' 2>/dev/null | head -n1 || echo 8192)"
-    if [ -n "${PM_MEM}" ] && [ "${PM_MEM}" -lt 6144 ] 2>/dev/null; then
-      echo "==> Increasing Podman VM memory from ${PM_MEM} MB to 8192 MB..."
-      podman machine stop >/dev/null 2>&1 || true
-      podman machine set --memory 8192 >/dev/null 2>&1 || true
-      podman machine start >/dev/null 2>&1 || true
-    fi
-  fi
-  # When `docker` is backed by Podman 5, the default `journald` log driver
-  # fails on the Docker-compat `/logs` API ("unable to open a handle to the library"),
-  # which breaks `k3d cluster create`. Switch the Podman VM to `k8s-file` and allow ports 80/443.
-  podman machine ssh '
-    sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80 >/dev/null 2>&1 || true
-    if [ "$(podman info --format "{{.Host.LogDriver}}" 2>/dev/null)" != "k8s-file" ]; then
-      sudo mkdir -p /etc/containers/containers.conf.d
-      printf "[containers]\nlog_driver = \"k8s-file\"\n" | sudo tee /etc/containers/containers.conf.d/99-log-driver.conf >/dev/null
-      systemctl --user restart podman.socket podman.service >/dev/null 2>&1 || true
-      sudo systemctl restart podman.socket podman.service >/dev/null 2>&1 || true
-    fi
-  ' >/dev/null 2>&1 || true
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: Cannot connect to the Docker daemon. Please start Docker first." >&2
+  exit 1
 fi
 
+for repo in backend worker frontend self-service-ui moodle_appstore; do
+  if [ ! -d "${ROOT_DIR}/${repo}" ]; then
+    echo "ERROR: Sibling repository '${ROOT_DIR}/${repo}' not found. See docs/dev-setup.md for git clone instructions." >&2
+    exit 1
+  fi
+done
+
+# 1. Ensure k3d cluster exists and is running with ports 80/443 exposed
 if ! k3d cluster list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${CLUSTER_NAME}"; then
-  docker rm -f "k3d-${CLUSTER_NAME}-ingress" >/dev/null 2>&1 || true
   echo "==> Creating k3d cluster '${CLUSTER_NAME}' (ports 80 & 443 -> Traefik)..."
   k3d cluster create "${CLUSTER_NAME}" --wait \
     -p "80:80@loadbalancer" \
@@ -146,32 +131,20 @@ else
   k3d cluster start "${CLUSTER_NAME}" >/dev/null 2>&1 || true
 fi
 
-# If the cluster was originally created with 8080/8443 instead of 80/443, bridge 80/443 to server-0
-if ! docker port "k3d-${CLUSTER_NAME}-serverlb" 443/tcp 2>/dev/null | grep -q ':443$'; then
-  if ! docker ps --format '{{.Names}}' | grep -qx "k3d-${CLUSTER_NAME}-ingress"; then
-    docker rm -f "k3d-${CLUSTER_NAME}-ingress" >/dev/null 2>&1 || true
-    docker run -d --name "k3d-${CLUSTER_NAME}-ingress" --restart unless-stopped \
-      --network "k3d-${CLUSTER_NAME}" -p 80:80 -p 443:443 \
-      --entrypoint /bin/sh ghcr.io/k3d-io/k3d-proxy:5.9.0 \
-      -c "cat <<EOF >/tmp/nginx.conf
-error_log stderr notice;
-worker_processes 1;
-events { worker_connections 1024; }
-stream {
-  server { listen 80;  proxy_pass k3d-${CLUSTER_NAME}-server-0:80; }
-  server { listen 443; proxy_pass k3d-${CLUSTER_NAME}-server-0:443; }
-}
-EOF
-exec nginx -g 'daemon off;' -c /tmp/nginx.conf" >/dev/null
-  fi
-fi
-
 KUBE="kubectl --context ${KUBE_CONTEXT}"
+
+# Determine node architecture inside k3d so docker builds matching images across all architectures (arm64 / amd64)
+NODE_ARCH="$(docker exec "k3d-${CLUSTER_NAME}-server-0" uname -m 2>/dev/null || uname -m)"
+case "${NODE_ARCH}" in
+  aarch64|arm64) TARGET_PLATFORM="linux/arm64" ;;
+  x86_64|amd64)  TARGET_PLATFORM="linux/amd64" ;;
+  *)             TARGET_PLATFORM="linux/${NODE_ARCH}" ;;
+esac
 
 # 2. Build and import local images into k3d containerd (pinned against kubelet GC)
 import_image() {
   local tag="$1"
-  echo "    -> Importing & pinning ${tag} in ${KUBE_CONTEXT}..."
+  echo "    -> Importing & pinning ${tag} (${TARGET_PLATFORM}) in ${KUBE_CONTEXT}..."
   docker save "${tag}" | docker exec -i "k3d-${CLUSTER_NAME}-server-0" ctr -n k8s.io images import - >/dev/null
   docker exec "k3d-${CLUSTER_NAME}-server-0" ctr -n k8s.io images label "${tag}" io.cri-containerd.pinned=pinned >/dev/null
 }
@@ -187,7 +160,7 @@ build_with_progress() {
   local step="$1"
   local label="$2"
   shift 2
-  echo "==> [${step}] Building ${label}..."
+  echo "==> [${step}] Building ${label} (${TARGET_PLATFORM})..."
   local start_ts
   start_ts="$(date +%s)"
   (
@@ -209,29 +182,29 @@ build_with_progress() {
 }
 
 if [ "${SKIP_BUILD}" != "1" ]; then
-  echo "==> Building local images from sibling repositories..."
+  echo "==> Building local images from sibling repositories for ${TARGET_PLATFORM}..."
   build_with_progress "1/5" "backend" \
-    docker build -t ghcr.io/dhbw-appstore-t3/backend:dev "${ROOT_DIR}/backend"
+    docker build --platform "${TARGET_PLATFORM}" -t ghcr.io/dhbw-appstore-t3/backend:dev "${ROOT_DIR}/backend"
   import_image ghcr.io/dhbw-appstore-t3/backend:dev
 
   build_with_progress "2/5" "worker-pods" \
-    docker build --target pod-deployer -t ghcr.io/dhbw-appstore-t3/worker-pods:dev "${ROOT_DIR}/worker"
+    docker build --platform "${TARGET_PLATFORM}" --target pod-deployer -t ghcr.io/dhbw-appstore-t3/worker-pods:dev "${ROOT_DIR}/worker"
   import_image ghcr.io/dhbw-appstore-t3/worker-pods:dev
 
   build_with_progress "3/5" "frontend" \
-    docker build -t ghcr.io/dhbw-appstore-t3/frontend:dev "${ROOT_DIR}/frontend"
+    docker build --platform "${TARGET_PLATFORM}" -t ghcr.io/dhbw-appstore-t3/frontend:dev "${ROOT_DIR}/frontend"
   import_image ghcr.io/dhbw-appstore-t3/frontend:dev
 
   build_with_progress "4/5" "self-service-ui" \
-    docker build -t ghcr.io/dhbw-appstore-t3/self-service-ui:dev "${ROOT_DIR}/self-service-ui"
+    docker build --platform "${TARGET_PLATFORM}" -t ghcr.io/dhbw-appstore-t3/self-service-ui:dev "${ROOT_DIR}/self-service-ui"
   import_image ghcr.io/dhbw-appstore-t3/self-service-ui:dev
 
   MOODLE_STATE_HASH="$({ git -C "${ROOT_DIR}/moodle_appstore" rev-parse HEAD 2>/dev/null; git -C "${ROOT_DIR}/moodle_appstore" status --porcelain 2>/dev/null; git -C "${ROOT_DIR}/moodle_appstore" diff HEAD 2>/dev/null; } | openssl dgst -sha256 | awk '{print $NF}')"
   CURRENT_MOODLE_HASH="$(docker image inspect -f '{{ index .Config.Labels "appstore.local.tree-hash" }}' ghcr.io/dhbw-appstore-t3/moodle_appstore:dev 2>/dev/null || true)"
 
   if [ "${REBUILD_MOODLE:-0}" = "1" ] || [ "${MOODLE_STATE_HASH}" != "${CURRENT_MOODLE_HASH}" ]; then
-    build_with_progress "5/5" "moodle_appstore (62k files — first build on VM filesystems may take several minutes)" \
-      docker build --label "appstore.local.tree-hash=${MOODLE_STATE_HASH}" -t ghcr.io/dhbw-appstore-t3/moodle_appstore:dev "${ROOT_DIR}/moodle_appstore"
+    build_with_progress "5/5" "moodle_appstore (first build may take several minutes)" \
+      docker build --platform "${TARGET_PLATFORM}" --label "appstore.local.tree-hash=${MOODLE_STATE_HASH}" -t ghcr.io/dhbw-appstore-t3/moodle_appstore:dev "${ROOT_DIR}/moodle_appstore"
     import_image ghcr.io/dhbw-appstore-t3/moodle_appstore:dev
   else
     echo "==> [5/5] Reusing cached ghcr.io/dhbw-appstore-t3/moodle_appstore:dev (no changes in moodle_appstore)"

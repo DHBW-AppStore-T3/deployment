@@ -1,72 +1,58 @@
 # Deployment
 
-Alles, was die Plattform zum Laufen braucht: Helm-Charts und Argo-CD-Anwendungen für Staging und Produktion sowie die lokale Entwicklung im `k3d`-Kubernetes-Cluster (`k8s/`, `Makefile`).
+Zentrales Deployment-Repository der DHBW-AppStore-Plattform: Helm-Charts, Argo-CD-Anwendungen, Umgebungs- und Image-Konfigurationen für Staging und Produktion sowie das lokale Kubernetes-Entwicklungssetup (`k3d`).
 
-Die Anwendung liegt in eigenen Repositories: `backend`, `worker`, `frontend`, `self-service-ui`, `moodle_appstore`, `appstore-mcp`. Hier werden ihre Images zusammengesetzt, konfiguriert und ausgerollt.
+Die Komponenten liegen in sechs eigenständigen Repositories (`backend`, `worker`, `frontend`, `self-service-ui`, `moodle_appstore`, `appstore-mcp`). Hier werden ihre Images referenziert, konfiguriert und auf Kubernetes ausgerollt.
 
 ## Umgebungen
 
-| Umgebung | Branch | Ausrollen |
-|---|---|---|
-| lokal | – | Kubernetes (`k3d-appstore-local`, Namespace `appstore-local`) mit denselben Helm-Charts via `make init` (`k8s/local/up.sh`) |
-| Staging | `dev` | Kubernetes (k3s), Argo CD `staging-root` verfolgt `dev` |
-| Produktion | `main` | Kubernetes (k3s), Argo CD `prod-root` verfolgt `main` |
-
-Details zu Staging/Produktion: [k8s/README.md](k8s/README.md).
-
-## Lokal starten
-
-Voraussetzungen: **Docker** (oder Podman mit `docker`-CLI-Alias, mind. 4 CPUs / 6 GiB RAM), `k3d`, `kubectl`, `helm`, `openssl`, `python3`, `git`, `make`, `curl`. Details: [docs/dev-setup.md](docs/dev-setup.md).
-
-Alle Repositories (`backend`, `worker`, `frontend`, `self-service-ui`, `moodle_appstore`, `deployment`) müssen im selben Oberverzeichnis liegen:
-
-```bash
-cd deployment
-make init       # Images bauen, k3d-Cluster starten & Helm-Charts ausrollen
-make health     # Dienste und Cluster prüfen
-```
-
-AppStore <https://appstore.localhost> · Self-Service UI <https://self-service.localhost> · Moodle <https://moodle.localhost> · Keycloak <https://sso.localhost> · Login `admin.demo`, `dozent.demo`, `student1.demo`, `student2.demo` mit `DevLocal1234!`.
-
-| Befehl | Wirkung |
-|---|---|
-| `make init` | Lokale Images bauen, Cluster starten & Charts ausrollen |
-| `make up` / `make down` | Cluster starten (ohne Rebuild) / stoppen (Volumes bleiben) |
-| `make build` | Images neu bauen, importieren & Deployments neu starten |
-| `make status` | Pods, Services und Ingresses anzeigen |
-| `make logs` | Live-Logs (`SERVICE=appstore-t3-api`, `moodle-web`, `keycloak`, `all` …) |
-| `make shell` | Shell im Pod (`SERVICE=appstore-t3-api`, `moodle-web` oder `db` für `psql`) |
-| `make restart` | Alle Deployments neu starten |
-| `make migrate` / `make seed` | Migrationen / Seed-Daten im API-Pod ausführen |
-| `make clean` | Lokalen `k3d`-Cluster komplett löschen |
+| Umgebung | Branch | Namespace | Ausrollen | Dokumentation |
+|---|---|---|---|---|
+| **Produktion** | `main` | `appstore-prod` | Kubernetes (`k3s` auf OpenStack), Argo CD `prod-root` verfolgt `main` | [k8s/README.md](k8s/README.md) |
+| **Staging** | `dev` | `appstore-staging` | Kubernetes (`k3s` auf OpenStack), Argo CD `staging-root` verfolgt `dev` | [k8s/README.md](k8s/README.md) |
+| **Lokal** | – | `appstore-local` | Lokales Kubernetes (`k3d-appstore-local`) mit denselben Helm-Charts via `make init` | [docs/dev-setup.md](docs/dev-setup.md) |
 
 ## Aufbau
 
 ```text
 deployment/
-├── Makefile                  lokaler Einstieg (k3d + Helm)
-├── docs/dev-setup.md         Anleitung für das lokale Setup
-├── k8s/                      Charts, Argo-CD-Anwendungen, Umgebungswerte, Image-Digests, Policy-Tests
-│   ├── charts/{appstore,appstore-mcp,moodle}
-│   ├── manifests/platform    Postgres (CloudNativePG) + Keycloak
-│   ├── local/up.sh           rollt CNPG + platform + appstore + moodle in k3d aus
-│   ├── argocd/               Cluster-Operator, App-of-Apps, Roots je Umgebung
-│   ├── environments/         staging.yaml, prod.yaml
-│   ├── images/               Image-Digests (nur von CI geschrieben)
+├── k8s/                      Helm-Charts, Argo-CD-Anwendungen, Umgebungswerte, Image-Digests, Policy-Tests
+│   ├── README.md             Architektur & Betrieb von Staging und Produktion (k3s, Argo CD, RBAC, Policies)
+│   ├── charts/               Helm-Charts: appstore, appstore-mcp, moodle
+│   ├── manifests/platform/   Postgres (CloudNativePG) + Keycloak + Realm & Theme
+│   ├── argocd/               Cluster-Operator (CNPG), App-of-Apps, Roots je Umgebung
+│   ├── environments/         Umgebungswerte: staging.yaml, prod.yaml
+│   ├── images/               Gepinnte Image-Digests: staging.yaml, prod.yaml (nur von CI geschrieben)
+│   ├── cinder/               Cinder-CSI StorageClass für persistente Volumes & KubeVirt-VMs
+│   ├── tests/                Chart-Rendering, Admission-Policy-Tests (CEL) & RBAC-Cluster-Probes
+│   ├── local/up.sh           Rollt CNPG, Platform, AppStore und Moodle lokal in k3d aus
 │   └── bootstrap.sh, promote.sh, show-credentials.sh, keycloak-self-service-client.sh
+├── docs/dev-setup.md         Schritt-für-Schritt-Anleitung für das lokale Setup (ab Null inkl. git clone)
+├── Makefile                  Steuerung des lokalen k3d-Entwicklungs-Clusters
 ├── scripts/                  KubeVirt-Windows-Apps: install-cinder-csi.sh, migrate-golden-image.sh, enable-cross-namespace-clone.sh
 ├── docker/novnc-proxy/       noVNC-Proxy-Image für KubeVirt-VMs
 ├── examples/                 Beispiel-appstore.yaml einer Windows-VM (kubevirt-vm)
-└── .github/workflows/        k8s-bump, k8s-chart, novnc-proxy, secret-scan
+├── e2e/                      Playwright End-to-End-Tests gegen Staging
+└── .github/workflows/        CI/CD-Pipelines (k8s-bump, k8s-chart, image-provenance, novnc-proxy, e2e-staging, secret-scan)
 ```
 
-## CI
+## Dokumentation & Einstiegspunkte
+
+- **Staging & Produktion (k3s / Argo CD / Architektur / Betrieb):** [k8s/README.md](k8s/README.md)
+  - Neue Umgebung initialisieren: `GHCR_PULL_TOKEN_FILE=<datei> k8s/bootstrap.sh staging|prod`
+  - Zugangsdaten anzeigen: `k8s/show-credentials.sh staging|prod`
+  - Charts/Policies von Staging (`dev`) nach Produktion (`main`) promoten: `k8s/promote.sh`
+- **Lokale Entwicklung (von Null zum laufenden Stack):** [docs/dev-setup.md](docs/dev-setup.md)
+  - Kurzstart (sofern alle 6 Repos geklont und Docker, `k3d`, `kubectl`, `helm` installiert sind): `make init` (Übersicht aller lokalen Befehle: `make help`)
+- **Übergabedokument & Architekturentscheidungen (ADRs):** [claude_docs/HANDOVER.md](claude_docs/HANDOVER.md) · `claude_docs/decisions/`
+
+## CI / CD Workflows
 
 | Workflow | Auslöser | Aufgabe |
 |---|---|---|
-| `k8s-bump.yml` | von backend/worker/frontend/self-service-ui/appstore-mcp/moodle_appstore nach deren Image-Push | schreibt den Digest in `k8s/images/<staging\|prod>.yaml`: Branch `dev` per sofort gemergtem PR, `main` per PR zum Prüfen |
-| `k8s-chart.yml` | Änderungen in `k8s/**` | rendert Staging und Prod wie Argo CD, prüft gegen Kubernetes-Schemas, wertet die Admission-Policy aus, prüft RBAC in einem kind-Cluster |
-| `novnc-proxy.yml` | Änderungen in `docker/novnc-proxy/**` | baut und pusht das Proxy-Image |
-| `secret-scan.yml` | PRs und Pushes auf `main`/`dev` | Gitleaks |
-
-Promotion von Charts/Policy/Realm nach Produktion: `k8s/promote.sh` (PR `dev` → `main`).
+| `k8s-bump.yml` | Nach erfolgreichem Image-Push von `backend`, `worker`, `frontend`, `self-service-ui`, `appstore-mcp`, `moodle_appstore` | Prüft die Image-Provenance (Signatur) und schreibt den neuen Digest in `k8s/images/<staging\|prod>.yaml` (`dev`: automatischer Merge, `main`: Pull Request zur Freigabe) |
+| `k8s-chart.yml` | Änderungen in `k8s/**` | Rendert Staging und Prod wie Argo CD, validiert gegen Kubernetes-Schemas (`kubeconform`), prüft die Admission-Policy (CEL) und testet RBAC in einem `kind`-Cluster |
+| `image-provenance.yml` | PRs mit Änderungen an `k8s/images/*.yaml` | Verifiziert per GitHub Attestation, dass gepinnte Images aus der offiziellen Komponenten-CI stammen |
+| `novnc-proxy.yml` | Änderungen in `docker/novnc-proxy/**` | Baut, testet, scannt (Trivy) und pusht das noVNC-Proxy-Image für KubeVirt-VMs |
+| `e2e-staging.yml` | Manuell (`workflow_dispatch`) | Führt die komplette Playwright-E2E-Kette (Pod-App & KubeVirt-VM) auf Staging aus |
+| `secret-scan.yml` | PRs und Pushes auf `main`/`dev` | Prüft das Repository mit Gitleaks auf versehentlich committete Geheimnisse |
