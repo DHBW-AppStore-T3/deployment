@@ -16,7 +16,6 @@ NS="${LOCAL_K8S_NAMESPACE:-appstore-local}"
 DEMO_PASSWORD="${DEV_DEMO_PASSWORD:-DevLocal1234!}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 BUILD_ONLY="${BUILD_ONLY:-0}"
-TRUST_CERT_ONLY="${TRUST_CERT_ONLY:-0}"
 
 CERT_DIR="${HERE}/.certs"
 
@@ -69,9 +68,6 @@ EOF
   fi
 }
 
-# Trust the local Root CA in the host OS certificate store (macOS Keychain,
-# Windows CurrentUser Root store via WSL2/Git-Bash certutil.exe, or Linux CA store)
-# so browsers allow cross-subdomain HTTPS requests (*.localhost).
 trust_local_ca() {
   if [ "${SKIP_TRUST_CERT:-0}" = "1" ]; then
     return 0
@@ -83,11 +79,8 @@ trust_local_ca() {
   if [ "$(uname -s)" = "Darwin" ] && command -v security >/dev/null 2>&1; then
     local keychain="$HOME/Library/Keychains/login.keychain-db"
     if ! security find-certificate -a -Z -c "DHBW AppStore Local Dev CA" "${keychain}" 2>/dev/null | grep -qi "${ca_sha1:-__none__}"; then
-      echo "==> Registering local *.localhost Root CA in macOS Keychain (may prompt for TouchID/password once)..."
-      security add-trusted-cert -r trustRoot -k "${keychain}" "${ca_crt}" || \
-        echo "    WARN: Could not automatically trust local CA. Run 'make trust-cert' manually if browser blocks HTTPS."
-    elif [ "${TRUST_CERT_ONLY}" = "1" ]; then
-      echo "==> Local Root CA is already trusted in macOS Keychain (${keychain})."
+      echo "==> Registering local *.localhost Root CA in macOS Keychain..."
+      security add-trusted-cert -r trustRoot -k "${keychain}" "${ca_crt}" || true
     fi
   elif command -v certutil.exe >/dev/null 2>&1; then
     local win_cert_path="${ca_crt}"
@@ -97,33 +90,17 @@ trust_local_ca() {
       win_cert_path="$(cygpath -w "${ca_crt}")"
     fi
     if ! certutil.exe -user -verifystore Root "DHBW AppStore Local Dev CA" 2>/dev/null | grep -qi "${ca_sha1:-__none__}"; then
-      echo "==> Registering local *.localhost Root CA in Windows User Certificate Store..."
-      certutil.exe -user -addstore Root "${win_cert_path}" >/dev/null || \
-        echo "    WARN: Could not automatically trust local CA in Windows. Run 'make trust-cert' manually if browser blocks HTTPS."
-    elif [ "${TRUST_CERT_ONLY}" = "1" ]; then
-      echo "==> Local Root CA is already trusted in Windows User Certificate Store."
+      echo "==> Registering local *.localhost Root CA in Windows Certificate Store..."
+      certutil.exe -user -addstore Root "${win_cert_path}" >/dev/null || true
     fi
   elif [ -d /usr/local/share/ca-certificates ] && command -v update-ca-certificates >/dev/null 2>&1; then
     local target="/usr/local/share/ca-certificates/dhbw-appstore-local-ca.crt"
     if ! cmp -s "${ca_crt}" "${target}" 2>/dev/null; then
       echo "==> Registering local *.localhost Root CA in Linux system CA store..."
-      (sudo cp "${ca_crt}" "${target}" && sudo update-ca-certificates >/dev/null) || \
-        echo "    WARN: Could not automatically trust local CA. Run 'make trust-cert' manually."
-    elif [ "${TRUST_CERT_ONLY}" = "1" ]; then
-      echo "==> Local Root CA is already trusted in Linux system CA store."
+      (sudo cp "${ca_crt}" "${target}" && sudo update-ca-certificates >/dev/null) || true
     fi
   fi
 }
-
-if [ "${TRUST_CERT_ONLY}" = "1" ]; then
-  if ! command -v openssl >/dev/null 2>&1; then
-    echo "ERROR: Required command 'openssl' not found in PATH." >&2
-    exit 1
-  fi
-  ensure_local_certs
-  trust_local_ca
-  exit 0
-fi
 
 for cmd in docker k3d kubectl helm openssl python3; do
   if ! command -v "$cmd" >/dev/null 2>&1; then

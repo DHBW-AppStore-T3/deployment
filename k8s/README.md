@@ -9,7 +9,7 @@ namespace `vm-poc`, volumes on Cinder; `scripts/install-cinder-csi.sh`,
 noVNC proxy image from `docker/novnc-proxy`). This is the only deployment of
 the AppStore: staging and prod run on k3s via Argo CD, and the local
 development stack runs the exact same charts in a local `k3d` cluster via
-`k8s/local/up.sh` (`make init` / `make dev-up`, see `docs/dev-setup.md`).
+`k8s/local/up.sh` (`make init`, see `docs/dev-setup.md`).
 
 ## Environments
 

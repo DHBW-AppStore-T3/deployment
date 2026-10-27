@@ -8,69 +8,47 @@ Die Anwendung liegt in eigenen Repositories: `backend`, `worker`, `frontend`, `s
 
 | Umgebung | Branch | Ausrollen |
 |---|---|---|
-| lokal | – | Kubernetes (`k3d-appstore-local`, Namespace `appstore-local`) mit denselben produktiven Helm-Charts via `make init` / `make dev-up` (`k8s/local/up.sh`) |
+| lokal | – | Kubernetes (`k3d-appstore-local`, Namespace `appstore-local`) mit denselben Helm-Charts via `make init` (`k8s/local/up.sh`) |
 | Staging | `dev` | Kubernetes (k3s), Argo CD `staging-root` verfolgt `dev` |
 | Produktion | `main` | Kubernetes (k3s), Argo CD `prod-root` verfolgt `main` |
 
 Details zu Staging/Produktion: [k8s/README.md](k8s/README.md).
 
-## Lokal starten (Kubernetes via k3d)
+## Lokal starten
 
-Die komplette Plattform (CloudNativePG PostgreSQL, Keycloak mit `dhbw`-Realm, AppStore API + Pod-Deployer + Frontend + Self-Service-UI sowie Moodle LMS inkl. LTI 1.3) lässt sich unter **macOS**, **Windows (WSL2)** und **Linux** lokal in einem `k3d`-Cluster bereitstellen. Komplette Anleitung: [docs/dev-setup.md](docs/dev-setup.md).
+Voraussetzungen: **Docker** (oder Podman mit `docker`-CLI-Alias, mind. 4 CPUs / 6 GiB RAM), `k3d`, `kubectl`, `helm`, `openssl`, `python3`, `git`, `make`, `curl`. Details: [docs/dev-setup.md](docs/dev-setup.md).
 
-### Voraussetzungen & Abhängigkeiten
-
-| Abhängigkeit | Zweck | Hinweise (macOS & Windows / WSL2) |
-|---|---|---|
-| **Docker Desktop** *oder* **Podman** | Container-Engine für Image-Builds & `k3d`-Nodes | Mind. **4 CPUs** und **6–8 GiB RAM**. Bei Podman muss der `docker`-CLI-Alias aktiv sein (`podman-docker` / Podman Desktop Docker-Kompatibilität). Unter Windows WSL2-Integration aktivieren. |
-| **`k3d`** | Erstellt den lokalen k3s-Cluster `k3d-appstore-local` | Bindet Ports `80` und `443` an den Traefik-Ingress-Controller |
-| **`kubectl`** | Kubernetes-CLI für Rollouts, Logs, Exec & Secrets | Nutzt automatisch den Kontext `k3d-appstore-local` |
-| **`helm`** (v3) | Rollt CloudNativePG, `platform`, `appstore` und `moodle` aus | Verwendet exakt die produktiven Charts unter `k8s/` |
-| **`openssl`** & **`python3`** | Lokale `*.localhost`-Root-CA + TLS-Zertifikate & Secret-Generierung | Werden von `k8s/local/up.sh` beim Bootstrap genutzt |
-| **`git`**, **`make`**, **`curl`** | Repo-Hash-Prüfung, `Makefile`-Targets & `make health` | Unter Windows über **WSL2 (Ubuntu)** ausführen |
-
-Installation der CLI-Abhängigkeiten:
-- **macOS (Homebrew):** `brew install k3d kubectl helm openssl python3 git make curl`
-- **Windows (in WSL2 Ubuntu):** `sudo apt-get update && sudo apt-get install -y git make curl openssl python3` sowie `k3d`, `kubectl` und `helm` (z. B. via Homebrew on Linux oder offizielle Installer — siehe [docs/dev-setup.md](docs/dev-setup.md)).
-
-### Schnellstart
-
-Alle Teil-Repositories (`backend`, `worker`, `frontend`, `self-service-ui`, `moodle_appstore`, `deployment`) müssen als Geschwister-Ordner im selben Oberverzeichnis liegen:
+Alle Repositories (`backend`, `worker`, `frontend`, `self-service-ui`, `moodle_appstore`, `deployment`) müssen im selben Oberverzeichnis liegen:
 
 ```bash
 cd deployment
-make init       # Lokale Images bauen, k3d-Cluster starten & Helm-Charts ausrollen
-make urls       # Alle Dev-URLs und Zugangsdaten auf einen Blick
-make health     # AppStore, Self-Service-UI, Moodle, Keycloak und k3d-Cluster prüfen
+make init       # Images bauen, k3d-Cluster starten & Helm-Charts ausrollen
+make health     # Dienste und Cluster prüfen
 ```
 
 AppStore <https://appstore.localhost> · Self-Service UI <https://self-service.localhost> · Moodle <https://moodle.localhost> · Keycloak <https://sso.localhost> · Login `admin.demo`, `dozent.demo`, `student1.demo`, `student2.demo` mit `DevLocal1234!`.
 
 | Befehl | Wirkung |
 |---|---|
-| `make init` (`make dev`) | Baut lokale Images, erstellt `k3d-appstore-local` und rollt alle Helm-Charts aus |
-| `make dev-up` / `make dev-down` | Lokalen k3d-Cluster + Helm-Charts starten (ohne Image-Rebuild) / stoppen (Volumes bleiben) |
-| `make dev-build` (`make dev-rebuild`) | Lokale Images neu bauen, in k3d importieren und Deployments neu starten |
-| `make dev-ps` (`make status`) | Zeigt alle Pods, Services und Ingresses im Namespace `appstore-local` |
-| `make dev-logs` | Live-Logs aller AppStore-Pods (`api`, `pod-deployer`, `frontend`, `self-service-ui`) |
-| `make dev-logs-backend` (`-frontend`, `-self-service`, `-worker`, `-keycloak`, `-moodle`) | Logs eines einzelnen Dienstes verfolgen |
-| `make shell-backend` (`-worker`, `-frontend`, `-moodle`, `-db`) | Interaktive Shell im jeweiligen Pod bzw. `psql` in CloudNativePG |
-| `make dev-restart` (`-backend`, `-worker`, `-frontend`, `-self-service`, `-moodle`) | Deployments neu starten |
-| `make migrate-dev` | Alembic-Migrationen im API-Pod anwenden |
-| `make seed-dev` | Demo-Daten aus der `appstore-t3-seed`-ConfigMap im API-Pod laden (idempotent) |
-| `make trust-cert` | Lokale `*.localhost`-Root-CA im Betriebssystem registrieren (macOS Keychain / Windows Root-Store / Linux CA-Store; passiert bei `make init` & `make dev-up` automatisch) |
-| `make clean-dev` / `make clean-all` | Löscht den lokalen k3d-Cluster (bzw. zusätzlich alle lokalen `:dev`-Images & Build-Caches) |
-| `make help` | Zeigt alle verfügbaren `Makefile`-Targets |
+| `make init` | Lokale Images bauen, Cluster starten & Charts ausrollen |
+| `make up` / `make down` | Cluster starten (ohne Rebuild) / stoppen (Volumes bleiben) |
+| `make build` | Images neu bauen, importieren & Deployments neu starten |
+| `make status` | Pods, Services und Ingresses anzeigen |
+| `make logs` | Live-Logs (`SERVICE=appstore-t3-api`, `moodle-web`, `keycloak`, `all` …) |
+| `make shell` | Shell im Pod (`SERVICE=appstore-t3-api`, `moodle-web` oder `db` für `psql`) |
+| `make restart` | Alle Deployments neu starten |
+| `make migrate` / `make seed` | Migrationen / Seed-Daten im API-Pod ausführen |
+| `make clean` | Lokalen `k3d`-Cluster komplett löschen |
 
 ## Aufbau
 
 ```text
 deployment/
 ├── Makefile                  lokaler Einstieg (k3d + Helm)
-├── docs/dev-setup.md         lokales Kubernetes-Setup (k3d + Moodle für macOS & Windows/WSL2)
+├── docs/dev-setup.md         Anleitung für das lokale Setup
 ├── k8s/                      Charts, Argo-CD-Anwendungen, Umgebungswerte, Image-Digests, Policy-Tests
 │   ├── charts/{appstore,appstore-mcp,moodle}
-│   ├── manifests/platform    Postgres (CloudNativePG) + Keycloak (Realm dhbw + DHBW-Theme)
+│   ├── manifests/platform    Postgres (CloudNativePG) + Keycloak
 │   ├── local/up.sh           rollt CNPG + platform + appstore + moodle in k3d aus
 │   ├── argocd/               Cluster-Operator, App-of-Apps, Roots je Umgebung
 │   ├── environments/         staging.yaml, prod.yaml
