@@ -149,7 +149,7 @@ credential key.
 {{ include "appstore.secretEnv" (dict "context" . "name" "RESULTS_ENCRYPTION_KEY" "key" "results-encryption-key") }}
 {{- end }}
 
-{{/* Liveness of a Celery worker: its main process touches the heartbeat file every 30 s. */}}
+{{/* Liveness of the pod deployer: its main loop touches the heartbeat file every few seconds. */}}
 {{- define "appstore.workerProbe" -}}
 livenessProbe:
   exec:

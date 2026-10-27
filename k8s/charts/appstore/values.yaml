@@ -132,10 +132,13 @@ podApps:
 
 podDeployer:
   replicas: 1
+  # Jobs at once (WORKER_CONCURRENCY), one thread each in one process.
   concurrency: 4
-  # Measured on staging: ~125 MiB idle, and each worker process keeps ~130 MiB
-  # more after its first job (the Kubernetes client is loaded per process),
-  # so ~650 MiB once all four have worked. 512 MiB got it OOM-killed.
+  # Measured on staging with the former Celery worker, one process per job:
+  # ~125 MiB idle and ~130 MiB more per process after its first job (the
+  # Kubernetes client is loaded per process), ~650 MiB once all four had
+  # worked; 512 MiB got it OOM-killed. The runner's threads share one client:
+  # measure again before lowering these.
   resources:
     requests: { cpu: 50m, memory: 384Mi }
     limits: { cpu: 500m, memory: 1Gi }

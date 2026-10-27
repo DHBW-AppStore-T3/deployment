@@ -26,7 +26,7 @@ weder Pod Security `restricted` noch Nicht-Root-Container.
 | D6 | Unser Keycloak mit Realm `dhbw` auf k8s | Plattform-Chart, Realm gehärtet |
 | D7 | Moodle zieht ebenfalls auf Kubernetes um (`charts/moodle`, ersetzt die VM-Variante); die LTI-Hosts stehen in `appstore.api.lti` je Umgebung | `charts/moodle`, `moodle_appstore`-Image |
 | D8 | #5 vorher auf Compose-Prod, wenn der Umstieg mehr als einen Monat entfernt ist | **offen** (Betrieb) |
-| D9 | Gemeinsamer Code von backend und worker als identische Kopien mit Hash-Test | `app/k8s/{spec,render,kube,fake}.py`, `pgq.py`, `task_contract.py` u. a. (`test_shared_files.py`) |
+| D9 | Gemeinsamer Code von backend und worker als identische Kopien mit Hash-Test | `app/k8s/{spec,render,kube,fake}.py`, `task_contract.py` u. a. (`test_shared_files.py`) |
 | D10 | Images nur aus unserer Registry | Allowlist `ghcr.io/dhbw-appstore-t3/apps/` (die App-Pakete, nicht alle Pakete der Organisation), nur per Digest (API, Worker und Admission Policy) |
 
 ## Beim Bauen entschieden
