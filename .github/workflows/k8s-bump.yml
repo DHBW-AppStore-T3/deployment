@@ -15,7 +15,7 @@ name: K8s - roll out an image
 #   dev   a pull request on dev, merged at once -> staging (dev takes changes only
 #         through pull requests: ruleset "dev: only through pull requests"). The
 #         commit is scanned for secrets first (a finding stops the roll-out) and the
-#         merge commit gets the check "🔒 Gitleaks" from here, see the step below.
+#         merge commit gets the checks "🔒 Gitleaks" and "🔏 Image provenance" from here.
 #   main  a pull request on main                -> prod, merged by a person who
 #         checked it (main requires the Gitleaks check, which this workflow
 #         dispatches on the bump branch). With the repository variable
@@ -120,49 +120,56 @@ jobs:
           # for this workflow); dev needs no approval, so the bump merges itself.
           BR="bump/staging-${COMPONENT}-${TAG}-${RUN_ID}"
           SUBJECT="chore(k8s): roll out ${COMPONENT} ${TAG} on staging [skip ci]"
-          # The required check for the bump commit, verified in the step above (a pull
-          # request opened with the GITHUB_TOKEN does not start image-provenance.yml).
+          # No workflow starts for a pull request opened with the GITHUB_TOKEN, so the required
+          # checks are reported from here as check-runs. Retried; a post that still fails fails the run.
+          post_check() {  # name, title, summary, commit
+            for _ in 1 2 3; do
+              gh api "repos/${GITHUB_REPOSITORY}/check-runs" -f name="$1" -f head_sha="$4" \
+                -f status=completed -f conclusion=success -f "output[title]=$2" -f "output[summary]=$3" >/dev/null && return 0
+              sleep 3
+            done
+            return 1
+          }
+          # "🔏 Image provenance" for the bump commit, verified in the step above.
           report() {
-            gh api "repos/${GITHUB_REPOSITORY}/check-runs" -f name="🔏 Image provenance" \
-              -f head_sha="$(git rev-parse HEAD)" -f status=completed -f conclusion=success \
-              -f "output[title]=${COMPONENT} ${TAG}: built by its CI from dev" \
-              -f "output[summary]=Verified by k8s-bump.yml before pinning: ${RUN_URL}" >/dev/null
+            post_check "🔏 Image provenance" "${COMPONENT} ${TAG}: built by its CI from dev" \
+              "Verified by k8s-bump.yml before pinning: ${RUN_URL}" "$(git rev-parse HEAD)"
           }
           # The secret scan. Nothing starts a workflow for a bump commit or for the squash commit on
-          # dev ([skip ci], and the GITHUB_TOKEN), so dev's head would have no "🔒 Gitleaks" and a
-          # promotion pull request dev -> main (head: dev) would wait for it for good: that check is
-          # required on main and has to exist on the head commit. So the commit is scanned here, before
-          # anything is pushed (a finding fails the run: nothing is rolled out), and the result is
-          # reported on the squash commit below. Only this commit is scanned: what came before
-          # was scanned when it entered dev. The same gitleaks as secret-scan.yml.
+          # dev ([skip ci], and the GITHUB_TOKEN), so dev's head would have neither "🔒 Gitleaks" nor
+          # "🔏 Image provenance", and a promotion pull request dev -> main (head: dev) would wait for
+          # them for good: both are required on main (provenance once image_check.py applied it there)
+          # and have to exist on the head commit. So the commit is scanned here, before anything is
+          # pushed (a finding fails the run: nothing is rolled out), and both checks are reported on the
+          # squash commit below. Only this commit is scanned: what came before was scanned when it
+          # entered dev. The same gitleaks as secret-scan.yml.
           bash .github/scripts/install-gitleaks.sh
           gitleaks detect --source . --log-opts="-1" --redact --exit-code 1
-          # The squash commit is a new commit. The check is posted for it here and now, from a run
+          # The squash commit is a new commit. The checks are posted for it here and now, from a run
           # that is on a different commit (the one dev had when this run started): a check posted
           # for the very commit a dispatched run is on lands in that run's suite, and a pull request
           # does not list the checks of that suite (tested 2026-10-27), so it would stay pending.
           # The roll-out itself is done by then, so a failure here only makes the run red (somebody
-          # sees that dev's head lacks the check) and does not undo anything.
-          MISSING_HINT="Until another commit lands on dev, a promotion pull request to main stays blocked on it: merge main into dev through a pull request."
-          report_gitleaks() {
-            local sha=""
+          # sees that dev's head lacks the checks) and does not undo anything.
+          MISSING_HINT="Until another commit lands on dev, a promotion pull request to main stays blocked on them: merge main into dev through a pull request."
+          report_merge_commit() {
+            local sha="" failed=0
             for _ in 1 2 3 4 5; do
               sha=$(gh pr view "$PRN" --json mergeCommit --jq '.mergeCommit.oid // empty') && [ -n "$sha" ] && break
               sleep 2
             done
             if [ -z "$sha" ] || [ "$sha" = "$GITHUB_SHA" ]; then
-              echo "::error::no separate merge commit found: the check '🔒 Gitleaks' is missing on dev's head. $MISSING_HINT"
+              echo "::error::no separate merge commit found: the checks are missing on dev's head. $MISSING_HINT"
               return 1
             fi
-            for _ in 1 2 3; do
-              gh api "repos/${GITHUB_REPOSITORY}/check-runs" -f name="🔒 Gitleaks" \
-                -f head_sha="$sha" -f status=completed -f conclusion=success \
-                -f "output[title]=${COMPONENT} ${TAG}: no secret in the commit" \
-                -f "output[summary]=$(gitleaks version) found nothing in the bump commit: ${RUN_URL}" >/dev/null && return 0
-              sleep 3
-            done
-            echo "::error::could not report the check '🔒 Gitleaks' on ${sha}. $MISSING_HINT"
-            return 1
+            post_check "🔒 Gitleaks" "${COMPONENT} ${TAG}: no secret in the commit" \
+              "$(gitleaks version) found nothing in the bump commit: ${RUN_URL}" "$sha" || failed=1
+            post_check "🔏 Image provenance" "${COMPONENT} ${TAG}: built by its CI from dev" \
+              "Verified by k8s-bump.yml before pinning: ${RUN_URL}" "$sha" || failed=1
+            if [ "$failed" = 1 ]; then
+              echo "::error::could not report the checks on ${sha}. $MISSING_HINT"
+              return 1
+            fi
           }
           git push origin "HEAD:refs/heads/${BR}"
           report
@@ -170,7 +177,7 @@ jobs:
             --body "Written by k8s-bump.yml after the CI of ${COMPONENT} pushed ${TAG} from dev; merges itself." | grep -o '[0-9]*$')
           for _ in 1 2 3; do
             if gh pr merge "$PRN" --squash --delete-branch --subject "$SUBJECT"; then
-              if report_gitleaks; then exit 0; fi
+              if report_merge_commit; then exit 0; fi
               exit 1
             fi
             # dev moved on (another bump): put the commit on top again and retry.
