@@ -12,15 +12,12 @@ Die Anwendung besteht aus sechs Repositories: `backend`, `worker`, `frontend`, `
 | Staging | `dev` | `appstore-staging` | Kubernetes (`k3s`), Argo CD `staging-root` verfolgt `dev` | [k8s/README.md](k8s/README.md) |
 | Lokal | – | `appstore-local` | Kubernetes (`k3d-appstore-local`) per `make init` (`k8s/local/up.sh`) | [docs/dev-setup.md](docs/dev-setup.md) |
 
-- **Staging & Produktion (Architektur, Betrieb, Bootstrap, Promotion):** [k8s/README.md](k8s/README.md)
-- **Lokales Setup (von Null bis zum laufenden Stack):** [docs/dev-setup.md](docs/dev-setup.md)
-
 ## Aufbau
 
 ```text
 deployment/
 ├── Makefile                  Befehle für den lokalen k3d-Cluster
-├── docs/dev-setup.md         Lokales Setup ab Null
+├── docs/dev-setup.md         Anleitung für das lokale Setup
 ├── k8s/                      Charts, Argo-CD-Anwendungen, Umgebungswerte, Image-Digests, Policy-Tests
 │   ├── README.md             Staging & Produktion (k3s, Argo CD, RBAC, Network- & Admission-Policies)
 │   ├── charts/{appstore,appstore-mcp,moodle}
