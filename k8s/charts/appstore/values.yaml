@@ -111,9 +111,12 @@ podApps:
   # repository, followed by nothing, a :tag or an @digest.
   vncProxyImagePrefix: ghcr.io/dhbw-appstore-t3/novnc-proxy
   # Workloads (one per team or person) per deployment, and per owner across
-  # their live pod deployments (0: no budget).
+  # their live pod deployments (0: no budget). Without a per-owner budget one
+  # compromised teacher account can start deployments until the node is full;
+  # 200 is three class-sized deployments of 60 people each, raise it per
+  # environment where a course needs more.
   maxWorkloadsPerDeployment: 60
-  maxWorkloadsPerOwner: 0
+  maxWorkloadsPerOwner: 200
   ingressClass: traefik
   # The ingress controller's namespace, the only one allowed to reach the pods.
   ingressNamespace: kube-system
