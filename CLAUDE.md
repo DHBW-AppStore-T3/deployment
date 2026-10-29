@@ -14,5 +14,5 @@ Harness-Gesamtkonzept: https://github.com/DHBW-AppStore-T3/.github/blob/main/doc
 - Staging nach einem Push prüfen: `/verify-staging` (MCP-Server `appstore`: `claude mcp add --transport http appstore https://appstore-mcp-staging.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/mcp`, dann `/mcp` → Authenticate)
 
 ## Befehle
-- Lokal: `make init` (einmalig), `make dev-up`, `make dev-down`, `make health`, `make help`
+- Lokal: `make init` (einmalig), `make up`, `make down`, `make build`, `make health`, `make help`
 - Umgebung rendern wie Argo CD (braucht helm, PyYAML): `python3 k8s/tests/render_env.py <staging|prod> out.yaml`

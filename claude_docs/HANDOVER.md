@@ -9,7 +9,7 @@ Lebendes Übergabedokument (Harness-Konzept: [HARNESS.md](https://github.com/DHB
 - **Komponenten je Umgebung** (`k8s/charts/appstore`): `api`, `pod-deployer`, `frontend`, `self-service-ui`, `migrate` (Hook), `orphans` (stündlich), optional `clamav`, `seed` (nur Staging). Dazu `appstore-mcp` und `moodle` als eigene Anwendungen.
 - **Images:** `ghcr.io/dhbw-appstore-t3/…`, Digests in `k8s/images/{staging,prod}.yaml` (Schlüssel `backend`, `workerPods`, `frontend`, `appstoreMcp`, `selfServiceUi`, `moodle`); geschrieben ausschließlich von `k8s-bump.yml`.
 - **App-Runtimes:** `kubernetes` (Pods) und `kubevirt-vm` (Windows-Desktop als KubeVirt-VM, Golden Image im Namespace `vm-poc`, Speicher Cinder) laufen über den `pod-deployer`. Den OpenStack-VM-Pfad (`vm-executor`) gibt es nicht mehr.
-- **Lokaler Stack:** `docker-compose.dev.yml` + `Makefile`, Anleitung `docs/dev-setup.md`.
+- **Lokaler Stack:** Lokaler `k3d`-Kubernetes-Cluster (`k3d-appstore-local`, Namespace `appstore-local`) mit denselben Helm-Charts (`k8s/local/up.sh` + `Makefile`, Anleitung `docs/dev-setup.md`).
 - **MCP für Agenten:** `appstore-mcp` (nur lesend), Skill `/verify-staging`.
 
 ## 2. Abläufe
