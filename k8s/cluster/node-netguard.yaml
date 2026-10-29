@@ -1,0 +1,108 @@
+# Keeps broadcast and multicast between the pods of a node from being delivered.
+#
+# Why: the pods of a node share one Layer-2 segment (the CNI bridge, cni0). A NetworkPolicy matches
+# the destination address of a packet and cannot filter what is sent to every port of the segment: a UDP
+# datagram to 255.255.255.255, to a multicast group or to ff02::1 reaches the pods of ALL deployments (and of both
+# environments) on the node, whatever their policies say. Measured on staging 2026-10-29: IPv4 multicast
+# and broadcast from an internet pod and IPv6 multicast (ff02::1) even from a pod with no egress at all were
+# delivered to pods of other namespaces. With the renderer's exclusion list (224.0.0.0/3, ff00::/8) the IPv4 part
+# is blocked at the sender; IPv6 link-local multicast is not filtered by the CNI's policy engine at all.
+#
+# What: iptables/ip6tables rules in FORWARD for BRIDGED traffic only (-m physdev --physdev-is-bridged, i.e. between
+# two pod ports of the bridge): drop everything to a broadcast or multicast address except ICMPv6 (neighbour
+# discovery and MLD, which IPv6 needs). ARP is not IP and is not touched; unicast between pods is left to the
+# NetworkPolicies as before. Pods keep talking to the node, to services and to the internet. Peers of a
+# deployment find each other over DNS (the Service "peers"), not by broadcast.
+#
+# Validated on a Linux bridge with three network namespaces (broadcast/multicast v4 and v6 dropped; ping,
+# ping6, ARP and unicast unaffected). Not applied by Argo CD: it needs a privileged pod on the node, so a cluster
+# admin applies it once (and removes it with `kubectl delete -f`; the rules go with the pod):
+#
+#   kubectl apply -f k8s/cluster/node-netguard.yaml
+#   kubectl -n kube-system rollout status ds/appstore-node-netguard
+#   python k8s/tests/netcheck/netcheck.py          # the multicast part must now report "blocked"
+#
+# The image is Alpine (pinned by digest); the pod installs iptables from Alpine's package mirror when it starts, so
+# the node needs outbound HTTPS once. Replace by an image that carries iptables if that is not wanted.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: appstore-node-netguard
+  namespace: kube-system
+data:
+  netguard.sh: |
+    #!/bin/sh
+    # Idempotent: own chain, jumped to first in FORWARD, re-asserted every 30 s (kube-router also inserts at the top).
+    set -eu
+    CHAIN=APPSTORE-NETGUARD
+    # The pod network's directed broadcast (10.42.0.255 for a /24 node range); the limited broadcast and all
+    # multicast are matched by address type and prefix below.
+    POD_BROADCAST="${POD_BROADCAST:-10.42.0.255}"
+
+    install() {
+      for ipt in iptables ip6tables; do
+        $ipt -N $CHAIN 2>/dev/null || $ipt -F $CHAIN
+      done
+      iptables -A $CHAIN -m addrtype --dst-type MULTICAST,BROADCAST -j DROP
+      iptables -A $CHAIN -d 255.255.255.255 -j DROP
+      iptables -A $CHAIN -d "$POD_BROADCAST" -j DROP
+      iptables -A $CHAIN -d 224.0.0.0/3 -j DROP
+      # ICMPv6 (neighbour discovery, MLD) must keep working; everything else to ff00::/8 is dropped.
+      ip6tables -A $CHAIN -d ff00::/8 ! -p ipv6-icmp -j DROP
+    }
+    jump() {
+      for ipt in iptables ip6tables; do
+        if ! $ipt -C FORWARD -m physdev --physdev-is-bridged -j $CHAIN 2>/dev/null; then
+          while $ipt -D FORWARD -m physdev --physdev-is-bridged -j $CHAIN 2>/dev/null; do :; done
+          $ipt -I FORWARD 1 -m physdev --physdev-is-bridged -j $CHAIN
+        fi
+      done
+    }
+    remove() {
+      for ipt in iptables ip6tables; do
+        while $ipt -D FORWARD -m physdev --physdev-is-bridged -j $CHAIN 2>/dev/null; do :; done
+        $ipt -F $CHAIN 2>/dev/null || true
+        $ipt -X $CHAIN 2>/dev/null || true
+      done
+    }
+
+    apk add --no-cache iptables ip6tables >/dev/null
+    # Bridged frames must traverse iptables for the rules to see them (kube-router needs the same).
+    sysctl -w net.bridge.bridge-nf-call-iptables=1 net.bridge.bridge-nf-call-ip6tables=1 >/dev/null || true
+    trap 'remove; exit 0' TERM INT
+    install
+    while true; do jump; sleep 30 & wait $!; done
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: appstore-node-netguard
+  namespace: kube-system
+  labels: { app.kubernetes.io/name: appstore-node-netguard }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: appstore-node-netguard }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: appstore-node-netguard }
+    spec:
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      tolerations:
+        - { operator: Exists }
+      containers:
+        - name: netguard
+          image: docker.io/library/alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+          command: ["/bin/sh", "/scripts/netguard.sh"]
+          env:
+            - { name: POD_BROADCAST, value: "10.42.0.255" }
+          securityContext:
+            capabilities: { add: [NET_ADMIN, NET_RAW] }
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts, readOnly: true }
+      volumes:
+        - name: scripts
+          configMap: { name: appstore-node-netguard }

@@ -111,12 +111,23 @@ podApps:
   # repository, followed by nothing, a :tag or an @digest.
   vncProxyImagePrefix: ghcr.io/dhbw-appstore-t3/novnc-proxy
   # Workloads (one per team or person) per deployment, and per owner across
-  # their live pod deployments (0: no budget).
+  # their live pod deployments (0: no budget). Without a per-owner budget one
+  # compromised teacher account can start deployments until the node is full;
+  # 200 is three class-sized deployments of 60 people each, raise it per
+  # environment where a course needs more.
   maxWorkloadsPerDeployment: 60
-  maxWorkloadsPerOwner: 0
+  maxWorkloadsPerOwner: 200
   ingressClass: traefik
   # The ingress controller's namespace, the only one allowed to reach the pods.
   ingressNamespace: kube-system
+  # The labels of the ingress controller's pods: with them only these pods, not every pod of
+  # that namespace (CoreDNS, the metrics server, CSI drivers, ...), reach the apps. The
+  # admission policy then demands exactly this selector. Empty: the whole namespace.
+  ingressPodLabels: {}
+  # The TCP ports "internet" is open on for student pods (web, package managers, Git over
+  # HTTPS). Not SMTP, SSH or the scanners' favourites; a Windows VM also gets NTP (UDP 123).
+  # The admission policy refuses an internet rule on any other port.
+  egressTcpPorts: [80, 443]
   # A wildcard certificate Secret or a cert-manager ClusterIssuer; both empty:
   # the ingress controller's default certificate.
   tlsSecret: ""
@@ -132,10 +143,13 @@ podApps:
 
 podDeployer:
   replicas: 1
+  # Jobs at once (WORKER_CONCURRENCY), one thread each in one process.
   concurrency: 4
-  # Measured on staging: ~125 MiB idle, and each worker process keeps ~130 MiB
-  # more after its first job (the Kubernetes client is loaded per process),
-  # so ~650 MiB once all four have worked. 512 MiB got it OOM-killed.
+  # Measured on staging with the former Celery worker, one process per job:
+  # ~125 MiB idle and ~130 MiB more per process after its first job (the
+  # Kubernetes client is loaded per process), ~650 MiB once all four had
+  # worked; 512 MiB got it OOM-killed. The runner's threads share one client:
+  # measure again before lowering these.
   resources:
     requests: { cpu: 50m, memory: 384Mi }
     limits: { cpu: 500m, memory: 1Gi }

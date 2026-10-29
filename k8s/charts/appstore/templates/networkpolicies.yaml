@@ -104,10 +104,10 @@ spec:
         - { protocol: TCP, port: 8080 }
 {{- end }}
 ---
-# The API: reached only through the gateways (frontend, self-service-ui) and
-# by the VM executor (OpenTofu's state backend), so X-Forwarded-* comes from nobody else. It
+# The API: reached only through the gateways (frontend, self-service-ui), so
+# X-Forwarded-* comes from nobody else. It
 # reaches Keycloak, the Kubernetes API (live view) and the internet (Git
-# hosts, Keystone, the LTI platform's keys).
+# hosts, the LTI platform's keys), over HTTPS only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -130,7 +130,7 @@ spec:
     {{- if $n.kubeApi.cidrs }}
     {{- include "appstore.kubeApi" $n.kubeApi | nindent 4 }}
     {{- end }}
-    {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow) | nindent 4 }}
+    {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow "ports" (list 443)) | nindent 4 }}
     {{- if .Values.clamav.enabled }}
     # ClamAV: the API is the only pod that scans uploads.
     - to:
@@ -164,7 +164,7 @@ spec:
         - podSelector: { matchLabels: {{ toJson $n.keycloakLabels }} }
       ports:
         - { protocol: TCP, port: 8080 }
-    {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow) | nindent 4 }}
+    {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow "ports" (list 443)) | nindent 4 }}
 {{- end }}
 ---
 # The pod deployer and the orphan check: the Kubernetes API, nothing else

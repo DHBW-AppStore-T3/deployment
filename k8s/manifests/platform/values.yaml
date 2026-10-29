@@ -9,3 +9,12 @@ demoUsers: false
 # http://localhost:8080/admin/) unless publicAdmin is set.
 publicRealms: [dhbw]
 publicAdmin: false
+# Who may reach Keycloak and the database (templates/networkpolicies.yaml).
+network:
+  policies: true
+  # The ingress controller (sign-in goes through it): its namespace and, to let only its pods
+  # in, their labels (k3s's Traefik).
+  ingressNamespace: kube-system
+  ingressPodLabels: { app.kubernetes.io/name: traefik }
+  # The CloudNativePG operator.
+  operatorNamespace: cnpg-system

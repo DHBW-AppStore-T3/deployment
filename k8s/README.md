@@ -1,6 +1,6 @@
 # Prod- & Staging-Setup
 
-Staging und Produktion laufen auf dem `k3s`-Cluster des OpenStack-Projekts `ma_wwi_24sea_appstore_g3` und werden per Argo CD aus diesem Repository ausgerollt.
+Staging und Produktion laufen auf dem `k3s`-Cluster des OpenStack-Projekts `ma_wwi_24sea_appstore_g3` und werden per Argo CD aus diesem Repository ausgerollt. Der lokale Entwicklungsstack betreibt dieselben Charts in einem lokalen `k3d`-Cluster (`k8s/local/up.sh`, `make init`, siehe `docs/dev-setup.md`).
 
 ## 1. Umgebungen & URLs
 
@@ -73,3 +73,15 @@ Für Windows-VMs (KubeVirt auf Cinder) einmalig im Cluster: `scripts/install-cin
 | `k8s/keycloak-self-service-client.sh <staging\|prod>` | Client `appstore-self-service` im laufenden Keycloak-Realm `dhbw` anlegen/aktualisieren |
 | `k8s/promote.sh` | PR `dev` → `main` für Chart- und Konfigurationsänderungen öffnen |
 | `python3 k8s/tests/render_env.py <staging\|prod> /tmp/out.yaml` | Alle Charts einer Umgebung lokal wie Argo CD rendern |
+
+## 6. Netzwerk-Isolation
+
+Alle Policies sind deny-by-default; erlaubt sind nur die explizit gerenderten Flüsse.
+
+- **„Internet“ aus Sicht der Pods:** nur TCP 80/443 (`podApps.egressTcpPorts`; die Plattform-Pods selbst nur 443). Ausgenommen sind private, Shared-(CGNAT-), Link-Local- (u. a. Metadata-Service), Loopback- sowie Multicast- und reservierte Bereiche, die IPv6-Präfixe mit eingebettetem IPv4 (NAT64, 6to4) und die eigenen Cluster-Bereiche (`podApps.extraEgressExcept`).
+- **Keycloak und PostgreSQL** werden von der Empfängerseite geschützt (`k8s/manifests/platform/templates/networkpolicies.yaml`): erreichbar nur für Pods des eigenen Namespace, den Ingress-Controller (Login) und den CloudNativePG-Operator. Ein frisch gestarteter Pod wird vom CNI für einige Millisekunden noch nicht abgeschottet (gemessen am 2026-10-29: neue Pods erreichten Keycloak, Postgres und den kubelet in ihren ersten Requests). Ein Dienst darf sich deshalb nie allein auf die Egress-Policies seiner Aufrufer verlassen.
+- **Netzwerk der Student-Pods** (`network:` in der `appstore.yaml` der App): Pro Einstellung (`internet`, `podNetwork`) legt die App fest, ob der Deployende sie ändern darf (`allowed`) und womit sie startet (`default`). Mit `podNetwork` erreichen sich die Pods eines Deployments auf jedem TCP-/UDP-Port (Policy `allow-intra-namespace`, ohne `namespaceSelector`, gilt also nur im eigenen Namespace) und finden sich per Name: je Workload ein Headless Service sowie `peers` (alle Pods). DNS ist nur erlaubt, wo etwas aufgelöst werden soll (Internet oder Peers); ein Pod, der beides nicht braucht, kann DNS auch nicht als Ausweg nutzen.
+- **Broadcast und Multicast** lassen sich nicht per Policy steuern: Die Pods eines Nodes teilen sich die CNI-Bridge, ein UDP-Datagramm an 255.255.255.255, eine Multicast-Gruppe oder ff02::1 erreicht daher jeden Pod des Nodes, unabhängig von dessen Policies (gemessen auch von Pods ganz ohne Egress und über beide Umgebungen hinweg). Die Ausschlussliste des Renderers stoppt die IPv4-Fälle beim Sender. IPv6-Link-Local-Multicast filtert die Policy-Engine des CNI gar nicht; das schließt `k8s/cluster/node-netguard.yaml` (DaemonSet, einmalig durch einen Cluster-Admin anzuwenden; verwirft Bridge-Broadcast/-Multicast, nicht aber ARP oder ICMPv6).
+- **Cluster-Add-ons** (cert-manager, CNPG-Operator, external-dns, Cinder CSI, KubeVirt, system-upgrade, CoreDNS, Traefik, metrics-server, Argo-CD-ApplicationSet) hatten keine Ingress-Policy: Jeder Container-Port antwortete einem (noch) nicht abgeschotteten Pod. `k8s/cluster/addon-networkpolicies.yaml` (einmalig durch einen Cluster-Admin anzuwenden, die Namespaces verwaltet Argo CD nicht) erlaubt ihnen nur den eigenen Namespace, den Node (Webhooks, aggregierte APIs und Probes kommen von apiserver und kubelet, die ein Default-Deny nicht stoppt) und bei CoreDNS und Traefik ihre öffentlichen Ports. kube-apiserver (6443) und kubelet (10250) beantworten anonyme Anfragen mit 401; der einzige weitere Port des Nodes für Pods ist SSH (22), daher braucht das Startfenster keine Regel auf Node-Ebene.
+- **Admission-Policy** (`templates/admission-policy.yaml`): Für Netzwerk-Policies in `dep-*`-Namespaces gilt: Egress nur zu DNS (Port 53) und zum Internet auf den konfigurierten Ports. Einziger `podSelector`-Peer ist der leere Selector in einer Policy namens `allow-intra-namespace` (die Pods eines Deployments, TCP und UDP). Ingress ist nur von den Pods des Ingress-Controllers erlaubt.
+- **Netzwerk prüfen:** `k8s/tests/netcheck/netcheck.py` testet das alles auf einem echten Cluster (das CNI von kind erzwingt keine Policies). Nach Änderungen an CNI, Node-Guard oder Policies auf Staging ausführen.

@@ -1,0 +1,58 @@
+{{- if .Values.network.policies }}
+# Who may reach Keycloak and the database. Both had no policy at all: every pod of the
+# cluster could connect, so the only thing between a student pod and them was that pod's own
+# egress policy. That policy is applied a moment after the pod starts (the CNI sets up the
+# pod's firewall asynchronously; a probe from a fresh pod reached Keycloak and Postgres in its
+# first milliseconds), and it is no help against a pod of the other environment or any
+# pod that has no egress policy. Ingress policies here close that from the receiving side.
+#
+# Only ingress is restricted: what these two reach themselves is not changed here.
+# "This namespace" is every pod of the environment (the API, the self-service UI, the
+# jobs, Moodle), and nothing from outside it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-ingress
+spec:
+  podSelector:
+    matchLabels: { app: keycloak }
+  policyTypes: [Ingress]
+  ingress:
+    # Pods of this environment.
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 8080 }
+    # The browser's way in (sign-in), through the ingress controller.
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.network.ingressNamespace }} } }
+          {{- with .Values.network.ingressPodLabels }}
+          podSelector: { matchLabels: {{ toJson . }} }
+          {{- end }}
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: postgres-cluster }
+  policyTypes: [Ingress]
+  ingress:
+    # Pods of this environment: the clients (5432), the instances among themselves
+    # (replication, status 8000) and the metrics endpoint.
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 8000 }
+        - { protocol: TCP, port: 9187 }
+    # The CloudNativePG operator (status endpoint of each instance, and the database itself).
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.network.operatorNamespace }} } }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 8000 }
+{{- end }}

@@ -2,9 +2,10 @@
 {{- $name := include "appstore.name" $comp -}}
 {{- $p := .Values.podApps -}}
 {{- $v := .Values.podDeployer -}}
-# The pod deployer (.github#4): the jobs of pod apps (queue "pods"). It renders
-# every Kubernetes object itself from the app's validated appstore.yaml and
-# runs nothing from the app repositories: image worker-pods, no root.
+# The pod deployer (.github#4): runs the queued jobs of pod and KubeVirt apps
+# (the image's command, python -m app.runner). It renders every Kubernetes
+# object itself from the app's validated appstore.yaml and runs nothing from
+# the app repositories: image worker-pods, no root.
 # Its account may act only in the dep-* namespaces it creates
 # (rbac.yaml, admission-policy.yaml).
 apiVersion: apps/v1
@@ -35,19 +36,8 @@ spec:
         - name: pod-deployer
           image: {{ include "appstore.image" (dict "context" . "key" "workerPods" "name" "worker-pods") }}
           imagePullPolicy: {{ .Values.images.pullPolicy }}
-          args:
-            - celery
-            - -A
-            - app.celery_app
-            - worker
-            - --loglevel=info
-            - --concurrency={{ $v.concurrency }}
-            - -Q
-            - pods
-            - --without-gossip
-            - --without-mingle
-            - --without-heartbeat
           env:
+            - { name: WORKER_CONCURRENCY, value: {{ $v.concurrency | quote }} }
             {{- include "appstore.workerEnv" . | nindent 12 }}
             {{- include "appstore.podLimitsEnv" . | nindent 12 }}
             - { name: K8S_INGRESS_CLASS, value: {{ $p.ingressClass | quote }} }
@@ -58,7 +48,10 @@ spec:
             - { name: K8S_STUDENT_NODE_SELECTOR, value: {{ $p.studentNodeSelector | toJson | quote }} }
             - { name: K8S_STUDENT_TOLERATIONS, value: {{ $p.studentTolerations | toJson | quote }} }
             - { name: K8S_EXTRA_EGRESS_EXCEPT, value: {{ join "," $p.extraEgressExcept | quote }} }
-            - { name: K8S_READY_TIMEOUT_SECONDS, value: {{ $p.readyTimeoutSeconds | quote }} }
+            - { name: K8S_EGRESS_TCP_PORTS, value: {{ join "," $p.egressTcpPorts | quote }} }
+            # The Kubernetes API as the noVNC proxy reaches it (the same addresses the platform's own pods use).
+            - { name: K8S_KUBE_API_CIDRS, value: {{ join "," .Values.network.kubeApi.cidrs | quote }} }
+            - { name: K8S_INGRESS_POD_LABELS, value: {{ $p.ingressPodLabels | toJson | quote }} }
             # Its rights in each namespace it creates, and read access there
             # for the API (rbac.yaml).
             - { name: K8S_DEPLOYER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "deployer") | quote }} }

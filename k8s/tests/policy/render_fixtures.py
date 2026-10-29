@@ -38,7 +38,7 @@ SPEC = {
         ],
         "storage": {"size": "5Gi", "mountPath": "/home/coder"},
     },
-    "egress": "internet",
+    "network": {"internet": {"allowed": True, "default": True}, "podNetwork": {"allowed": True, "default": False}},
     "variables": [{"name": "assignment", "type": "file", "scope": "team", "mountPath": "/data/assignment.zip"}],
     "access": [
         {"type": "url", "template": "https://{workload}-{deployment}.{domain}"},
@@ -53,15 +53,19 @@ PLACEMENT = {
 dep = DeploymentCtx(id="12345678-aaaa-bbbb-cccc-1234567890ab", owner="0f0f0f0f-0000-4000-8000-000000000001")
 teams = [Team("Team-1", (Member(str(uuid.UUID(int=1)), "alice"), Member(str(uuid.UUID(int=2)), "bob")))]
 spec = parse_spec(SPEC)
+networked = parse_spec({**SPEC, "network": {"internet": {"allowed": True}, "podNetwork": {"allowed": True, "default": True}}})
 passwords = {"team-1-alice": "pw1", "team-1-bob": "pw2"}
 base = dict(zone=ZONE, app_domain_override=ZONE, ingress_class="traefik", ingress_namespace="kube-system",
-            extra_egress_except=EXTRA, environment="appstore-staging")
+            extra_egress_except=EXTRA, environment="appstore-staging",
+            ingress_pod_labels={"app.kubernetes.io/name": "traefik"})
 fixtures = {
     "deployment": {"id": dep.id, "namespace": dep.namespace},
     "default": render(spec, dep, teams, RenderSettings(**base), passwords, files={"assignment": {"Team-1": b"zip"}}),
     "placement": render(spec, dep, teams, RenderSettings(**base, **PLACEMENT), passwords),
+    # The same app with the pods allowed to talk to each other and no internet.
+    "networked": render(networked, dep, teams, RenderSettings(**base), passwords),
 }
 with open(sys.argv[1], "w", encoding="utf-8") as out:
     json.dump(fixtures, out, indent=1)
     out.write("\n")
-print(f"{len(fixtures['default'])} + {len(fixtures['placement'])} objects")
+print(f"{len(fixtures['default'])} + {len(fixtures['placement'])} + {len(fixtures['networked'])} objects")

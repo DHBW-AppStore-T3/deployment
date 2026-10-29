@@ -1,0 +1,114 @@
+# Ingress policies for the cluster add-ons: who may connect to their pods.
+#
+# Why: none of these pods had a policy, so any pod that is not (yet) firewalled by its own egress policy reaches
+# them: measured on staging 2026-10-29 from a pod without policies, every container port of every add-on answered
+# (metrics endpoints of cert-manager, CoreDNS, Traefik, CNPG, external-dns and Argo CD, the HTTPS ports of KubeVirt,
+# cert-manager's and CNPG's webhooks, the cluster's DNS and the Argo CD UI). A new student pod is in that state for
+# its first milliseconds (the CNI programs its firewall a moment after the pod exists).
+#
+# What: deny by default for ingress, then the namespace's own pods. Nothing else needs to reach them from a pod:
+#   - Webhooks (cert-manager, CNPG, KubeVirt), the aggregated APIs (metrics-server, virt-api, virt-template) and probes
+#     are called by the kube-apiserver and the kubelet, which are the node and not a pod; the CNI lets the node's own
+#     traffic through a default-deny (checked: an apiserver proxy request to a pod behind a default-deny answers,
+#     a pod of another namespace is refused).
+#   - CoreDNS must answer every pod on port 53, Traefik every client on 8000/8443 (the web and websecure entrypoints);
+#     their other ports (metrics, dashboard/ping) only their own namespace.
+#   - The ServiceLB pods (svclb-traefik) are not selected: their host ports are reached from outside.
+#   - hostNetwork pods (the Cinder CSI node plugin) are not subject to NetworkPolicies and stay as they are.
+#
+# Not managed by Argo CD (these namespaces are installed by hand / by their own Helm charts): a cluster admin applies it
+# once, and undoes it with `kubectl delete -f`:
+#
+#   kubectl apply -f k8s/cluster/addon-networkpolicies.yaml
+#
+# Afterwards check what the add-ons do for the platform:
+#   kubectl -n cert-manager get certificate -A           # all Ready; cmctl/kubectl apply of a Certificate is admitted
+#   kubectl -n appstore-staging get cluster.postgresql.cnpg.io     # healthy, the operator still reaches it
+#   kubectl get vm,vmi -A ; kubectl top nodes             # KubeVirt API and the metrics API answer
+#   kubectl -n argocd get applications                    # synced / healthy
+#   python k8s/tests/netcheck/netcheck.py                 # isolation of the student pods
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: ingress-own-namespace-only, namespace: cert-manager }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: ingress-own-namespace-only, namespace: cnpg-system }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: ingress-own-namespace-only, namespace: external-dns }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: ingress-own-namespace-only, namespace: cinder-csi }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: ingress-own-namespace-only, namespace: kubevirt }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: ingress-own-namespace-only, namespace: system-upgrade }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]
+---
+# Argo CD brings policies of its own for its other components; the ApplicationSet controller has none.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: applicationset-controller-own-namespace-only, namespace: argocd }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: argocd-applicationset-controller } }
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: coredns-dns-from-everywhere, namespace: kube-system }
+spec:
+  podSelector: { matchLabels: { k8s-app: kube-dns } }
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    - from: [{ podSelector: {} }]   # metrics (9153), readiness: this namespace only
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: traefik-entrypoints-from-everywhere, namespace: kube-system }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: traefik } }
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{ protocol: TCP, port: 8000 }, { protocol: TCP, port: 8443 }]
+    - from: [{ podSelector: {} }]   # metrics (9100), ping (8080): this namespace only
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: metrics-server-own-namespace-only, namespace: kube-system }
+spec:
+  podSelector: { matchLabels: { k8s-app: metrics-server } }
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: {} }] }]   # the aggregated API is called by the apiserver (the node)
