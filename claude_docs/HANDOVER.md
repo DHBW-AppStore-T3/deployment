@@ -22,7 +22,7 @@ Lebendes Übergabedokument (Harness-Konzept: [HARNESS.md](https://github.com/DHB
 
 ## 3. CI (`.github/workflows/`)
 
-`k8s-bump.yml`, `k8s-chart.yml` (Render, Schemas, Admission-Policy-Auswertung, kind-Cluster für RBAC), `novnc-proxy.yml`, `secret-scan.yml` (Gitleaks). `dev` nimmt Änderungen nur über Pull Requests an.
+`k8s-bump.yml`, `k8s-chart.yml` (Render, Schemas, Admission-Policy-Auswertung, kind-Cluster für RBAC), `novnc-proxy.yml`, `secret-scan.yml` (Gitleaks), `pr-checklist.yml` (PR-Checkliste, Logik in `DHBW-AppStore-T3/.github`; `k8s-bump.yml` meldet den Check für seine Bump-PRs selbst). `dev` nimmt Änderungen nur über Pull Requests an.
 
 ## 4. Regeln
 

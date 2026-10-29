@@ -130,10 +130,16 @@ jobs:
             done
             return 1
           }
-          # "🔏 Image provenance" for the bump commit, verified in the step above.
+          # "🔏 Image provenance" for the bump commit, verified in the step above. And the pull request
+          # checklist (pr-checklist.yml, "PR Checklist / Checkliste"): this pull request is written by
+          # the workflow and has no checklist for a person to tick, so it is reported as done, as the
+          # check itself skips Dependabot's pull requests. Without it a bump would wait for ever once
+          # the check is required on dev.
           report() {
             post_check "🔏 Image provenance" "${COMPONENT} ${TAG}: built by its CI from dev" \
-              "Verified by k8s-bump.yml before pinning: ${RUN_URL}" "$(git rev-parse HEAD)"
+              "Verified by k8s-bump.yml before pinning: ${RUN_URL}" "$(git rev-parse HEAD)" &&
+            post_check "PR Checklist / Checkliste" "${COMPONENT} ${TAG}: automatic bump, no checklist" \
+              "Written by k8s-bump.yml, not by a person: ${RUN_URL}" "$(git rev-parse HEAD)"
           }
           # The secret scan. Nothing starts a workflow for a bump commit or for the squash commit on
           # dev ([skip ci], and the GITHUB_TOKEN), so dev's head would have neither "🔒 Gitleaks" nor
@@ -206,6 +212,12 @@ jobs:
             -f head_sha="$(git rev-parse HEAD)" -f status=completed -f conclusion=success \
             -f "output[title]=${COMPONENT} ${TAG}: built by its CI from main" \
             -f "output[summary]=Verified by k8s-bump.yml before pinning: ${RUN_URL}" >/dev/null
+          # The pull request checklist (pr-checklist.yml) has nothing to check on a pull request this
+          # workflow writes; the review that main requires stays.
+          gh api "repos/${GITHUB_REPOSITORY}/check-runs" -f name="PR Checklist / Checkliste" \
+            -f head_sha="$(git rev-parse HEAD)" -f status=completed -f conclusion=success \
+            -f "output[title]=${COMPONENT} ${TAG}: automatic bump, no checklist" \
+            -f "output[summary]=Written by k8s-bump.yml, not by a person: ${RUN_URL}" >/dev/null
           case "$COMPONENT" in worker-pods) REPO=worker ;; novnc-proxy) REPO=deployment ;; moodle) REPO=moodle_appstore ;; *) REPO="$COMPONENT" ;; esac
           SOURCE="https://github.com/DHBW-AppStore-T3/${REPO}/commit/${TAG#sha-}"
           if [ "$AUTO_MERGE" = true ]; then
