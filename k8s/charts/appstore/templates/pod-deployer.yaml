@@ -48,6 +48,10 @@ spec:
             - { name: K8S_STUDENT_NODE_SELECTOR, value: {{ $p.studentNodeSelector | toJson | quote }} }
             - { name: K8S_STUDENT_TOLERATIONS, value: {{ $p.studentTolerations | toJson | quote }} }
             - { name: K8S_EXTRA_EGRESS_EXCEPT, value: {{ join "," $p.extraEgressExcept | quote }} }
+            - { name: K8S_EGRESS_TCP_PORTS, value: {{ join "," $p.egressTcpPorts | quote }} }
+            # The Kubernetes API as the noVNC proxy reaches it (the same addresses the platform's own pods use).
+            - { name: K8S_KUBE_API_CIDRS, value: {{ join "," .Values.network.kubeApi.cidrs | quote }} }
+            - { name: K8S_INGRESS_POD_LABELS, value: {{ $p.ingressPodLabels | toJson | quote }} }
             # Its rights in each namespace it creates, and read access there
             # for the API (rbac.yaml).
             - { name: K8S_DEPLOYER_CLUSTER_ROLE, value: {{ include "appstore.clusterName" (dict "context" . "component" "deployer") | quote }} }

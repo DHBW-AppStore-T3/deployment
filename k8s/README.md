@@ -86,9 +86,36 @@ through the AppStore and run as pods; see the app-registry repository.
   the API only (it opens task results sealed before the results key existed);
   `results-encryption-key` (task results) for the API and the pod deployer.
 - **NetworkPolicies**: deny by default, then only the flows in the table.
-  "Internet" excludes the private and link-local ranges (the metadata service
-  among them) and the cluster's own ranges (`podApps.extraEgressExcept`).
-  Keycloak and Postgres are not selected.
+  "Internet" is TCP 80/443 (`podApps.egressTcpPorts`; the platform's own pods
+  443 only) and excludes the private, shared (CGNAT), link-local (the metadata
+  service among them), loopback and multicast/reserved ranges, the IPv6
+  prefixes that carry IPv4 (NAT64, 6to4) and the cluster's own ranges
+  (`podApps.extraEgressExcept`). Keycloak and the Postgres cluster are
+  protected from the receiving side (`k8s/manifests/platform/templates/networkpolicies.yaml`:
+  only pods of their own namespace, the ingress controller for sign-in, the
+  CloudNativePG operator): a pod that has just started is not yet firewalled
+  by the CNI for a few milliseconds (measured 2026-10-29: new pods reached
+  Keycloak, Postgres and the kubelet in their first requests), so a service
+  must not depend on its callers' egress policies alone.
+- **Student pods' network** (`network:` in the app's `appstore.yaml`): the app
+  says per setting (`internet`, `podNetwork`) whether the person deploying may
+  change it (`allowed`) and what it starts as (`default`). With `podNetwork`
+  the pods of one deployment reach each other on any TCP/UDP port (policy
+  `allow-intra-namespace`: no namespaceSelector, so this namespace only) and
+  find each other by name: a headless Service per workload and `peers`
+  (all pods). DNS is only allowed where something is to be resolved (internet
+  or peers); a pod that needs neither cannot even use DNS as a way out.
+- **Broadcast and multicast** are not a policy matter: the pods of a node share
+  the CNI bridge, so a UDP datagram to 255.255.255.255, a multicast group or
+  ff02::1 reaches every pod of the node whatever their policies say (measured:
+  also from pods with no egress at all, and across both environments). The
+  renderer's exclusion list stops the IPv4 cases at the sender; IPv6 link-local
+  multicast is not filtered by the CNI's policy engine at all, so
+  `k8s/cluster/node-netguard.yaml` (a DaemonSet a cluster admin applies once;
+  it drops bridged broadcast/multicast, not ARP or ICMPv6) closes it.
+  `k8s/tests/netcheck/netcheck.py` checks all of this on a real cluster (kind's
+  CNI enforces nothing): run it on staging after changing the CNI, the node
+  guard or the policies.
 - **Admission policy** (`templates/admission-policy.yaml`, migration plan
   finding 3): the pod deployer may only touch `dep-<8 hex>` namespaces of its
   own installation (label `appstore.dhbw/environment`), each with Pod Security
@@ -99,9 +126,9 @@ through the AppStore and run as pods; see the app-registry repository.
   allowlist pinned by digest; Ingress hosts `<workload>-<deployment>.<appDomain>`
   of its own deployment only (never `appstore.<zone>` or `sso.<zone>`), plain
   `Prefix` paths, no annotations but cert-manager's; network policies that
-  keep the student pods' isolation (the only `podSelector` peer is the empty
-  selector, TCP with a concrete numeric port and no port range, in a policy named `allow-intra-namespace`; the app's `expose.port` is enforced by the renderer, not by admission: pods of one
-  deployment may reach each other). Single objects are never deleted, only
+  keep the student pods' isolation (egress to DNS on port 53 and to the internet on the configured ports only; the only `podSelector` peer is the empty
+  selector, in a policy named `allow-intra-namespace`: the pods of one
+  deployment, TCP and UDP; ingress only from the ingress controller's pods). Single objects are never deleted, only
   namespaces, pods (restart) and volume claims (reset).
 - **Keycloak realm `dhbw`**: access tokens of 5 minutes, refresh token
   rotation, brute-force protection, a password policy, PKCE S256 and no
@@ -249,4 +276,4 @@ for that one PR. Rolling back anything else: revert the commit.
   separate nodes for student pods (`podApps.studentNodeSelector` and
   `studentTolerations`, migration plan D4), image signatures (cosign), a full
   end-to-end job (API, workers and real pods in kind), network policy probes
-  in CI (kind's CNI does not enforce them; check them on staging).
+  in CI (kind's CNI does not enforce them; `k8s/tests/netcheck/netcheck.py` checks them on staging, by hand).

@@ -164,12 +164,18 @@ livenessProbe:
   failureThreshold: 3
 {{- end }}
 
-{{/* Private and link-local ranges: never "internet". */}}
+{{/* Never "internet": private, shared (carrier-grade NAT), link-local (the cloud's metadata
+     service) and loopback space, and everything from 224.0.0.0 up (multicast, reserved, the
+     limited broadcast); for IPv6 ULA, link-local, site-local, multicast and the prefixes that
+     carry IPv4 inside IPv6 (NAT64, 6to4: they would bypass the IPv4 entries). The
+     renderer of the pod apps (backend/worker app/k8s/render.py) keeps the same lists, and the
+     admission policy admits a student policy only if its list contains every entry here.
+     The same lists are in charts/appstore-mcp and charts/moodle. */}}
 {{- define "appstore.privateV4" -}}
-["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"]
+["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/3"]
 {{- end }}
 {{- define "appstore.privateV6" -}}
-["fc00::/7", "fe80::/10"]
+["::1/128", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2002::/16", "fc00::/7", "fe80::/10", "fec0::/10", "ff00::/8"]
 {{- end }}
 
 {{/* NetworkPolicy building blocks (networkpolicies.yaml). */}}
@@ -182,8 +188,9 @@ livenessProbe:
 {{- end }}
 {{- end }}
 {{- define "appstore.internet" -}}
-# The internet: everything but the private and link-local ranges (the cloud's
-# metadata service among them) and the cluster's own pods, services and nodes.
+# The internet over the given TCP ports (443: the platform talks HTTPS only): everything
+# but the private, link-local and multicast ranges (the cloud's metadata service among
+# them) and the cluster's own pods, services and nodes.
 - to:
     - ipBlock:
         cidr: 0.0.0.0/0
@@ -191,8 +198,16 @@ livenessProbe:
     - ipBlock:
         cidr: ::/0
         except: {{ toJson .v6 }}
-{{- range .allow }}
+  ports:
+  {{- range .ports }}
+    - { protocol: TCP, port: {{ . }} }
+  {{- end }}
+{{- if .allow }}
+# Addresses in a private range the pod may reach anyway (any port).
+- to:
+  {{- range .allow }}
     - ipBlock: { cidr: {{ . }} }
+  {{- end }}
 {{- end }}
 {{- end }}
 {{- define "appstore.kubeApi" -}}

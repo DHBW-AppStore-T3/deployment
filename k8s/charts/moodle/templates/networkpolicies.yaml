@@ -1,6 +1,6 @@
 {{- if .Values.network.policies }}
-{{- $v4 := list "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "169.254.0.0/16" "127.0.0.0/8" -}}
-{{- $v6 := list "fc00::/7" "fe80::/10" -}}
+{{- $v4 := list "0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.0.0.0/24" "192.168.0.0/16" "198.18.0.0/15" "224.0.0.0/3" -}}
+{{- $v6 := list "::1/128" "64:ff9b::/96" "64:ff9b:1::/48" "100::/64" "2002::/16" "fc00::/7" "fe80::/10" "fec0::/10" "ff00::/8" -}}
 # Deny by default for every Moodle pod, then only what Moodle needs.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -32,8 +32,8 @@ spec:
         - podSelector: { matchLabels: {{ toJson .Values.network.postgresLabels }} }
       ports:
         - { protocol: TCP, port: 5432 }
-    # The internet (the AppStore's public host for LTI, mail, update checks),
-    # not the private and link-local ranges (the metadata service among them).
+    # The internet over HTTP(S) (the AppStore's public host for LTI, update checks),
+    # not the private, link-local and multicast ranges (the metadata service among them).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -41,6 +41,9 @@ spec:
         - ipBlock:
             cidr: ::/0
             except: {{ toJson $v6 }}
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

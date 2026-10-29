@@ -21,6 +21,8 @@ DEPLOYER_ROLE = f"appstore-t3-{NS}-deployer"
 READER_ROLE = f"appstore-t3-{NS}-reader"
 VNC_PROXY_ROLE = f"appstore-t3-{NS}-vnc-proxy"
 DIGEST = "sha256:" + "a" * 64
+# The Kubernetes API as pods reach it (network.kubeApi.cidrs of k8s/environments/staging.yaml).
+KUBE_API = ["fd00:43::1/128", "10.43.0.1/32", "2001:7c0:1b20:c913:1::10d/128"]
 
 GROUPS = {
     "Namespace": ("", "v1", "namespaces"),
@@ -91,6 +93,10 @@ case("namespace delete", "allow", None, "DELETE", old=ns_obj)
 for obj in objects[1:]:
     case(f"{obj['kind']} {obj['metadata']['name']} create", "allow", obj)
     case(f"{obj['kind']} {obj['metadata']['name']} re-apply", "allow", obj, "UPDATE", old=obj)
+# The app with pods that may talk to each other (the peers Service, the intra-namespace policy, one more service in the quota).
+for obj in fixtures["networked"][1:]:
+    case(f"networked {obj['kind']} {obj['metadata']['name']} create", "allow", obj)
+    case(f"networked {obj['kind']} {obj['metadata']['name']} re-apply", "allow", obj, "UPDATE", old=obj)
 deployer_rb = binding("appstore-deployer", DEPLOYER_ROLE, "appstore-t3-pod-deployer")
 reader_rb = binding("appstore-api-reader", READER_ROLE, "appstore-t3-api")
 case("deployer role binding", "allow", deployer_rb)
@@ -259,21 +265,34 @@ np_variant(internet, "egress without except", lambda n: n["spec"]["egress"][0]["
 np_variant(internet, "egress reaches the metadata service", lambda n: n["spec"]["egress"][0]["to"][0]["ipBlock"]["except"].remove("169.254.0.0/16"))
 np_variant(internet, "egress reaches the node", lambda n: n["spec"]["egress"][1]["to"][0]["ipBlock"]["except"].remove("2001:7c0:1b20:c913:1::10d/128"))
 np_variant(internet, "egress to a private range", lambda n: n["spec"]["egress"][0]["to"][0].update(ipBlock={"cidr": "10.0.0.0/8"}))
-# allow-intra-namespace (issue .github#11): the one podSelector shape that is accepted.
-def intra(**over):
-    spec = {"podSelector": {}, "policyTypes": ["Ingress", "Egress"],
-            "ingress": [{"from": [{"podSelector": {}}], "ports": [{"protocol": "TCP", "port": 8080}]}],
-            "egress": [{"to": [{"podSelector": {}}], "ports": [{"protocol": "TCP", "port": 8080}]}]}
-    spec.update(over)
-    return {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
-            "metadata": dict(copy.deepcopy(dns_np["metadata"]), name="allow-intra-namespace"), "spec": spec}
+# allow-intra-namespace (issue .github#11): the one podSelector shape that is accepted, and what it may carry. The
+# renderer's own output (no ports: TCP, UDP and ICMP on every port, for the students' own servers and clients) is the
+# base; numbered ports are accepted too, in TCP and UDP.
+networked = fixtures["networked"]
+intra_np = next(o for o in networked if o["kind"] == "NetworkPolicy" and o["metadata"]["name"] == "allow-intra-namespace")
 
 
-intra_np = intra()
+def with_ports(obj, *ports):
+    def put(n):
+        for d in ("ingress", "egress"):
+            n["spec"][d][0]["ports"] = copy.deepcopy(list(ports))
+    return mutated(obj, put)
+
+
+intra_tcp = with_ports(intra_np, {"protocol": "TCP", "port": 8080})
 case("network policy: allow-intra-namespace create", "allow", intra_np)
 case("network policy: allow-intra-namespace re-apply", "allow", intra_np, "UPDATE", old=intra_np)
-case("network policy: allow-intra-namespace, protocol defaulted away", "allow",
-     mutated(intra_np, lambda n: [n["spec"][d][0]["ports"][0].pop("protocol") for d in ("ingress", "egress")]))
+case("network policy: allow-intra-namespace on a numbered TCP port", "allow", intra_tcp)
+case("network policy: allow-intra-namespace, protocol defaulted away", "allow", with_ports(intra_np, {"port": 8080}))
+case("network policy: allow-intra-namespace on a UDP port", "allow", with_ports(intra_np, {"protocol": "UDP", "port": 5000}))
+case("network policy: allow-intra-namespace, TCP and UDP", "allow",
+     with_ports(intra_np, {"protocol": "TCP", "port": 5000}, {"protocol": "UDP", "port": 5000}))
+case("network policy: allow-intra-namespace, empty ports (= every port)", "allow",
+     mutated(intra_np, lambda n: [n["spec"][d][0].update(ports=[]) for d in ("ingress", "egress")]))
+case("network policy: allow-intra-namespace, two good rules", "allow",
+     mutated(intra_tcp, lambda n: [n["spec"][d].append(copy.deepcopy(n["spec"][d][0])) or n["spec"][d][1]["ports"][0].update(port=9090) for d in ("ingress", "egress")]))
+case("network policy: allow-intra-namespace, one rule with ports and one without", "allow",
+     mutated(intra_tcp, lambda n: n["spec"]["egress"].append({"to": [{"podSelector": {}}]})))
 np_variant(intra_np, "podSelector peer in another policy (ingress)", lambda n: n["metadata"].update(name="allow-pods"))
 np_variant(intra_np, "podSelector peer in the dns policy name", lambda n: n["metadata"].update(name="allow-dns"))
 np_variant(intra_np, "intra-namespace non-empty podSelector (ingress)", lambda n: n["spec"]["ingress"][0]["from"][0].update(podSelector={"matchLabels": {"a": "b"}}))
@@ -283,25 +302,63 @@ np_variant(intra_np, "intra-namespace podSelector + namespaceSelector (ingress)"
 np_variant(intra_np, "intra-namespace podSelector + namespaceSelector (egress)", lambda n: n["spec"]["egress"][0]["to"][0].update(namespaceSelector={}))
 np_variant(intra_np, "intra-namespace podSelector + ipBlock (ingress)", lambda n: n["spec"]["ingress"][0]["from"][0].update(ipBlock={"cidr": "0.0.0.0/0"}))
 np_variant(intra_np, "intra-namespace podSelector + ipBlock (egress)", lambda n: n["spec"]["egress"][0]["to"][0].update(ipBlock={"cidr": "10.0.0.0/8"}))
-np_variant(intra_np, "intra-namespace UDP (ingress)", lambda n: n["spec"]["ingress"][0]["ports"][0].update(protocol="UDP"))
-np_variant(intra_np, "intra-namespace SCTP (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(protocol="SCTP"))
-np_variant(intra_np, "intra-namespace TCP and UDP (egress)", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "UDP", "port": 53}))
-np_variant(intra_np, "intra-namespace TCP without a port (ingress)", lambda n: n["spec"]["ingress"][0].update(ports=[{"protocol": "TCP"}]))
-np_variant(intra_np, "intra-namespace empty port entry (egress)", lambda n: n["spec"]["egress"][0].update(ports=[{}]))
-np_variant(intra_np, "intra-namespace port range (ingress)", lambda n: n["spec"]["ingress"][0]["ports"][0].update(port=1, endPort=65535))
-np_variant(intra_np, "intra-namespace port range (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(endPort=9000))
-np_variant(intra_np, "intra-namespace named port (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(port="http"))
-np_variant(intra_np, "intra-namespace two rules, one bad (ingress)", lambda n: n["spec"]["ingress"].append({"from": [{"podSelector": {}}], "ports": [{"protocol": "UDP", "port": 53}]}))
-np_variant(intra_np, "intra-namespace two rules, one without ports (egress)", lambda n: n["spec"]["egress"].append({"to": [{"podSelector": {}}]}))
-case("network policy: allow-intra-namespace, two good rules", "allow", mutated(intra_np, lambda n: [n["spec"][d].append(copy.deepcopy(n["spec"][d][0])) or n["spec"][d][1]["ports"][0].update(port=9090) for d in ("ingress", "egress")]))
-np_variant(intra_np, "intra-namespace without ports (ingress)", lambda n: n["spec"]["ingress"][0].pop("ports"))
-np_variant(intra_np, "intra-namespace empty ports (egress)", lambda n: n["spec"]["egress"][0].update(ports=[]))
+np_variant(with_ports(intra_np, {"protocol": "SCTP", "port": 5000}), "intra-namespace SCTP", lambda n: None)
+np_variant(intra_tcp, "intra-namespace SCTP (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(protocol="SCTP"))
+np_variant(intra_tcp, "intra-namespace TCP without a port (ingress)", lambda n: n["spec"]["ingress"][0].update(ports=[{"protocol": "TCP"}]))
+np_variant(intra_tcp, "intra-namespace empty port entry (egress)", lambda n: n["spec"]["egress"][0].update(ports=[{}]))
+np_variant(intra_tcp, "intra-namespace port range (ingress)", lambda n: n["spec"]["ingress"][0]["ports"][0].update(port=1, endPort=65535))
+np_variant(intra_tcp, "intra-namespace port range (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(endPort=9000))
+np_variant(intra_tcp, "intra-namespace named port (egress)", lambda n: n["spec"]["egress"][0]["ports"][0].update(port="http"))
+np_variant(intra_tcp, "intra-namespace two rules, one with SCTP (ingress)", lambda n: n["spec"]["ingress"].append({"from": [{"podSelector": {}}], "ports": [{"protocol": "SCTP", "port": 53}]}))
 np_variant(intra_np, "intra-namespace extra peer (ingress)", lambda n: n["spec"]["ingress"][0]["from"].append({"ipBlock": {"cidr": "0.0.0.0/0"}}))
 np_variant(intra_np, "intra-namespace extra namespaceSelector peer (egress)", lambda n: n["spec"]["egress"][0]["to"].append({"namespaceSelector": {}}))
 np_variant(intra_np, "intra-namespace second podSelector peer (egress)", lambda n: n["spec"]["egress"][0]["to"].append({"podSelector": {}}))
 np_variant(intra_np, "intra-namespace selects some pods only", lambda n: n["spec"].update(podSelector={"matchLabels": {"a": "b"}}))
 np_variant(intra_np, "intra-namespace peer-less ingress rule", lambda n: n["spec"]["ingress"][0].pop("from"))
 np_variant(intra_np, "intra-namespace peer-less egress rule", lambda n: n["spec"]["egress"][0].pop("to"))
+
+# What the student pods' egress may carry: the configured ports and not one more.
+np_variant(internet, "internet without a port list (every port)", lambda n: n["spec"]["egress"][0].pop("ports"))
+np_variant(internet, "internet with an empty port list", lambda n: n["spec"]["egress"][1].update(ports=[]))
+np_variant(internet, "internet on SMTP", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "TCP", "port": 25}))
+np_variant(internet, "internet on SSH", lambda n: n["spec"]["egress"][1]["ports"].append({"protocol": "TCP", "port": 22}))
+np_variant(internet, "internet on a port range", lambda n: n["spec"]["egress"][0]["ports"][0].update(endPort=65535))
+np_variant(internet, "internet on UDP 443", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "UDP", "port": 443}))
+np_variant(internet, "internet on UDP 123 outside a VM namespace", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "UDP", "port": 123}))
+np_variant(internet, "internet on a named port", lambda n: n["spec"]["egress"][0]["ports"][0].update(port="https"))
+np_variant(internet, "egress reaches multicast", lambda n: n["spec"]["egress"][0]["to"][0]["ipBlock"]["except"].remove("224.0.0.0/3"))
+np_variant(internet, "egress reaches IPv6 multicast", lambda n: n["spec"]["egress"][1]["to"][0]["ipBlock"]["except"].remove("ff00::/8"))
+np_variant(internet, "egress reaches the metadata range through IPv6 (NAT64)", lambda n: n["spec"]["egress"][1]["to"][0]["ipBlock"]["except"].remove("64:ff9b::/96"))
+np_variant(internet, "egress reaches shared address space", lambda n: n["spec"]["egress"][0]["to"][0]["ipBlock"]["except"].remove("100.64.0.0/10"))
+np_variant(internet, "dns peer and internet peer in one rule", lambda n: n["spec"]["egress"][0]["to"].append(
+    {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}, "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}}}))
+
+# Only the ingress controller's pods, not all of its namespace (podApps.ingressPodLabels of the staging environment).
+np_variant(ingress_np, "ingress from the whole controller namespace", lambda n: n["spec"]["ingress"][0]["from"][0].pop("podSelector"))
+np_variant(ingress_np, "ingress from other pods of the controller namespace", lambda n: n["spec"]["ingress"][0]["from"][0].update(podSelector={"matchLabels": {"k8s-app": "kube-dns"}}))
+np_variant(ingress_np, "ingress from every pod of the controller namespace", lambda n: n["spec"]["ingress"][0]["from"][0].update(podSelector={}))
+
+np_variant(dns_np, "dns on every port", lambda n: n["spec"]["egress"][0].pop("ports"))
+np_variant(dns_np, "dns on the metrics port", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "TCP", "port": 9153}))
+np_variant(dns_np, "dns on a port range", lambda n: n["spec"]["egress"][0]["ports"][0].update(port=1, endPort=65535))
+np_variant(dns_np, "dns on SCTP", lambda n: n["spec"]["egress"][0]["ports"][0].update(protocol="SCTP"))
+
+# The services: a headless one (clusterIP: None) is what the peers get; nothing else about a Service may change.
+networked_services = [o for o in networked if o["kind"] == "Service"]
+peers = next(s for s in networked_services if s["metadata"]["name"] == "peers")
+case("service peers: selects every pod of the deployment", "allow", peers)
+case("service peers: with an external name", "deny", mutated(peers, lambda s: s["spec"].update(type="ExternalName", externalName="evil.example")))
+case("service peers: with external IPs", "deny", mutated(peers, lambda s: s["spec"].update(externalIPs=["203.0.113.7"])))
+case("service peers: as a load balancer", "deny", mutated(peers, lambda s: s["spec"].update(type="LoadBalancer")))
+networked_quota = next(o for o in networked if o["kind"] == "ResourceQuota")
+case("quota with the extra service for the peers", "allow", networked_quota)
+case("quota with more than that many services", "deny",
+     mutated(networked_quota, lambda q: q["spec"]["hard"].update(services="62")))
+case("quota with exactly the ceiling of services", "allow",
+     mutated(networked_quota, lambda q: q["spec"]["hard"].update(services="61")))
+case("quota with the ceiling of pods plus one", "deny",
+     mutated(networked_quota, lambda q: q["spec"]["hard"].update(pods="61")))
+
 
 np_variant(dns_np, "egress to all of kube-system", lambda n: n["spec"]["egress"][0]["to"][0].pop("podSelector"))
 np_variant(dns_np, "egress to postgres", lambda n: n["spec"]["egress"][0]["to"][0].update(namespaceSelector={"matchLabels": {"kubernetes.io/metadata.name": NS}}, podSelector={"matchLabels": {"cnpg.io/cluster": "postgres-cluster"}}))
@@ -452,11 +509,11 @@ vm_nps = {
         "ports": [{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}]}]}),
     "allow-vnc-proxy-to-apiserver": vm_netpol("allow-vnc-proxy-to-apiserver", {
         "podSelector": PROXYSEL, "policyTypes": ["Egress"],
-        "egress": [{"to": [{"ipBlock": {"cidr": "0.0.0.0/0"}}, {"ipBlock": {"cidr": "::/0"}}],
+        "egress": [{"to": [{"ipBlock": {"cidr": c}} for c in KUBE_API],
                     "ports": [{"protocol": "TCP", "port": 443}, {"protocol": "TCP", "port": 6443}]}]}),
     "allow-egress-internet": vm_netpol("allow-egress-internet", {
         "podSelector": VMSEL, "policyTypes": ["Egress"],
-        "egress": copy.deepcopy(internet["spec"]["egress"])}),
+        "egress": [dict(copy.deepcopy(r), ports=r["ports"] + [{"protocol": "UDP", "port": 123}]) for r in internet["spec"]["egress"]]}),
     "allow-intra-namespace": vm_netpol("allow-intra-namespace", {
         "podSelector": VMSEL, "policyTypes": ["Ingress", "Egress"],
         "ingress": [{"from": [{"podSelector": VMSEL}]}], "egress": [{"to": [{"podSelector": VMSEL}]}]}),
@@ -627,6 +684,30 @@ vm_np_variant("intra-namespace plus a namespace selector", "allow-intra-namespac
 vm_np_variant("intra-namespace plus an address block", "allow-intra-namespace", lambda n: n["spec"]["egress"][0]["to"].append({"ipBlock": {"cidr": "0.0.0.0/0"}}))
 vm_np_variant("VM peer rule under another name", "allow-intra-namespace", lambda n: n["metadata"].update(name="allow-vms"))
 vm_np_variant("egress to kube-system as a whole", "allow-dns", lambda n: n["spec"]["egress"][0]["to"][0].pop("podSelector"))
+# Internet of a VM: the configured web ports and NTP, not one port more.
+vm_np_variant("internet on UDP 53", "allow-egress-internet", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "UDP", "port": 53}))
+vm_np_variant("internet on UDP 123 as a range", "allow-egress-internet", lambda n: n["spec"]["egress"][0]["ports"][-1].update(endPort=200))
+vm_np_variant("internet on SMTP", "allow-egress-internet", lambda n: n["spec"]["egress"][1]["ports"].append({"protocol": "TCP", "port": 25}))
+vm_np_variant("internet on every port", "allow-egress-internet", lambda n: n["spec"]["egress"][0].pop("ports"))
+vm_np_variant("egress reaches multicast", "allow-egress-internet", lambda n: n["spec"]["egress"][0]["to"][0]["ipBlock"]["except"].remove("224.0.0.0/3"))
+# The proxy reaches the Kubernetes API and nothing else: not every address on 443/6443 (the cluster's own addresses are set).
+vm_np_variant("apiserver rule to any address", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0].update(to=[{"ipBlock": {"cidr": "0.0.0.0/0"}}, {"ipBlock": {"cidr": "::/0"}}]))
+vm_np_variant("apiserver rule to another address", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0]["to"].append({"ipBlock": {"cidr": "203.0.113.0/24"}}))
+vm_np_variant("apiserver rule to a bigger block around the API", "allow-vnc-proxy-to-apiserver", lambda n: n["spec"]["egress"][0]["to"][1].update(ipBlock={"cidr": "10.43.0.0/16"}))
+vm_np_variant("dns on every port", "allow-dns", lambda n: n["spec"]["egress"][0].pop("ports"))
+vm_np_variant("dns on the metrics port", "allow-dns", lambda n: n["spec"]["egress"][0]["ports"].append({"protocol": "TCP", "port": 9153}))
+# A closed VM namespace resolves names for the proxy only (render_vm).
+vm_dns_proxy_only = mutated(vm_nps["allow-dns"], lambda n: n["spec"].update(podSelector=PROXYSEL))
+vm_case("vm network policy: dns for the proxy only", "allow", vm_dns_proxy_only)
+vm_case("vm network policy: dns for the proxy only, re-apply", "allow", vm_dns_proxy_only, "UPDATE", old=vm_dns_proxy_only)
+# The peers of VMs: headless Services, one per VM and one for all, the proxies not among them.
+vm_peers = {"apiVersion": "v1", "kind": "Service", "metadata": vm_meta("peers"),
+            "spec": {"clusterIP": "None", "selector": {"appstore.dhbw/deployment-id": dep_id, ROLE: "vm"}}}
+vm_case("vm service peers", "allow", vm_peers)
+vm_case("vm service peers, re-apply", "allow", vm_peers, "UPDATE", old=vm_peers)
+vm_case("vm service peers with external IPs", "deny", mutated(vm_peers, lambda s: s["spec"].update(externalIPs=["203.0.113.7"])))
+vm_case("vm service peers as a node port", "deny", mutated(vm_peers, lambda s: s["spec"].update(type="NodePort")))
+
 vm_case("vm network policy: delete", "deny", None, "DELETE", old=vm_nps["allow-dns"])
 
 json.dump(cases, open(sys.argv[5], "w", encoding="utf-8"), indent=1)
