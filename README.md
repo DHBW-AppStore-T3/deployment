@@ -1,84 +1,75 @@
 # Deployment
 
-Dieses Repository hält alles zusammen, was die Plattform zum Laufen braucht: die
-Compose-Stacks für die drei Umgebungen, den zentralen Makefile, den
-Keycloak-Realm, die Seed-Daten und die Terraform- und Ansible-Definitionen der
-Infrastruktur.
+Alles, was die Plattform zum Laufen braucht: Helm-Charts und Argo-CD-Anwendungen für Staging und Produktion (`k8s/`), der lokale Dev-Stack (`docker-compose.dev.yml`, `Makefile`), der Keycloak-Realm und die Seed-Daten.
 
-Die Anwendung selbst liegt in eigenen Repositories (`backend`, `frontend`,
-`worker`). Hier wird nichts gebaut, was dort entsteht — hier wird es
-zusammengesetzt, konfiguriert und ausgerollt.
+Die Anwendung liegt in eigenen Repositories: `backend`, `worker`, `frontend`, `self-service-ui`, `moodle_appstore`, `appstore-mcp`. Hier werden ihre Images zusammengesetzt, konfiguriert und ausgerollt.
 
-## Setup-Anleitungen
+## Umgebungen
 
-- [Lokales Dev Setup](docs/dev-setup.md)
-- [Staging Setup](docs/staging-setup.md)
-- [Produktives Setup](docs/prod-setup.md)
+| Umgebung | Branch | Ausrollen |
+|---|---|---|
+| lokal | – | `docker-compose.dev.yml` per `make` (Postgres, Keycloak, Backend, Worker, Frontend; Kubernetes simuliert) |
+| Staging | `dev` | Kubernetes (k3s), Argo CD `staging-root` verfolgt `dev` |
+| Produktion | `main` | Kubernetes (k3s), Argo CD `prod-root` verfolgt `main` |
 
-## Schnellstart
+Details zu Staging/Produktion: [k8s/README.md](k8s/README.md).
 
-Kein Dienst wird einzeln gestartet. Alles läuft über den Makefile in diesem
-Verzeichnis:
+## Lokal starten
+
+Komplette Anleitung ab Null (Terminal, Git, Docker, make, Repos klonen, Fehlerbilder): [docs/dev-setup.md](docs/dev-setup.md).
+
+Kurzfassung, wenn Git, make, Python 3 und Docker laufen:
 
 ```bash
+mkdir appstore && cd appstore
+for r in deployment backend worker frontend; do git clone -b dev https://github.com/DHBW-AppStore-T3/$r.git; done
 cd deployment
-make init      # .env anlegen, Stack starten, migrieren, Seed-Daten laden
-make urls      # alle Dev-URLs auf einen Blick
-make help      # sämtliche Targets mit Beschreibung
+make init       # .env anlegen, bauen, starten, migrieren, seeden
+make health     # Backend, Frontend, Keycloak
 ```
 
-Die wichtigsten im Alltag:
+Frontend http://localhost:5173 · API-Docs http://localhost:8000/docs · Keycloak http://localhost:8081 (`admin`/`admin`) · Login `dozent.demo`, `admin.demo`, `student1.demo` mit `DevLocal1234!`.
 
 | Befehl | Wirkung |
 |---|---|
-| `make dev-up` / `make dev-down` | Stack starten und stoppen (Volumes bleiben) |
-| `make dev-logs-backend` | Logs verfolgen; auch `-frontend`, `-worker`, `-keycloak` |
-| `make shell-backend` | Shell im Container; auch `shell-worker`, `shell-frontend`, `shell-db` |
-| `make dev-restart-worker` | Neustart, wenn der Hot-Reload nicht greift — etwa bei Celery-Tasks |
-| `make migrate-dev` | Alembic-Migrationen anwenden |
-| `make migration-create MSG="..."` | Neue Migration erzeugen |
-| `make seed-data` | Seed-Daten laden; idempotent, gefahrlos wiederholbar |
-| `make health` | Backend, Frontend und Keycloak anpingen |
-
-## Die drei Umgebungen
-
-| Umgebung | Compose-Datei | Reverse Proxy | Wie sie ausgerollt wird |
-|---|---|---|---|
-| dev | `docker-compose.dev.yml` | keiner, Dienste direkt auf Ports | `make dev-up` auf dem eigenen Rechner |
-| staging | `docker-compose.staging.yml` | Caddy, Zertifikat über dns-01 | Workflow im eigenen Forgejo, siehe [Staging Setup](docs/staging-setup.md) |
-| prod | `docker-compose.prod.yml` | nginx, Zertifikat selbst hinterlegt | `make prod-up` auf der Zielmaschine |
-
-Staging und Produktion unterscheiden sich nicht nur in der Größe: Staging
-entsteht vollständig aus Terraform und Ansible, Produktion wird bislang von Hand
-aufgesetzt. Die Compose-Datei für Staging hat deshalb bewusst keine Make-Targets
-— sie soll nur über die Pipeline laufen, damit kein Arbeitsplatz von dem
-abweicht, was dort erzeugt wird.
+| `make dev-up` / `make dev-down` | Stack starten / stoppen (Daten bleiben) |
+| `make dev-logs-backend` (`-frontend`, `-worker`, `-keycloak`) | Logs verfolgen |
+| `make shell-backend` (`-worker`, `-frontend`, `-db`) | Shell im Container / `psql` |
+| `make dev-restart-worker` | Worker neu starten (kein Hot-Reload) |
+| `make migrate-dev` | Migrationen anwenden |
+| `make seed-dev` | Demo-Daten (idempotent) |
+| `make help` | alle Targets |
 
 ## Aufbau
 
 ```text
 deployment/
-├── Makefile                  # Einstiegspunkt für alles Lokale
-├── docker-compose.*.yml      # ein Stack je Umgebung
-├── caddy/                    # Reverse Proxy für Staging, mit rfc2136-Modul
-├── nginx/                    # Reverse Proxy für Produktion
-├── keycloak/                 # Realm-Export und dessen Template
-├── seed/                     # Seed-Skript, Kurse, App-Beschreibungen
-├── forgejo/                  # der Forge-Host: Compose-Stack und Setup-Skripte
-├── infrastructure/           # Terraform und Ansible
-│   ├── terraform/            # Modul und Umgebungen
-│   └── ansible/              # Playbooks für Staging und den Forge-Host
-├── docs/                     # die drei Setup-Anleitungen
-├── .forgejo/workflows/       # der Deploy-Workflow, der tatsächlich läuft
-└── .github/workflows/        # das Gegenstück für GitHub, hier ohne Wirkung
+├── Makefile                  lokaler Einstieg
+├── docker-compose.dev.yml    lokaler Stack
+├── .env.example              Vorlage für .env (Schlüssel)
+├── docs/dev-setup.md         lokales Setup ab Null
+├── keycloak/dhbw-realm.json  Realm für den lokalen Keycloak (Staging/Prod: k8s/manifests/platform/files/dhbw-realm.json)
+├── seed/seed_sim.py          Demo-Daten des lokalen Stacks (Staging: Job in charts/appstore)
+├── k8s/                      Charts, Argo-CD-Anwendungen, Umgebungswerte, Image-Digests, Policy-Tests
+│   ├── charts/{appstore,appstore-mcp,moodle}
+│   ├── manifests/platform    Postgres (CloudNativePG) + Keycloak
+│   ├── argocd/               Cluster-Operator, App-of-Apps, Roots je Umgebung
+│   ├── environments/         staging.yaml, prod.yaml
+│   ├── images/               Image-Digests (nur von CI geschrieben)
+│   └── bootstrap.sh, promote.sh, show-credentials.sh, keycloak-self-service-client.sh
+├── scripts/                  KubeVirt-Windows-Apps: install-cinder-csi.sh, migrate-golden-image.sh, enable-cross-namespace-clone.sh
+├── docker/novnc-proxy/       noVNC-Proxy-Image für KubeVirt-VMs
+├── examples/                 Beispiel-appstore.yaml einer Windows-VM (kubevirt-vm)
+└── .github/workflows/        k8s-bump, k8s-chart, novnc-proxy, secret-scan
 ```
 
-Warum der Deploy in Forgejo liegt und nicht auf GitHub, steht in
-[Staging Setup](docs/staging-setup.md) unter „Warum ein eigenes Forgejo".
+## CI
 
-## Weiterführend
+| Workflow | Auslöser | Aufgabe |
+|---|---|---|
+| `k8s-bump.yml` | von backend/worker/frontend/self-service-ui/appstore-mcp/moodle_appstore nach deren Image-Push | schreibt den Digest in `k8s/images/<staging\|prod>.yaml`: Branch `dev` per sofort gemergtem PR, `main` per PR zum Prüfen |
+| `k8s-chart.yml` | Änderungen in `k8s/**` | rendert Staging und Prod wie Argo CD, prüft gegen Kubernetes-Schemas, wertet die Admission-Policy aus, prüft RBAC in einem kind-Cluster |
+| `novnc-proxy.yml` | Änderungen in `docker/novnc-proxy/**` | baut und pusht das Proxy-Image |
+| `secret-scan.yml` | PRs und Pushes auf `main`/`dev` | Gitleaks |
 
-- [`infrastructure/README.md`](infrastructure/README.md) — Terraform-Modul, die
-  beiden Umgebungen, Adressierung, State-Backend und die CI/CD-Workflows
-- [`forgejo/SCRIPTS.md`](forgejo/SCRIPTS.md) — die Skripte, mit denen der
-  Forge-Host aufgesetzt wurde, Schritt für Schritt
+Promotion von Charts/Policy/Realm nach Produktion: `k8s/promote.sh` (PR `dev` → `main`).

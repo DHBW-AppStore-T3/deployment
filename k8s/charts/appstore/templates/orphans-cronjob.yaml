@@ -1,0 +1,51 @@
+{{- if .Values.orphans.enabled }}
+{{- $comp := dict "context" . "component" "orphans" -}}
+# dep-* namespaces of this installation without a live deployment
+# (python -m app.k8s_orphans): a destroy that failed for good, a manual
+# change. The Job fails when it finds one (kubectl get jobs shows it);
+# deleting a namespace stays an operator's decision. As the API's account,
+# which may read the namespaces and, through the reader role, what is in them.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "appstore.name" $comp }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  schedule: {{ .Values.orphans.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels: {{- include "appstore.labels" $comp | nindent 12 }}
+        spec:
+          {{- include "appstore.podDefaults" . | nindent 10 }}
+          restartPolicy: Never
+          serviceAccountName: {{ include "appstore.name" (dict "context" . "component" "api") }}
+          automountServiceAccountToken: true
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: orphans
+              image: {{ include "appstore.image" (dict "context" . "key" "backend" "name" "backend") }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command: ["python", "-m", "app.k8s_orphans"]
+              env:
+                {{- include "appstore.backendEnv" . | nindent 16 }}
+              securityContext: {{- include "appstore.restricted" . | nindent 16 }}
+              resources:
+                requests: { cpu: 10m, memory: 128Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+              volumeMounts:
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: tmp
+              emptyDir: { sizeLimit: 64Mi }
+{{- end }}

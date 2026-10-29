@@ -1,0 +1,27 @@
+# Image digests of staging (written by .github/workflows/k8s-bump.yml, never by hand,
+# except to roll back). The component CIs of backend, worker and frontend
+# push to ghcr.io on every push to `dev` and dispatch the bump with the
+# digest they pushed; Argo CD's staging-appstore rolls out what is here. The
+# comment behind a digest is the tag (sha-<commit>) it was built from.
+# A blank line sits between two pins on purpose: git treats edits of neighbouring lines as a
+# conflict, so the bump pull requests of two components (one line each) conflicted when they were
+# merged one after the other. Keep a blank line (or a comment) between any two pins.
+images:
+  tags:
+    backend: "sha256:f99549e9adf8e2349849ead3ae1a4bb8f2cdd5ca7f4ae959a818f38c2f2eeb59"  # sha-8274fa2
+
+    workerPods: "sha256:5473cdee8c5755ee6bee3ffc5c44a1afc93c93318e3a3e583f110812560e92c9"  # sha-695f64f
+
+    frontend: "sha256:63024560a45b248405e86ace01191b0a99cbd30c8bb8bb87d11a30c39e2f7138"  # sha-04bf7aa
+
+    appstoreMcp: "sha256:2e88b8683f222c85a5acde4a7fb31156a171d3ce9cd6cab560cb1b9fde1e60d2"  # sha-0094804
+
+    # Empty until the first image of the self-service-ui repository is rolled out
+    # (the chart renders the component only with a digest).
+    selfServiceUi: "sha256:393f17cd7b5a5eab44128ddbed9b3c52e435924814c6ca6a13a395a286d08d34"  # sha-c4dfb09
+
+    moodle: "sha256:90b8e57aaed2db36b5fb7bdaa6d4600e6f0af99f6e56522f7826890f19bb45b0"  # sha-e60f8f4
+
+    # noVNC proxy of kubevirt-vm deployments (docker/novnc-proxy, bumped by its workflow).
+    # Empty until the first bump: the chart then falls back to the unpinned :latest.
+    novncProxy: "sha256:c8c0ac2915afdda55d75f2c1c50fcc9037af33994e5ca5a4e8868188b6059f51"  # sha-5553b9c

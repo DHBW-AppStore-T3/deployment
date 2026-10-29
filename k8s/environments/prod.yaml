@@ -1,0 +1,92 @@
+# Production: tracks the branch `main`; the component CIs roll their `main` images out here.
+env:
+  name: prod
+  namespace: appstore-prod
+  branch: main
+  host: appstore.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  ssoHost: sso.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  # The second UI; ONE label below the zone (the wildcard certificate).
+  selfServiceHost: self-service.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+# Read-only MCP server for agents (github.com/DHBW-AppStore-T3/appstore-mcp).
+mcp:
+  # Needs the Secret `appstore-mcp` (github-client-id/-secret) in appstore-prod.
+  enabled: true
+  host: appstore-mcp.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+platform:
+  demoUsers: false
+appstore:
+  # The Keycloak client in the live realm is kept by the platform chart's
+  # keycloak-config job (k8s/keycloak-self-service-client.sh does the same by hand).
+  selfServiceUi:
+    enabled: true
+  # No demo seeding in prod: the catalog is reviewed by admins, and course
+  # membership is decided by teachers (charts/appstore/templates/seed-job.yaml).
+  # A new app version is submitted and approved in the UI.
+  seed:
+    enabled: false
+  # ClamAV scans every upload; fail-closed (503 when scanner is down). Block storage
+  # that outlives the node, so the signature DB survives a node loss.
+  clamav:
+    enabled: true
+    persistence:
+      storageClassName: cinder
+  # The components' packages on ghcr.io are private: k8s/bootstrap.sh creates
+  # this docker-registry Secret from a read:packages token.
+  images:
+    pullSecrets: [ghcr-pull]
+  api:
+    # LTI 1.3 from Moodle (off while clientId is empty). Moodle's tool URLs:
+    # https://<host>/api/lti13/login and https://<host>/api/lti13/launch.
+    lti:
+      # Moodle (prod): issuer = wwwroot; the tool is the mod_lti type
+      # "DHBW AppStore" (client and deployment id are public identifiers).
+      platformIssuer: "https://moodle.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"
+      clientId: "GEa8fN2vjxX1fcf"
+      deploymentId: "1"
+      jwksUrl: "https://moodle.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site/mod/lti/certs.php"
+    # Moodle's LTI keys: its public name -> the ingress controller's Service
+    # (kubectl -n kube-system get svc traefik); see values.yaml api.hostAliases.
+    hostAliases:
+      - ip: "fd00:43::2fb9"
+        hostnames: ["moodle.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site"]
+  # Apps that run as pods: https://<workload>-<deployment>.<appDomain>.
+  podApps:
+    zone: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+    # The cluster's wildcard certificate covers *.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site: stay one label below it.
+    appDomain: t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+    # Only the ingress controller's own pods (k3s's Traefik) reach the apps, not every pod of kube-system.
+    ingressPodLabels: { app.kubernetes.io/name: traefik }
+    # The cluster's own ranges (pods fd00:42::/64 + 10.42.0.0/16, services
+    # fd00:43::/108, the node's public IPv6 address) are unreachable from
+    # student pods.
+    extraEgressExcept:
+      - 10.42.0.0/16
+      - fd00:42::/48
+      - fd00:43::/48
+      - 2001:7c0:1b20:c913:1::10d/128
+  network:
+    # The Kubernetes API as pods reach it: the "kubernetes" Service and, after
+    # DNAT, the API server on the node. Check with
+    #   kubectl get svc,endpoints kubernetes -n default
+    kubeApi:
+      cidrs:
+        - fd00:43::1/128
+        - 10.43.0.1/32
+        - 2001:7c0:1b20:c913:1::10d/128
+moodle:
+  # Image (images/prod.yaml: moodle) and the moodle-admin Secret exist.
+  enabled: true
+  # Moodle (k8s/charts/moodle); one label below the wildcard certificate.
+  host: moodle.t3-k8s.s242437-at-student-dhbw-mannheim-de.users.dhbw.site
+  images:
+    pullSecrets: [ghcr-pull]
+  site:
+    adminEmail: max.rml@web.de
+  # Demo users of Moodle (password: Secret moodle-demo); same e-mail addresses as
+  # the Keycloak users, so an LTI launch and the SSO login meet the same AppStore user.
+  setup:
+    demoUsers:
+      - { username: dozent, email: dozent@appstore.example, firstName: Dozent, lastName: Prod, role: teacher }
+      - { username: student1, email: student1@appstore.example, firstName: Student, lastName: Eins, role: student }
+      - { username: student2, email: student2@appstore.example, firstName: Student, lastName: Zwei, role: student }

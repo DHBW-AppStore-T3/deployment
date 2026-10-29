@@ -1,0 +1,58 @@
+{{- if .Values.migrations.enabled }}
+{{- $comp := dict "context" . "component" "migrate" -}}
+# The schema before every rollout: Helm pre-install/pre-upgrade, which Argo
+# CD runs as a PreSync hook. As the database owner; alembic/env.py takes an
+# advisory lock, so a second run waits instead of migrating in parallel.
+#
+# The role appstore_worker is managed by CloudNativePG (LOGIN, password from
+# its Secret); the migrations only grant it its rights, so this needs no
+# CREATEROLE, and no "python -m app.worker_db_role" runs here. Afterwards
+# only roles that were granted CONNECT may open the database (CNPG's cluster
+# also serves Keycloak and other databases).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "appstore.name" $comp }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {{- include "appstore.labels" $comp | nindent 8 }}
+    spec:
+      {{- include "appstore.podDefaults" . | nindent 6 }}
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: {{ include "appstore.image" (dict "context" . "key" "backend" "name" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - >-
+              python -m alembic upgrade head &&
+              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -qc
+              "DO \$\$ BEGIN EXECUTE format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', current_database()); END \$\$;"
+          env:
+            {{- include "appstore.backendEnv" . | nindent 12 }}
+          securityContext: {{- include "appstore.restricted" . | nindent 12 }}
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+{{- end }}

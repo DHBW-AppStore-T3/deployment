@@ -1,0 +1,62 @@
+{{- if .Values.network.policies }}
+{{- $v4 := list "0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.0.0.0/24" "192.168.0.0/16" "198.18.0.0/15" "224.0.0.0/3" -}}
+{{- $v6 := list "::1/128" "64:ff9b::/96" "64:ff9b:1::/48" "100::/64" "2002::/16" "fc00::/7" "fe80::/10" "fec0::/10" "ff00::/8" -}}
+# Deny by default for every Moodle pod, then only what Moodle needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: moodle-default-deny
+  labels: {{- include "moodle.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/part-of: moodle }
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: moodle-egress
+  labels: {{- include "moodle.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/part-of: moodle }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector: { matchLabels: {{ toJson .Values.network.postgresLabels }} }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    # The internet over HTTP(S) (the AppStore's public host for LTI, update checks),
+    # not the private, link-local and multicast ranges (the metadata service among them).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $v4 }}
+        - ipBlock:
+            cidr: ::/0
+            except: {{ toJson $v6 }}
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: moodle-web-ingress
+  labels: {{- include "moodle.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "moodle.selectorLabels" (dict "component" "web") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.network.ingressNamespace }} } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- end }}

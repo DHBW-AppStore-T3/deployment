@@ -1,0 +1,8 @@
+apiVersion: v2
+name: appstore
+description: >-
+  The AppStore of one environment on Kubernetes: API, pod deployer, VM
+  executor (Windows apps) and frontend, with the RBAC, admission policy and
+  network policies that confine them.
+type: application
+version: 0.1.0

@@ -1,0 +1,51 @@
+{{- $ns := .Release.Namespace -}}
+{{- $deployerSa := include "appstore.name" (dict "context" . "component" "pod-deployer") -}}
+{{- $name := include "appstore.clusterName" (dict "context" . "component" "confine-clone-grants") -}}
+# What RBAC cannot express about the ReferenceGrants the pod deployer makes for
+# kubevirt-vm deployments (admission-policy.yaml covers the dep-* namespaces; these
+# live in the image namespaces, so they need a policy of their own). A grant lets one
+# dep-* namespace's volume claims clone one claim of the image namespace, nothing else:
+# named clone-<namespace>, from exactly that namespace, to PersistentVolumeClaims.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["gateway.networking.k8s.io"]
+        apiVersions: ["v1beta1", "v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["referencegrants"]
+  matchConditions:
+    - name: only-the-pod-deployer
+      expression: {{ printf "request.userInfo.username == 'system:serviceaccount:%s:%s'" $ns $deployerSa | quote }}
+  variables:
+    - name: target
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+  validations:
+    - expression: {{ printf "%s.exists(n, n == request.namespace)" (toJson .Values.podApps.vmImageNamespaces) | quote }}
+      message: "grants only in the configured image namespaces"
+    - expression: >-
+        variables.target.metadata.name.matches('^clone-dep-[0-9a-f]{8}$')
+      message: "a grant is named clone-dep-<8 hex digits>"
+    - expression: >-
+        request.operation == 'DELETE' || (
+          variables.target.spec.from.size() == 1 &&
+          variables.target.spec.from[0].group == '' && variables.target.spec.from[0].kind == 'PersistentVolumeClaim' &&
+          variables.target.metadata.name == 'clone-' + variables.target.spec.from[0].namespace &&
+          variables.target.spec.to.size() == 1 &&
+          variables.target.spec.to[0].group == '' && variables.target.spec.to[0].kind == 'PersistentVolumeClaim' &&
+          has(variables.target.spec.to[0].name))
+      message: "a grant lets the claims of exactly one dep-* namespace clone one named claim"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+spec:
+  policyName: {{ $name }}
+  validationActions: ["Deny"]

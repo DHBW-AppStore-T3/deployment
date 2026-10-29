@@ -1,0 +1,89 @@
+# Public host of Moodle (wwwroot = https://<host>); one label below the
+# cluster's wildcard certificate. Set per environment (environments/<env>.yaml).
+host: moodle.example.org
+
+images:
+  registry: ghcr.io/dhbw-appstore-t3
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  # Digest (sha256:...) or tag (sha-<commit>); CI writes it into k8s/images/<env>.yaml.
+  tags:
+    moodle: ""
+
+# Secrets created by k8s/bootstrap.sh (never in git).
+secrets:
+  # kubernetes.io/basic-auth of the CNPG role `moodle` (platform chart).
+  db: moodle-db
+  # key `password`: login of the Moodle admin, used by the first install only.
+  admin: moodle-admin
+  # key `password`: the password of the demo users below (optional: without
+  # the Secret no demo user is created).
+  demo: moodle-demo
+
+db:
+  host: postgres-cluster-rw
+  port: 5432
+  name: moodle
+  user: moodle
+  sslmode: require
+
+site:
+  fullName: DHBW AppStore Moodle
+  shortName: moodle
+  adminUser: admin
+  adminEmail: admin@example.org
+
+# Post-install configuration (files/configure.php, init container `configure`,
+# idempotent): a fresh rollout is usable without any manual step.
+setup:
+  enabled: true
+  site:
+    lang: de              # installed from download.moodle.org when available
+    timezone: Europe/Berlin
+    country: DE
+    defaultHomePage: 3    # 0 site home, 1 dashboard, 3 my courses
+    disableTours: true
+  course:                 # example course with an LTI activity; empty shortName: none
+    shortName: LTI-Klicktest
+    fullName: LTI Klicktest
+    activityName: AppStore Beispiel-App
+  # [{username, email, firstName, lastName, role: teacher|student}]; password
+  # from the Secret secrets.demo. Set per environment.
+  demoUsers: []
+
+# The LTI 1.3 tool "DHBW AppStore". The apps-chart fills appstoreHost, clientId
+# and deploymentId from the environment's AppStore settings (they have to match
+# the AppStore's LTI13_* settings); without a clientId there is no tool.
+lti:
+  toolName: DHBW AppStore
+  appstoreHost: ""
+  clientId: ""
+  deploymentId: ""
+
+ingressClassName: ""
+
+persistence:
+  # $CFG->dataroot (uploads, sessions, caches). One pod only: ReadWriteOnce.
+  size: 20Gi
+  storageClassName: ""
+
+resources:
+  requests: { cpu: 200m, memory: 512Mi }
+  limits: { memory: 1536Mi }
+# Scratch space of the pod: Apache runtime files and $CFG->tempdir (backups).
+tmpSizeLimit: 4Gi
+localcacheSizeLimit: 1Gi
+
+cron:
+  schedule: "* * * * *"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+network:
+  # Deny by default; then ingress controller -> web, Postgres, DNS, internet
+  # (LTI keys of the AppStore, mail) without private ranges.
+  policies: true
+  ingressNamespace: kube-system
+  postgresLabels:
+    cnpg.io/cluster: postgres-cluster

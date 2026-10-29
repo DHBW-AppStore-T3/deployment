@@ -1,0 +1,36 @@
+{{- $comp := dict "context" . "component" "cron" -}}
+# Moodle's cron every minute (admin/cli/cron.php). It mounts the same
+# ReadWriteOnce volume as the web pod (the cluster has one node).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: moodle-cron
+  labels: {{- include "moodle.labels" $comp | nindent 4 }}
+spec:
+  schedule: {{ .Values.cron.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3000
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {{- include "moodle.labels" $comp | nindent 12 }}
+        spec:
+          {{- include "moodle.podDefaults" . | nindent 10 }}
+          restartPolicy: Never
+          containers:
+            - name: cron
+              image: {{ include "moodle.image" . }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command: [php, admin/cli/cron.php]
+              env:
+                {{- include "moodle.env" . | nindent 16 }}
+              securityContext: {{- include "moodle.containerSecurity" . | nindent 16 }}
+              resources: {{- toYaml .Values.cron.resources | nindent 16 }}
+              volumeMounts: {{- include "moodle.volumeMounts" . | nindent 16 }}
+          volumes: {{- include "moodle.volumes" . | nindent 12 }}

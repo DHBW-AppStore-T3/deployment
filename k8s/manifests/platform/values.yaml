@@ -1,0 +1,20 @@
+# Set per environment through k8s/environments/<env>.yaml (see argocd/apps-chart).
+appHost: appstore.example.org     # public host of the UI (the OIDC client's redirect target)
+ssoHost: sso.example.org          # public host of Keycloak
+selfServiceHost: ""               # public host of the self-service-ui (its OIDC client's redirect target); empty: no client
+# Demo users in realm dhbw (password: keycloak-secret demo-password). Staging only.
+demoUsers: false
+# Realms routed on the public host; the master realm and the admin console
+# are reachable only through kubectl port-forward svc/keycloak 8080 (then
+# http://localhost:8080/admin/) unless publicAdmin is set.
+publicRealms: [dhbw]
+publicAdmin: false
+# Who may reach Keycloak and the database (templates/networkpolicies.yaml).
+network:
+  policies: true
+  # The ingress controller (sign-in goes through it): its namespace and, to let only its pods
+  # in, their labels (k3s's Traefik).
+  ingressNamespace: kube-system
+  ingressPodLabels: { app.kubernetes.io/name: traefik }
+  # The CloudNativePG operator.
+  operatorNamespace: cnpg-system

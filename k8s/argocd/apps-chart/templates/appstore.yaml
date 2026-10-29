@@ -1,0 +1,36 @@
+# Our AppStore (k8s/charts/appstore): API, pod deployer, VM executor and
+# frontend, with their RBAC, admission policy and network policies. Image
+# tags come from k8s/images/<env>.yaml, written by the k8s-bump workflow.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.env.name }}-appstore
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "3" }
+  # Removing the Application removes what it deployed (cluster-wide RBAC and
+  # the admission policy included), instead of leaving it running.
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.env.branch }}
+    path: k8s/charts/appstore
+    helm:
+      valueFiles: [../../images/{{ .Values.env.name }}.yaml]
+      values: |
+        host: {{ .Values.env.host }}
+        selfServiceHost: {{ .Values.env.selfServiceHost | default "" | quote }}
+        ssoHost: {{ .Values.env.ssoHost }}
+        environment: {{ .Values.env.namespace }}
+        {{- with .Values.appstore }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.env.namespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    # PruneLast: a resource that the chart no longer renders is removed only after
+    # the new ones are healthy (the ClamAV Deployment -> StatefulSet switch).
+    syncOptions: [CreateNamespace=true, PruneLast=true]

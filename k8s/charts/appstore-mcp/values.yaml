@@ -1,0 +1,58 @@
+# appstore-mcp of one environment. Set by its Argo CD application
+# (k8s/argocd/apps-chart/templates/mcp.yaml) from k8s/environments/<env>.yaml;
+# the image digest comes from k8s/images/<env>.yaml (key appstoreMcp).
+# Nothing secret is in here: the Secret `secretName` is created by
+# k8s/bootstrap.sh and completed by a human (see appstore-mcp docs/OPERATIONS.md).
+
+# Public host, one label below the zone (the wildcard certificate covers *.<zone>).
+host: ""
+zone: ""
+# Which environment this instance defaults to ("staging" | "prod").
+environment: staging
+
+images:
+  registry: ghcr.io/dhbw-appstore-t3
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  tags:
+    appstoreMcp: ""
+
+# Keys: token-signing-key (Fernet), static-tokens (name:sha256 lines),
+# github-client-id, github-client-secret, github-api-token (the last three
+# are filled in by a human).
+secretName: appstore-mcp
+githubOrg: DHBW-AppStore-T3
+
+# Empty: the cluster's default IngressClass.
+ingressClassName: ""
+
+# Namespaces whose pod logs, events and workloads the server may read. The
+# ServiceAccount gets those rights only there (RoleBindings); cluster-wide it
+# can only read what dep-* counts and the overview need.
+readableNamespaces:
+  - appstore-staging
+  - appstore-prod
+  - argocd
+  - cert-manager
+  - cnpg-system
+  - kube-system
+
+# SQLite file with registered OAuth clients and refresh tokens. Losing it only
+# forces a new login.
+persistence:
+  enabled: true
+  size: 256Mi
+
+resources:
+  requests: { cpu: 20m, memory: 96Mi }
+  limits: { cpu: 500m, memory: 256Mi }
+
+extraEnv: []
+
+network:
+  policies: true
+  ingressNamespace: kube-system
+  kubeApi:
+    cidrs: []
+    ports: [443, 6443]
+  extraEgressExcept: []

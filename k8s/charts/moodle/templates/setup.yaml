@@ -1,0 +1,13 @@
+{{- if .Values.setup.enabled }}
+# Input of the init container `configure` (files/configure.php).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moodle-setup
+  labels: {{- include "moodle.labels" (dict "context" . "component" "web") | nindent 4 }}
+data:
+  configure.php: |-
+{{ .Files.Get "files/configure.php" | indent 4 }}
+  setup.json: |-
+{{ dict "site" .Values.setup.site "course" .Values.setup.course "demoUsers" .Values.setup.demoUsers "lti" .Values.lti | toPrettyJson | indent 4 }}
+{{- end }}

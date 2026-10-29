@@ -1,0 +1,37 @@
+{{- if .Values.mcp.enabled }}
+# appstore-mcp (k8s/charts/appstore-mcp): the read-only MCP server agents use
+# to judge rollouts. Image digest from k8s/images/<env>.yaml (appstoreMcp).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.env.name }}-mcp
+  namespace: argocd
+  annotations: { argocd.argoproj.io/sync-wave: "3" }
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.env.branch }}
+    path: k8s/charts/appstore-mcp
+    helm:
+      valueFiles: [../../images/{{ .Values.env.name }}.yaml]
+      values: |
+        environment: {{ .Values.env.name }}
+        host: {{ .Values.mcp.host }}
+        zone: {{ .Values.mcp.zone }}
+        {{- with .Values.appstore.images }}
+        images:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.appstore.network }}
+        network:
+          kubeApi:
+            {{- toYaml .kubeApi | nindent 12 }}
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.env.namespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+{{- end }}

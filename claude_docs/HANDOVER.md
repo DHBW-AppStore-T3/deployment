@@ -1,62 +1,47 @@
 # Handover — Deployment
 
-Lebendes Übergabedokument gemäß [HARNESS.md](https://github.com/DHBW-AppStore-T3/.github/blob/main/docs/HARNESS.md) Abschnitt 1.2.
-Jede Session liest dieses Dokument zu Beginn und aktualisiert es vor dem Abschluss.
+Lebendes Übergabedokument (Harness-Konzept: [HARNESS.md](https://github.com/DHBW-AppStore-T3/.github/blob/main/docs/HARNESS.md)). Beschreibt den Ist-Zustand von `dev`; Stand wird mit jeder Änderung angepasst.
 
----
+## 1. Zustand
 
-## 1. Status & Fokus
+- **Plattform:** k3s-Cluster im OpenStack-Projekt `ma_wwi_24sea_appstore_g3` (ein Node, nur IPv6/VPN), Argo CD, CloudNativePG (Datenbanken `appstore_t3`, `keycloak`, `moodle`), Keycloak (Realms `dhbw`, `appstore`), Traefik, cert-manager mit Wildcard-Zertifikat `*.<zone>`.
+- **Umgebungen:** Staging = Branch `dev` (Namespace `appstore-staging`), Produktion = Branch `main` (Namespace `appstore-prod`). Beide Umgebungen teilen den Node. Aufbau, Komponenten, Rechte, Netzwerk-Policies, Admission-Policy: [k8s/README.md](../k8s/README.md).
+- **Komponenten je Umgebung** (`k8s/charts/appstore`): `api`, `pod-deployer`, `frontend`, `self-service-ui`, `migrate` (Hook), `orphans` (stündlich), optional `clamav`, `seed` (nur Staging). Dazu `appstore-mcp` und `moodle` als eigene Anwendungen.
+- **Images:** `ghcr.io/dhbw-appstore-t3/…`, Digests in `k8s/images/{staging,prod}.yaml` (Schlüssel `backend`, `workerPods`, `frontend`, `appstoreMcp`, `selfServiceUi`, `moodle`); geschrieben ausschließlich von `k8s-bump.yml`.
+- **App-Runtimes:** `kubernetes` (Pods) und `kubevirt-vm` (Windows-Desktop als KubeVirt-VM, Golden Image im Namespace `vm-poc`, Speicher Cinder) laufen über den `pod-deployer`. Den OpenStack-VM-Pfad (`vm-executor`) gibt es nicht mehr.
+- **Lokaler Stack:** `docker-compose.dev.yml` + `Makefile`, Anleitung `docs/dev-setup.md`.
+- **MCP für Agenten:** `appstore-mcp` (nur lesend), Skill `/verify-staging`.
 
-- **Die 2 Flows (Harness Engineering):**
-  - **Flow 1 (`/user-story`):** Spezifikations- und Klärungsdialog zur Issue-Erstellung.
-  - **Flow 2 (`/harness-workflow`):** Autonome Umsetzung via `dev`-Trunk -> TDD -> PR auf `dev` -> CI grün -> Auto-Merge auf `dev` -> Staging Deploy -> Hermes Discord Statusmeldung. Push auf `main` bleibt strikt menschlich + Test Coverage Gate.
-- **Staging CI/CD:** `staging.yml` triggert nun automatisch bei Push/Merge auf `dev` (Self-Hosted Runner). Nach Abschluss führt `notify_staging_health.py` den Health-Check durch und meldet Status & System Health (GUT / SCHLECHT) nach Discord.
-- **Produktions-VM:** `appstore-prod-01` läuft auf OpenStack (`ma_wwi_24sea_appstore_g3`), 10 Container (caddy, frontend, backend, worker, keycloak, 2× postgres, rabbitmq, redis, tfstate-postgres).
-- **Hermes Agent & MCP (deployment#49 — umgezogen):** `hermes-agent` läuft seit dieser Session nicht mehr als Overlay auf `appstore-prod-01`, sondern auf einer eigenen VM (`hermes-dhbw-appstore`, `2001:7c0:1b20:c913:1::342`, provisioniert per `hermes.yml`-Workflow). `podman-mcp` läuft stattdessen einzeln auf jeder Ziel-VM (`appstore-prod-01`, `staging-dhbw-appstore`, `ci-dhbw-appstore`), erreichbar von der Hermes-VM über MCP/TCP:8080 (Security-Group-scoped). Details: `claude_docs/decisions/2026-hermes-dedicated-vm.md`.
-- **Guardrails:** PreToolUse-Guardrail (`deployment/.claude/hooks/appstore-prod-guardrail.py`) schützt direkten SSH-Zugriff gegen unbefugte Docker-Befehle (nur `docker restart <name>` aus `RESTART_ALLOWLIST` erlaubt).
+## 2. Abläufe
 
----
+- **Image ausrollen:** Push auf `dev` oder `main` in backend/worker/frontend/self-service-ui/appstore-mcp/moodle_appstore → deren CI baut, scannt, pusht und startet `k8s-bump.yml` mit dem Digest → Digest-Datei der Umgebung → Argo CD.
+- **Chart, Policy, Realm ändern:** PR auf `dev` (Staging), danach `k8s/promote.sh` (PR `dev` → `main`).
+- **Rollback eines Images:** Digest in `k8s/images/<env>.yaml` zurücksetzen (Commit auf `dev` bzw. PR auf `main`). Alles andere: Commit zurücknehmen.
+- **Neue Umgebung / neue Secret-Schlüssel:** `GHCR_PULL_TOKEN_FILE=<datei> k8s/bootstrap.sh staging|prod` (rotiert nichts, ergänzt Fehlendes). Zugangsdaten: `k8s/show-credentials.sh <env>`.
+- **Prüfen:** `kubectl -n argocd get applications | grep <env>`.
 
-## 2. In Arbeit & Nächste Schritte
+## 3. CI (`.github/workflows/`)
 
-- [x] Reengineering auf 2 Flows im Deployment-Repo: `staging.yml` auf `dev`-Trigger umgestellt.
-- [x] Staging Health-Check & Discord-Notification (`notify_staging_health.py`) implementiert.
-- [ ] **GitHub MCP & OpenStack MCP aktivieren:** Liegen vorkonfiguriert in `agent/config.yaml`, warten auf Read-Only-PAT bzw. `clouds.yaml`.
-- [x] **deployment#49 — Hermes auf eigene VM, vollständig abgeschlossen:** `envs/hermes/` provisioniert (`hermes-dhbw-appstore`, `2001:7c0:1b20:c913:1::342`), `HERMES_VM_IPV6`-Secret gesetzt. `podman-mcp` läuft healthy auf allen drei Ziel-VMs (prod, staging, ci — verifiziert per `docker ps`). Alte `docker-compose.agent.yml` auf `appstore-prod-01` bereits entfernt. `HERMES_ENV_FILE`-Secret vom Menschen gesetzt (bestehender Bot, 1:1 übernommen), `hermes-agent` läuft (verifiziert per `docker ps`, "Up" ohne Crash-Loop). Discord-Roundtrip-Test (Bot antwortet auf `container_list` gegen mind. eine Ziel-VM) noch nicht durchgeführt — nächste Session oder manuell im Discord-Kanal prüfen.
-  **Offen — braucht einen Menschen:**
-  - `PRODUCTION_ENV_FILE` fehlen weiterhin `MOODLE_HOSTNAME`/`MOODLE_DB_PASSWORD`/`MOODLE_REPO_PATH`/`MOODLE_ADMIN_PASSWORD`/`MOODLE_ADMIN_EMAIL` (siehe Historie unten — pre-existing Gap, nicht durch #49 verursacht, aber durch den ersten echten Prod-Deploy dieser Session aufgedeckt). Werte für einen manuellen Eintrag: `MOODLE_HOSTNAME=moodle-prod.s242437-at-student-dhbw-mannheim-de.users.dhbw.site`, `MOODLE_REPO_PATH=/home/ubuntu/moodle_appstore`, `MOODLE_ADMIN_EMAIL=admin@dhbw.de`; `MOODLE_DB_PASSWORD`/`MOODLE_ADMIN_PASSWORD` wurden in dieser Session direkt auf `appstore-prod-01`s `.env` gesetzt (`sudo cat /home/ubuntu/app/.env` liest sie aus), müssen aber zusätzlich ins Secret übernommen werden, sonst überschreibt der nächste Ansible-Lauf sie wieder mit leeren Werten.
-- [x] **Moodle-Integration Prod-CI/CD:** `production.yml`/`production.yml`-Workflow bekommen denselben `moodle_enabled`-Mechanismus wie `staging.yml` (deployment#43, Task 1-4), seit 2026-09-24 Default-`true` statt Opt-in.
-- [x] **Task 5 (Staging-Regressionscheck):** `moodle-prod`/`moodle-db-prod` laufen healthy, App-Ebene bestätigt.
-- [ ] **TLS für `MOODLE_HOSTNAME` auf Staging:** Caddy scheitert an der ACME-Order-Finalisierung bei `certificates.dhbw.cloud`, siehe Historie unten — vermutlich CA-seitiger Bug, nächster Ansatzpunkt: Caddy-eigenes ACME-Zertifikats-Handling für diesen einen Hostnamen debuggen (evtl. `on_demand_tls` statt statischer Domain-Liste, oder direkter Kontakt zum HARICA/DHBW-Cloud-Betreiber).
-- [ ] **Task 6 (Prod-Deploy + IPv6-Rückgabe):** weiterhin menschlich zu triggern — letzter Schritt der gesamten backend#9/frontend#9/self-service-ui#5/deployment#43-Serie.
+`k8s-bump.yml`, `k8s-chart.yml` (Render, Schemas, Admission-Policy-Auswertung, kind-Cluster für RBAC), `novnc-proxy.yml`, `secret-scan.yml` (Gitleaks). `dev` nimmt Änderungen nur über Pull Requests an.
 
----
+## 4. Regeln
 
-## 3. Bekannte Fallstricke & Blocker
+1. Keine Secrets im Repository; `bootstrap.sh` legt alle Secrets im Cluster an.
+2. Ein bestehender Keycloak-Realm wird nicht neu importiert. Änderungen an `dhbw-realm.json` gelten nur für neue Realms; für laufende Realms Admin-Konsole oder `k8s/keycloak-self-service-client.sh`. Der Login-Theme-Eintrag wird nach jedem Sync gesetzt.
+3. App-Hosts liegen eine Ebene unter der Zone (`<workload>-<deployment>.<zone>`), weil das Wildcard-Zertifikat nur `*.<zone>` deckt.
+4. Der Cluster ist IPv6-primär: Server im Container binden `::`.
+5. Pod-, Service- und Node-Netze stehen in `podApps.extraEgressExcept`, damit Student-Pods sie nicht erreichen.
+6. Neue Rechte des Pod-Deployers gehören in dessen ClusterRole und in die Admission-Policy (`k8s/charts/appstore/templates/admission-policy*.yaml`), Fälle in `k8s/tests/policy/make_cases.py`.
+7. Der Pod-Deployer darf VirtualMachineInstances nur lesen, nicht anlegen oder löschen.
+8. `.claude/hooks/appstore-prod-guardrail.py` blockiert zustandsändernde Docker-Aufrufe über SSH auf den stillgelegten Host `appstore-prod-01`.
 
-1. **Discord Gateway Intents:** `PrivilegedIntentsRequired` tritt auf, wenn "Message Content Intent" im Discord Developer Portal nicht aktiviert ist.
-2. **`podman-mcp` Container:** Braucht `stdin_open: true` in Compose, da `cmd.Execute()` sonst EOF erhält und crasht; Symlink `podman -> docker` und `--podman-impl cli` sind im Dockerfile erzwungen.
-3. **Hermes Reconnect:** Hermes verbindet sich nur beim Start mit MCPs — `podman-mcp` muss vor Hermes gesund sein (`depends_on: condition: service_healthy`).
-4. **Staging Runner:** Muss Zugriff auf den `tfstate-postgres`-Container im internen Netzwerk haben.
-5. **Menschliches Gate für Produktion:** Kein automatisches Deployment nach Prod; Push auf `main` ist rein menschlich und testabdeckungs-gesichert.
+## 5. Offen
 
----
-
-## 4. Letzte Übergaben (Historie)
-
-- **2026-09-24 (deployment#49 — Hermes-Umzug auf eigene VM, vollständig abgeschlossen):** PRs #51–#60 gemergt (9× `dev`→`main`, jedes Mal einzeln vom Menschen freigegeben). Hermes-VM provisioniert, `podman-mcp` läuft healthy auf allen drei Ziel-VMs, alte Overlay-Datei entfernt. **Mehr echte Stolpersteine als der geplante Umzug selbst — hier vollständig, damit die nächste Session nicht dieselben Fehler wiederholt:**
-  1. **`dev` hat kein PR-Gate:** kein Branch-Protection, kein `pull_request`-Trigger gegen `dev` (`secret-scan.yml` läuft nur gegen `main`). Absichtlich nicht behoben (auf Wunsch) — nächste Session sollte klären, ob das gewollt ist.
-  2. **`main` war 14 Commits hinter `dev`**, inkl. eines Commits (`f5cb796`, PR #42) mit älterer, bereits überholter `moodle_enabled`-Logik. Aufgelöst zugunsten von `dev`, per Merge in beide Richtungen.
-  3. **`.github/workflows/hermes.yml` ist erst nach einem Merge auf `main` per `workflow_dispatch` ansprechbar** (GitHub registriert `workflow_dispatch`-Workflows nur vom Default-Branch) — das erzwang den ersten `main`-Merge, noch bevor die Hermes-VM überhaupt existierte, und brach kurzzeitig `staging.yml`/`production.yml` (`hermes_vm_ipv6` ohne Wert). Reihenfolge fürs nächste Mal: neue Variable mit sinnvollem Default versehen, wenn ein neuer Workflow zwingend vor seinem ersten echten Nutzen auf `main` muss.
-  4. **Kein direkter SSH-/tfstate-postgres-Zugriff aus der Session heraus** (Netzwerk-Scoping) — alle Provisionierung/Rollouts liefen über den Self-Hosted-Runner (`ci-dhbw-appstore`) via `workflow_dispatch`, nicht direkt.
-  5. **`docs/prod-setup.md` und `claude_docs/topology/environments.md` enthielten veraltete Pfade/IPs** (`/opt/app-store/deployment` statt `/home/ubuntu/app`; `appstore-prod-01`s IP `::15a` statt der echten `::180`) — beide stammen aus manuellen Bootstrap-Anleitungen bzw. einer Doku, die einen VM-Rebuild nicht mitbekam. Erste `rollout-podman-mcp-prod`-Läufe scheiterten daran. **Lehre:** bei sowas immer `infrastructure/ansible/*.yml` (den echten automatisierten Pfad) statt `docs/*.md` (kann veraltet sein) als Quelle nehmen, und IPs immer per `terraform output` statt aus einer Doku-Zeile.
-  6. **`MCP_ENV=prod sudo docker compose` funktioniert nicht** — `sudo` resettet die Umgebung für den Kindprozess, ein vorangestelltes `VAR=val` vor `sudo` erreicht ihn nie. Richtig: `sudo MCP_ENV=prod docker compose`.
-  7. **Der CI-Runner-Container selbst hat keinen Docker-Socket-Mount** (bewusste Sicherheitsgrenze, siehe `infrastructure/runner-vm/docker-compose.yml`) — `rollout-podman-mcp-ci` nahm fälschlich an, "dieser Runner ist ci-dhbw-appstore" bedeute, lokal `docker compose` laufen lassen zu können. Fix: SSH auf `127.0.0.1` (funktioniert wegen `network_mode: host` — derselbe Netzwerk-Namespace wie die VM), mit demselben `SSH_PRIVATE_KEY` wie überall sonst (verifiziert, obwohl `ci-dhbw-appstore` nicht Terraform-verwaltet ist).
-  8. **Ein pre-existing Gap in `PRODUCTION_ENV_FILE`** (keine `MOODLE_*`-Werte, im Gegensatz zu `STAGING_ENV_FILE` seit #43) wurde durch den ersten echten Prod-Deploy dieser Session aufgedeckt — nicht durch #49 verursacht. Live-`.env` auf `appstore-prod-01` direkt gefixt (funktioniert sofort), aber `PRODUCTION_ENV_FILE` selbst konnte nicht sicher aktualisiert werden (GitHub-Secrets sind write-only, das volle bestehende Secret ließ sich nicht sicher rekonstruieren) — **jeder künftige volle Ansible-Lauf überschreibt die Live-Datei wieder aus dem alten Secret-Stand**, bereits einmal live beobachtet. Siehe Abschnitt 2 für die konkret fehlenden Werte.
-  9. **Eigener Fehler:** `TEMP_MOODLE_DB_PASSWORD`/`TEMP_MOODLE_ADMIN_PASSWORD`-Secrets wurden direkt nach Verwendung gelöscht, bevor die tatsächlichen generierten Werte irgendwo dauerhaft notiert waren — nicht wiederherstellbar. Da noch kein `docker compose up` für `docker-compose.moodle.yml` gelaufen war, war Neu-Generieren sicher (siehe Abschnitt 2 für die finalen, in diesem Handover festgehaltenen Werte). **Lehre:** bei generierten Secrets, die über mehrere CI-Schritte hinweg gebraucht werden, zuerst an einem dauerhaften Ort (Handover, Passwort-Manager) festhalten, dann erst die Zwischenablage (Repo-Secret) löschen.
-- **2026-09-24 (deployment#43 Task 5 — Staging-Live-Verifikation, Moodle jetzt Default-On):** Auf expliziten Wunsch `moodle_enabled` von Opt-in auf Default-`true` umgestellt (PR #45), zwei Nachbesserungen nötig, bis es auf einem echten Push wirklich griff (PR #46, #48 — `${{ inputs.moodle_enabled != false }}` allein reichte nicht: GitHub Actions liefert bei `push`-Events und bei API/CLI-`workflow_dispatch` ohne explizites `-f` keinen brauchbaren `inputs.moodle_enabled`-Wert, weder `null` noch den YAML-`default`; robuste Lösung war der Shell-Fallback `${MOODLE_ENABLED:-true}` statt `:-false`). `STAGING_ENV_FILE`-Secret um `MOODLE_HOSTNAME`/`MOODLE_DB_PASSWORD`/`MOODLE_REPO_PATH` ergänzt (fehlten komplett, hätten jeden Deploy mit Moodle-Default-On blockiert). `moodle-prod`/`moodle-db-prod` laufen jetzt healthy auf Staging, App-Ebene per internem Test bestätigt (Apache/PHP antworten, korrekter `install.php`-Redirect für frische Instanz). **Offenes Problem:** Caddy bekommt für den neuen `MOODLE_HOSTNAME` (`moodle-staging.…`) kein TLS-Zertifikat von `certificates.dhbw.cloud` (HARICA) — DNS-01-Autorisierung wird wiederholt als `valid` bestätigt, Order bleibt bei der Finalisierung trotzdem `pending`. Reproduziert über 8+ Versuche, auch nach Bereinigung verwaister `_acme-challenge`-TXT-Records (die von den ersten fehlgeschlagenen Versuchen liegen geblieben waren — Caddy räumt sie bei einem `finalizing order`-Fehler nicht auf). Sieht nach einem serverseitigen State-Sync-Bug bei `certificates.dhbw.cloud` zwischen dessen `authz`- und `order`-Objekten aus, nicht nach einem Konfigurationsfehler hier — die bestehende `staging.s242437-…`-Domain im selben Caddy-Prozess, derselben Zone, demselben TSIG-Key hat ihr Zertifikat ohne Probleme. Moodle bleibt bis zur Klärung ohne eigenes TLS erreichbar (nur intern/HTTP-301, kein Browser-Zugriff über den öffentlichen Hostnamen). Nicht weiterverfolgt in dieser Session — nächste Session sollte zuerst hier ansetzen, bevor ein echter Browser-LTI-Test möglich ist.
-- **2026-09-24 (deployment#43 Task 1-4):** `docker-compose.dev.yml` um LTI13/Handoff-Env + `host.docker.internal` erweitert (backend#9-Kontrakt lokal testbar). `production.yml`/`production.yml`-Workflow um denselben `moodle_enabled`-Opt-in wie `staging.yml` ergänzt (compose_files, bedingte Klon/Chown-Tasks, `workflow_dispatch`-Input). Task 6 (Live-Prod-Deploy + IPv6-Rückgabe) weiterhin explizit menschlichem Trigger überlassen — letzter Schritt der gesamten backend#9/frontend#9/self-service-ui#5/deployment#43-Serie.
-- **2026-09-18 (Harness 2-Flow Reengineering):** `staging.yml` auf `dev`-Trunk umgestellt; Health-Check und Discord-Benachrichtigung (`notify_staging_health.py`) nach Staging-Deployment integriert; `HANDOVER.md` aktualisiert.
-- **2026-09-17:** Universelle Skills (`code-reviewer`, `/tdd`, `/ship-feature`) ins `.github`-Repo umgezogen. Wochenlogs abgelöst durch dieses lebende Übergabedokument (#33).
-- **2026-09-16:** PreToolUse-Guardrail (`appstore-prod-guardrail.py`) für direkten SSH-Zugriff implementiert; `code-reviewer`-Agent adaptiert; Staging-Runner an Worker-Netzwerk angebunden (#14).
-- **2026-09-15:** Hermes Agent und `podman-mcp` live auf `appstore-prod-01` gebracht; Discord-Integration aufgesetzt; Branch-Protection org-weit aktiviert; Remotes auf `DHBW-AppStore-T3` korrigiert.
+- Backups des CNPG-Clusters, der Student-Volumes, des Moodle-Datenverzeichnisses und der Moodle-Datenbank.
+- Eigene Nodes für Student-Pods (`podApps.studentNodeSelector`, `studentTolerations`).
+- Image-Signaturen (cosign), vollständiger End-to-End-Job in kind, Netzwerk-Policy-Prüfung in CI (kind erzwingt sie nicht; Prüfung auf Staging).
+- Moodle: SMTP-Einstellungen.
+- Produktion: `selfServiceUi.enabled: false`, bis der Client `appstore-self-service` im laufenden Realm existiert.
+- [x] **KubeVirt-VM-Pfad (Windows-Matlab v2.1.0, 2026-10-25):** läuft auf Staging (`dep-01d72eac`, bleibt als Test stehen). Chart: Rolle `vnc-proxy`, Admission-Policy für ServiceAccount `vnc-proxy` und `ReferenceGrant`s (`admission-policy-clone-grants.yaml`, Testfälle in `k8s/tests/policy/make_cases.py`), Wert `podApps.vmImageNamespaces`. Proxy: `docker/novnc-proxy` (aiohttp, VNC über die Subresource `virtualmachineinstances/vnc`, Basic-Auth, IPv4+IPv6). Cluster-Seite: `scripts/enable-cross-namespace-clone.sh` (k3s-Feature-Gate + CSI-Provisioner; nach `helm upgrade` von cinder-csi erneut ausführen). **Nur eine Windows-VM gleichzeitig** (Cinder-Quota 256 GB, Golden 90 + VM 90).
+- [ ] **E2E-Kette auf Staging (`e2e/`, `.github/workflows/e2e-staging.yml`, PR #158):** Playwright, Pod-App und VM-App: Admin legt an/reicht ein/genehmigt, Dozent deployt, API/Live-Ansicht/Link geprüft, Aufräumen auch nach Fehlern (`sweepStale` entfernt `e2e-*`-Reste). Lokal: `E2E_CHANNEL=chrome E2E_ADMIN_PASSWORD=… E2E_DOZENT_PASSWORD=… E2E_VM=0 npx playwright test`. **Offen:** erster vollständiger Lauf (Selektoren ab `deploys`-Schritt ungeprüft), Repo-Secrets `E2E_ADMIN_PASSWORD`/`E2E_DOZENT_PASSWORD` setzen, VM-Kette erst aktivieren wenn kein Hand-Deployment die Windows-Quota hält.
+- Bekannte Falle: parallele Backend-Builds überschreiben sich in `k8s/images/staging.yaml` (langsamerer älterer Lauf setzt den Digest zurück) — `gh run rerun` des neuesten Laufs behebt es.

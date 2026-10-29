@@ -1,0 +1,70 @@
+{{- if not .Values.publicAdmin }}
+# The admin console is reached through kubectl port-forward svc/keycloak 8080
+# (KC_HOSTNAME_ADMIN, keycloak.yaml). Its login pages belong to the master
+# realm and are built on that realm's frontend URL, by default the public
+# host, where /realms/master/ is not routed: the login form would post there
+# and the admin could never sign in. So the master realm gets
+# http://localhost:8080 as its frontend URL. Keycloak creates the master realm
+# itself, so this job sets it after each sync; once it is set, the job only
+# looks at the realm's public issuer and needs no login.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-admin-url
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: kcadm
+          image: quay.io/keycloak/keycloak:26.4.7@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007
+          command: [/bin/bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              want=http://localhost:8080
+              # The master realm's issuer, read with bash alone (the image has
+              # no curl): it is the realm's frontend URL.
+              exec 3<>/dev/tcp/keycloak/8080
+              printf 'GET /realms/master/.well-known/openid-configuration HTTP/1.0\r\nHost: keycloak:8080\r\n\r\n' >&3
+              issuer=
+              while IFS= read -r line || [[ -n $line ]]; do
+                if [[ $line == *'"issuer":"'* ]]; then
+                  issuer=${line#*\"issuer\":\"}
+                  issuer=${issuer%%\"*}
+                fi
+              done <&3
+              exec 3<&-
+              if [[ $issuer == "$want/realms/master" ]]; then
+                echo "master realm: frontend URL is $want"
+                exit 0
+              fi
+              echo "master realm: issuer is ${issuer:-unknown}, setting the frontend URL to $want"
+              kcadm=/opt/keycloak/bin/kcadm.sh
+              $kcadm config credentials --config /tmp/kcadm.config --server http://keycloak:8080 \
+                --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASSWORD"
+              $kcadm update realms/master --config /tmp/kcadm.config -s "attributes.frontendUrl=$want"
+          env:
+            - { name: KC_ADMIN_USER, value: admin }
+            - name: KC_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-secret, key: admin-password } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+{{- end }}

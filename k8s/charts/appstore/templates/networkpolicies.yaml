@@ -1,0 +1,187 @@
+{{- if .Values.network.policies }}
+{{- $n := .Values.network -}}
+{{- $part := include "appstore.fullname" . -}}
+{{- $v4 := concat (include "appstore.privateV4" . | fromJsonArray) (list) -}}
+{{- $v6 := concat (include "appstore.privateV6" . | fromJsonArray) (list) -}}
+{{- range .Values.podApps.extraEgressExcept }}
+{{- if contains ":" . }}{{ $v6 = append $v6 . }}{{ else }}{{ $v4 = append $v4 . }}{{ end }}
+{{- end }}
+# Every pod of this chart: nothing in, nothing out, unless a policy below
+# allows it (.github#4, migration plan phase 4). Keycloak and Postgres
+# (platform chart) are not selected.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-default-deny
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/part-of: {{ $part }} }
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-dns
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/part-of: {{ $part }} }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# Who uses the database: the API (with migrations and the orphan check) and
+# both workers, each with its own role.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-postgres
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/part-of, operator: In, values: [{{ $part }}] }
+      - { key: app.kubernetes.io/component, operator: In, values: [api, pod-deployer, migrate, orphans, seed] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: {{ toJson $n.postgresLabels }} }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+# The frontend: reached by the ingress controller; it reaches the API (/api).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-frontend
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "appstore.selectorLabels" (dict "context" . "component" "frontend") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.podApps.ingressNamespace }} } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "api")) | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 8000 }
+{{- if and .Values.selfServiceUi.enabled (index .Values.images.tags "selfServiceUi") }}
+---
+# The self-service-ui: reached by the ingress controller; its oauth2-proxy
+# redeems the sign-in at Keycloak, its Caddy reaches the API (/api/app-store).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-self-service-ui
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "appstore.selectorLabels" (dict "context" . "component" "self-service-ui") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.podApps.ingressNamespace }} } }
+      ports:
+        - { protocol: TCP, port: 4180 }
+  egress:
+    - to:
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "api")) | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - to:
+        - podSelector: { matchLabels: {{ toJson $n.keycloakLabels }} }
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- end }}
+---
+# The API: reached only through the gateways (frontend, self-service-ui), so
+# X-Forwarded-* comes from nobody else. It
+# reaches Keycloak, the Kubernetes API (live view) and the internet (Git
+# hosts, the LTI platform's keys), over HTTPS only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-api
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "appstore.selectorLabels" (dict "context" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "frontend" "self-service-ui")) | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 8000 }
+  egress:
+    - to:
+        - podSelector: { matchLabels: {{ toJson $n.keycloakLabels }} }
+      ports:
+        - { protocol: TCP, port: 8080 }
+    {{- if $n.kubeApi.cidrs }}
+    {{- include "appstore.kubeApi" $n.kubeApi | nindent 4 }}
+    {{- end }}
+    {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow "ports" (list 443)) | nindent 4 }}
+    {{- if .Values.clamav.enabled }}
+    # ClamAV: the API is the only pod that scans uploads.
+    - to:
+        {{- include "appstore.netpolPeers" (dict "part" $part "components" (list "clamav")) | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 3310 }
+    {{- end }}
+    {{- if .Values.api.hostAliases }}
+    # The ingress controller, for the host names of api.hostAliases (Moodle's keys).
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.podApps.ingressNamespace }} } }
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 8443 }
+    {{- end }}
+{{- if .Values.seed.enabled }}
+---
+# The seed job (templates/seed-job.yaml) reads the realm's users from Keycloak and
+# the demo apps' repositories (and their appstore.yaml) from the internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-seed
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "appstore.selectorLabels" (dict "context" . "component" "seed") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: {{ toJson $n.keycloakLabels }} }
+      ports:
+        - { protocol: TCP, port: 8080 }
+    {{- include "appstore.internet" (dict "v4" $v4 "v6" $v6 "allow" $n.extraEgressAllow "ports" (list 443)) | nindent 4 }}
+{{- end }}
+---
+# The pod deployer and the orphan check: the Kubernetes API, nothing else
+# (the pod deployer never fetches anything from an app repository).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $part }}-kube-api
+  labels: {{- include "appstore.labels" (dict "context" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/part-of, operator: In, values: [{{ $part }}] }
+      - { key: app.kubernetes.io/component, operator: In, values: [pod-deployer, orphans] }
+  policyTypes: [Egress]
+  {{- if $n.kubeApi.cidrs }}
+  egress:
+    {{- include "appstore.kubeApi" $n.kubeApi | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,459 @@
+{{- $ns := .Release.Namespace -}}
+{{- $env := include "appstore.environment" . -}}
+{{- $p := .Values.podApps -}}
+{{- $deployerSa := include "appstore.name" (dict "context" . "component" "pod-deployer") -}}
+{{- $api := include "appstore.name" (dict "context" . "component" "api") -}}
+{{- $deployer := include "appstore.clusterName" (dict "context" . "component" "deployer") -}}
+{{- $reader := include "appstore.clusterName" (dict "context" . "component" "reader") -}}
+{{- $vncProxy := include "appstore.clusterName" (dict "context" . "component" "vnc-proxy") -}}
+{{- $name := include "appstore.clusterName" (dict "context" . "component" "confine-pod-deployer") -}}
+{{- $appDomain := default (printf "apps.%s" (required "podApps.zone is required" $p.zone)) $p.appDomain -}}
+{{- $v4 := concat (include "appstore.privateV4" . | fromJsonArray) (list) -}}
+{{- $v6 := concat (include "appstore.privateV6" . | fromJsonArray) (list) -}}
+{{- range $p.extraEgressExcept }}
+{{- if contains ":" . }}{{ $v6 = append $v6 . }}{{ else }}{{ $v4 = append $v4 . }}{{ end }}
+{{- end }}
+{{- $egressPorts := $p.egressTcpPorts -}}
+{{- /* The Kubernetes API as the noVNC proxy may reach it; empty: any address (on 443/6443). */ -}}
+{{- $kubeApi := .Values.network.kubeApi.cidrs -}}
+{{- /* The peer of an ingress rule: the ingress controller's namespace and, with their labels configured, only its pods. */ -}}
+{{- $ingressPeerPods := ternary (printf "(has(peer.podSelector) && peer.podSelector == {'matchLabels': %s})" (toJson $p.ingressPodLabels)) "!has(peer.podSelector)" (not (empty $p.ingressPodLabels)) -}}
+# What RBAC cannot express (.github#4 2.4, migration plan finding 3): the pod
+# deployer may touch only dep-* namespaces of its own installation, and only
+# objects that look like what app/k8s/render.py makes. RBAC limits the kinds
+# and verbs; this policy limits the content. It matches the pod deployer's
+# identity only; the controllers (StatefulSet, namespace deletion) are not
+# affected. Pod Security "restricted" checks the pods they create in the dep-*
+# namespaces of ordinary apps; a kubevirt-vm namespace (label
+# appstore.dhbw/vm-namespace=true) is "privileged" (virt-launcher needs it), so
+# nothing checks the pods the Deployment controller or KubeVirt create there:
+# this policy therefore inspects the pod template of the noVNC proxy Deployment
+# and the whole VirtualMachine, claim and network policies itself.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["namespaces", "secrets", "services", "persistentvolumeclaims", "resourcequotas", "limitranges", "pods", "serviceaccounts"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["statefulsets", "statefulsets/scale", "deployments"]
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["ingresses", "networkpolicies"]
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["virtualmachines", "virtualmachineinstances"]
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["rolebindings"]
+  matchConditions:
+    - name: only-the-pod-deployer
+      expression: {{ printf "request.userInfo.username == 'system:serviceaccount:%s:%s'" $ns $deployerSa | quote }}
+  variables:
+    - name: target
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+    - name: resource
+      expression: "has(request.subResource) && request.subResource != '' ? request.resource.resource + '/' + request.subResource : request.resource.resource"
+    - name: isNamespace
+      expression: "request.resource.resource == 'namespaces'"
+    - name: nsName
+      expression: "variables.isNamespace ? variables.target.metadata.name : request.namespace"
+    # The 8 hex digits of the deployment id in dep-<id>.
+    - name: nsId
+      expression: "variables.nsName.startsWith('dep-') ? variables.nsName.substring(4) : ''"
+    - name: env
+      expression: {{ $env | squote | quote }}
+    - name: labels
+      expression: "has(variables.target.metadata.labels) ? variables.target.metadata.labels : {}"
+    - name: oldLabels
+      expression: "request.operation != 'CREATE' && has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}"
+    - name: nsLabels
+      expression: "namespaceObject != null && has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels : {}"
+    - name: isVmNs
+      expression: "'appstore.dhbw/vm-namespace' in variables.nsLabels && variables.nsLabels['appstore.dhbw/vm-namespace'] == 'true'"
+    - name: podSpec
+      expression: >-
+        variables.resource == 'statefulsets' && request.operation != 'DELETE' ? object.spec.template.spec :
+        (variables.resource == 'pods' && request.operation != 'DELETE' ? object.spec : null)
+    # The noVNC proxy's pod template (Deployments only exist in kubevirt-vm
+    # namespaces) and the VM's template: pods the controllers create from them
+    # are not admitted by this policy, so the templates are.
+    - name: deploySpec
+      expression: "variables.resource == 'deployments' && request.operation != 'DELETE' ? object.spec.template.spec : null"
+    - name: vmSpec
+      expression: "variables.resource == 'virtualmachines' && request.operation != 'DELETE' ? object.spec.template.spec : null"
+    - name: containers
+      expression: >-
+        variables.podSpec == null ? [] :
+        variables.podSpec.containers +
+        (has(variables.podSpec.initContainers) ? variables.podSpec.initContainers : []) +
+        (has(variables.podSpec.ephemeralContainers) ? variables.podSpec.ephemeralContainers : [])
+    - name: hostSuffix
+      expression: {{ printf "'-' + variables.nsId + '.%s'" $appDomain | quote }}
+  validations:
+    # --- where ----------------------------------------------------------
+    - expression: "variables.nsName.startsWith('dep-') && variables.nsId.matches('^[0-9a-f]{8}$')"
+      message: "the pod deployer may only touch namespaces named dep-<8 hex digits>"
+    - expression: >-
+        !variables.isNamespace || request.operation == 'DELETE' || (
+          'appstore.dhbw/deployment-id' in variables.labels &&
+          'app.kubernetes.io/managed-by' in variables.labels && variables.labels['app.kubernetes.io/managed-by'] == 'appstore' &&
+          'appstore.dhbw/environment' in variables.labels && variables.labels['appstore.dhbw/environment'] == variables.env &&
+          'pod-security.kubernetes.io/enforce' in variables.labels && (
+            variables.labels['pod-security.kubernetes.io/enforce'] == 'restricted' ||
+            (variables.labels['pod-security.kubernetes.io/enforce'] == 'privileged' &&
+             'appstore.dhbw/vm-namespace' in variables.labels && variables.labels['appstore.dhbw/vm-namespace'] == 'true')) &&
+          (!('pod-security.kubernetes.io/enforce-version' in variables.labels) || variables.labels['pod-security.kubernetes.io/enforce-version'] == 'latest'))
+      message: "a namespace needs its deployment id, managed-by=appstore, this installation's environment label and Pod Security 'restricted' (or 'privileged' for vm-namespace=true)"
+    - expression: >-
+        !variables.isNamespace || request.operation == 'CREATE' || (
+          'app.kubernetes.io/managed-by' in variables.oldLabels && variables.oldLabels['app.kubernetes.io/managed-by'] == 'appstore' &&
+          'appstore.dhbw/environment' in variables.oldLabels && variables.oldLabels['appstore.dhbw/environment'] == variables.env &&
+          (request.operation == 'DELETE' || (
+            'appstore.dhbw/deployment-id' in variables.oldLabels &&
+            variables.oldLabels['appstore.dhbw/deployment-id'] == variables.labels['appstore.dhbw/deployment-id'])))
+      message: "only namespaces this installation created may be changed or deleted, and never handed to another deployment"
+    - expression: >-
+        variables.isNamespace || (
+          'app.kubernetes.io/managed-by' in variables.nsLabels && variables.nsLabels['app.kubernetes.io/managed-by'] == 'appstore' &&
+          'appstore.dhbw/environment' in variables.nsLabels && variables.nsLabels['appstore.dhbw/environment'] == variables.env)
+      message: "objects only in this installation's own dep-* namespaces"
+    # --- what -----------------------------------------------------------
+    # Namespaces go as a whole; single objects are never deleted, except
+    # pods (restart) and volume claims (reset); a VirtualMachine may go, a
+    # VirtualMachineInstance is KubeVirt's.
+    - expression: >-
+        request.operation != 'DELETE' || variables.isNamespace ||
+        variables.resource == 'pods' || variables.resource == 'persistentvolumeclaims' ||
+        variables.resource == 'virtualmachines'
+      message: "the pod deployer deletes namespaces, pods, volume claims and VirtualMachines only"
+    - expression: "variables.resource != 'virtualmachineinstances'"
+      message: "VirtualMachineInstances are made by KubeVirt from a VirtualMachine, never by the pod deployer"
+    - expression: >-
+        variables.resource != 'rolebindings' || request.operation == 'DELETE' || (
+          object.roleRef.kind == 'ClusterRole' && has(object.subjects) && object.subjects.size() == 1 &&
+          object.subjects[0].kind == 'ServiceAccount' && (
+            (object.roleRef.name == {{ $deployer | squote }} &&
+             object.subjects[0].name == {{ $deployerSa | squote }} && object.subjects[0].namespace == {{ $ns | squote }}) ||
+            (object.roleRef.name == {{ $reader | squote }} &&
+             object.subjects[0].name == {{ $api | squote }} && object.subjects[0].namespace == {{ $ns | squote }}) ||
+            (object.roleRef.name == {{ $vncProxy | squote }} &&
+             object.subjects[0].name == 'vnc-proxy' && object.subjects[0].namespace == request.namespace)))
+      message: "role bindings only of the deployer role to the pod deployer, of the reader role to the API, or of the vnc-proxy role to the proxy's own account"
+    - expression: >-
+        variables.resource != 'serviceaccounts' || request.operation == 'DELETE' || (
+          object.metadata.name == 'vnc-proxy' && !has(object.secrets) && !has(object.imagePullSecrets))
+      message: "the only service account is the noVNC proxy's, vnc-proxy"
+    - expression: "variables.resource != 'secrets' || request.operation == 'DELETE' || !has(object.type) || object.type == 'Opaque'"
+      message: "only Opaque secrets"
+    - expression: >-
+        variables.resource != 'services' || request.operation == 'DELETE' || (
+          (!has(object.spec.type) || object.spec.type == 'ClusterIP') &&
+          !has(object.spec.externalIPs) && !has(object.spec.externalName))
+      message: "services only of type ClusterIP, without external IPs"
+    - expression: >-
+        variables.resource != 'resourcequotas' || request.operation == 'DELETE' || (
+          has(object.spec.hard) &&
+          ['pods', 'services', 'requests.cpu', 'requests.memory', 'limits.cpu', 'limits.memory', 'persistentvolumeclaims', 'requests.storage'].all(k, k in object.spec.hard) &&
+          'services.nodeports' in object.spec.hard && string(object.spec.hard['services.nodeports']) == '0' &&
+          'services.loadbalancers' in object.spec.hard && string(object.spec.hard['services.loadbalancers']) == '0')
+      message: "the resource quota must cap pods, services, CPU, memory and storage and allow no node ports or load balancers"
+    # A Scale to 0 has no spec.replicas (omitempty in autoscaling/v1).
+    - expression: >-
+        variables.resource != 'statefulsets/scale' || request.operation == 'DELETE' ||
+        !has(object.spec.replicas) || object.spec.replicas <= 1
+      message: "a workload runs one pod or none"
+    - expression: "variables.resource != 'statefulsets' || request.operation == 'DELETE' || (!has(object.spec.replicas) || object.spec.replicas <= 1)"
+      message: "a workload runs one pod or none"
+    # --- pods (StatefulSet templates) -------------------------------------
+    # kube-apiserver defaults schedulerName to default-scheduler before
+    # admission, so the policy sees it on every pod template it checks.
+    - expression: >-
+        variables.podSpec == null || (
+          (!has(variables.podSpec.hostNetwork) || !variables.podSpec.hostNetwork) &&
+          (!has(variables.podSpec.hostPID) || !variables.podSpec.hostPID) &&
+          (!has(variables.podSpec.hostIPC) || !variables.podSpec.hostIPC) &&
+          has(variables.podSpec.automountServiceAccountToken) && !variables.podSpec.automountServiceAccountToken &&
+          !has(variables.podSpec.nodeName) && !has(variables.podSpec.priorityClassName) &&
+          (!has(variables.podSpec.schedulerName) || variables.podSpec.schedulerName == 'default-scheduler') &&
+          !has(variables.podSpec.runtimeClassName) &&
+          !has(variables.podSpec.hostAliases) && !has(variables.podSpec.serviceAccountName) &&
+          has(variables.podSpec.securityContext) && has(variables.podSpec.securityContext.runAsNonRoot) &&
+          variables.podSpec.securityContext.runAsNonRoot)
+      message: "pods run as non-root without host namespaces, service account token or scheduling overrides"
+    - expression: >-
+        variables.podSpec == null || !has(variables.podSpec.volumes) || variables.podSpec.volumes.all(v,
+          has(v.emptyDir) ? has(v.emptyDir.sizeLimit) : (has(v.secret) || has(v.persistentVolumeClaim)))
+      message: "volumes: emptyDir with a size limit, secrets and the workload's own claims only"
+    - expression: >-
+        variables.containers.all(c,
+          has(c.securityContext) &&
+          has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation &&
+          has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot &&
+          (!has(c.securityContext.privileged) || !c.securityContext.privileged) &&
+          (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add) || c.securityContext.capabilities.add.size() == 0) &&
+          (!has(c.ports) || c.ports.all(port, !has(port.hostPort) || port.hostPort == 0)))
+      message: "containers: no privilege escalation, no root, no added capabilities, no host ports"
+    - expression: >-
+        variables.containers.all(c,
+          {{ toJson $p.imageRegistryAllowlist }}.exists(prefix, c.image.startsWith(prefix)) &&
+          c.image.matches('@sha256:[0-9a-f]{64}$'))
+      message: "images only from the allowed registries and pinned by digest"
+    # Within the platform's ceilings (review S13): the renderer never asks for
+    # more, so a misused token cannot give a namespace more than the largest
+    # deployment may have. Each container's limits at most maxCpu/maxMemory,
+    # each claim at most maxStorage, and (below) at most
+    # maxWorkloadsPerDeployment pods, services and claims per namespace.
+    - expression: >-
+        variables.containers.all(c,
+          has(c.resources) && has(c.resources.limits) && 'cpu' in c.resources.limits && 'memory' in c.resources.limits &&
+          quantity(string(c.resources.limits['cpu'])).compareTo(quantity({{ $p.maxCpu | toString | squote }})) <= 0 &&
+          quantity(string(c.resources.limits['memory'])).compareTo(quantity({{ $p.maxMemory | toString | squote }})) <= 0)
+      message: "{{ printf "containers: cpu and memory limits set, at most %v and %v" $p.maxCpu $p.maxMemory }}"
+    - expression: >-
+        variables.resource != 'statefulsets' || request.operation == 'DELETE' || !has(object.spec.volumeClaimTemplates) ||
+        object.spec.volumeClaimTemplates.all(t,
+          has(t.spec.resources) && has(t.spec.resources.requests) && 'storage' in t.spec.resources.requests &&
+          quantity(string(t.spec.resources.requests['storage'])).compareTo(quantity({{ $p.maxStorage | toString | squote }})) <= 0)
+      message: "{{ printf "volume claims of at most %v" $p.maxStorage }}"
+    - expression: >-
+        variables.resource != 'resourcequotas' || request.operation == 'DELETE' || !has(object.spec.hard) ||
+        ['pods', 'services', 'persistentvolumeclaims'].all(k, !(k in object.spec.hard) ||
+          int(string(object.spec.hard[k])) <= {{ int $p.maxWorkloadsPerDeployment }} + (k == 'services' ? 1 : 0))
+      message: "{{ printf "the resource quota allows at most %v pods and volume claims, and one more service than that (the one that names all pods)" $p.maxWorkloadsPerDeployment }}"
+{{- with $p.studentNodeSelector }}
+    - expression: >-
+        variables.podSpec == null || (has(variables.podSpec.nodeSelector) &&
+          {{ toJson . }}.all(k, k in variables.podSpec.nodeSelector && variables.podSpec.nodeSelector[k] == {{ toJson . }}[k]))
+      message: "student pods run on the student nodes"
+{{- end }}
+    - expression: >-
+        variables.podSpec == null || !has(variables.podSpec.tolerations) ||
+        variables.podSpec.tolerations.all(t, {{ toJson $p.studentTolerations }}.exists(a,
+          (has(a.key) ? a.key : '') == (has(t.key) ? t.key : '') &&
+          (has(a.operator) ? a.operator : 'Equal') == (has(t.operator) ? t.operator : 'Equal') &&
+          (has(a.value) ? a.value : '') == (has(t.value) ? t.value : '') &&
+          (has(a.effect) ? a.effect : '') == (has(t.effect) ? t.effect : '') &&
+          !has(t.tolerationSeconds)))
+      message: "student pods tolerate only the configured taints"
+    - expression: >-
+        variables.resource != 'statefulsets' || request.operation == 'DELETE' || !has(object.spec.volumeClaimTemplates) ||
+        object.spec.volumeClaimTemplates.all(t,
+          {{ if $p.storageClass }}has(t.spec.storageClassName) && t.spec.storageClassName == {{ $p.storageClass | squote }}{{ else }}!has(t.spec.storageClassName){{ end }})
+      message: "volume claims only of the configured storage class"
+    # --- kubevirt-vm namespaces (render_vm in the backend) ----------------
+    # Deployments: only the noVNC proxy, shaped exactly as the renderer makes it.
+    - expression: >-
+        variables.resource != 'deployments' || request.operation == 'DELETE' || (
+          variables.isVmNs && (!has(object.spec.replicas) || object.spec.replicas <= 1))
+      message: "deployments only in kubevirt-vm namespaces, with at most one replica"
+    - expression: >-
+        variables.deploySpec == null || (
+          has(variables.deploySpec.serviceAccountName) && variables.deploySpec.serviceAccountName == 'vnc-proxy' &&
+          (!has(variables.deploySpec.hostNetwork) || !variables.deploySpec.hostNetwork) &&
+          (!has(variables.deploySpec.hostPID) || !variables.deploySpec.hostPID) &&
+          (!has(variables.deploySpec.hostIPC) || !variables.deploySpec.hostIPC) &&
+          !has(variables.deploySpec.nodeName) && !has(variables.deploySpec.priorityClassName) &&
+          (!has(variables.deploySpec.schedulerName) || variables.deploySpec.schedulerName == 'default-scheduler') &&
+          !has(variables.deploySpec.runtimeClassName) && !has(variables.deploySpec.hostAliases) &&
+          !has(variables.deploySpec.ephemeralContainers) &&
+          (!has(variables.deploySpec.initContainers) || variables.deploySpec.initContainers.size() == 0) &&
+          variables.deploySpec.containers.size() == 1 &&
+          (!has(variables.deploySpec.volumes) || variables.deploySpec.volumes.all(v, has(v.emptyDir) && has(v.emptyDir.sizeLimit))) &&
+          has(variables.deploySpec.securityContext) && has(variables.deploySpec.securityContext.runAsNonRoot) &&
+          variables.deploySpec.securityContext.runAsNonRoot && !has(variables.deploySpec.securityContext.sysctls))
+      message: "the proxy pod runs as vnc-proxy, as non-root, with one container, without host namespaces, node pinning or host volumes"
+    - expression: >-
+        variables.deploySpec == null || variables.deploySpec.containers.all(c,
+          has(c.securityContext) &&
+          has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation &&
+          has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot &&
+          has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem &&
+          (!has(c.securityContext.privileged) || !c.securityContext.privileged) &&
+          has(c.securityContext.capabilities) && !has(c.securityContext.capabilities.add) &&
+          has(c.securityContext.capabilities.drop) && 'ALL' in c.securityContext.capabilities.drop &&
+          (!has(c.ports) || c.ports.all(port, !has(port.hostPort) || port.hostPort == 0)) &&
+          has(c.resources) && has(c.resources.limits) && 'cpu' in c.resources.limits && 'memory' in c.resources.limits &&
+          quantity(string(c.resources.limits['cpu'])).compareTo(quantity({{ $p.maxCpu | toString | squote }})) <= 0 &&
+          quantity(string(c.resources.limits['memory'])).compareTo(quantity({{ $p.maxMemory | toString | squote }})) <= 0)
+      message: "the proxy container: no privilege escalation, no root, read-only root file system, all capabilities dropped, none added, no host ports, limits set"
+    # The repository, then nothing, a tag or a digest ("novnc-proxy-evil" is not it).
+    - expression: >-
+        variables.deploySpec == null || variables.deploySpec.containers.all(c,
+          c.image.startsWith({{ $p.vncProxyImagePrefix | squote }}) && (
+            c.image.size() == {{ len $p.vncProxyImagePrefix }} ||
+            c.image.substring({{ len $p.vncProxyImagePrefix }}).startsWith(':') ||
+            c.image.substring({{ len $p.vncProxyImagePrefix }}).startsWith('@')))
+      message: "{{ printf "the proxy image must be %s" $p.vncProxyImagePrefix }}"
+    # VirtualMachines: a disk on the clone, a masqueraded interface, a tablet, a TPM.
+    - expression: >-
+        variables.resource != 'virtualmachines' || request.operation == 'DELETE' || (
+          variables.isVmNs && object.spec.all(k, k in ['runStrategy', 'running', 'template']) &&
+          (!has(object.spec.template.metadata) || !has(object.spec.template.metadata.annotations) ||
+           object.spec.template.metadata.annotations.all(k, !k.startsWith('hooks.kubevirt.io'))))
+      message: "VirtualMachines only in kubevirt-vm namespaces, without data volume templates, instance types or hook sidecars"
+    - expression: >-
+        variables.vmSpec == null || (
+          !has(variables.vmSpec.accessCredentials) && !has(variables.vmSpec.tolerations) &&
+          !has(variables.vmSpec.nodeSelector) && !has(variables.vmSpec.affinity) && !has(variables.vmSpec.priorityClassName) &&
+          (!has(variables.vmSpec.schedulerName) || variables.vmSpec.schedulerName == 'default-scheduler') &&
+          has(variables.vmSpec.domain) && !has(variables.vmSpec.domain.launchSecurity) &&
+          (!has(variables.vmSpec.domain.firmware) || !has(variables.vmSpec.domain.firmware.kernelBoot)) &&
+          has(variables.vmSpec.domain.devices) &&
+          variables.vmSpec.domain.devices.all(k, k in ['disks', 'interfaces', 'inputs', 'tpm']) &&
+          (!has(variables.vmSpec.domain.devices.disks) || variables.vmSpec.domain.devices.disks.all(d,
+            has(d.disk) && has(d.disk.bus) && d.disk.bus == 'sata' && !has(d.cdrom) && !has(d.lun))) &&
+          (!has(variables.vmSpec.domain.devices.interfaces) || variables.vmSpec.domain.devices.interfaces.all(i,
+            has(i.masquerade) && !has(i.bridge) && !has(i.sriov) && !has(i.slirp) && !has(i.passt) && !has(i.binding))) &&
+          (!has(variables.vmSpec.domain.devices.inputs) || variables.vmSpec.domain.devices.inputs.all(i,
+            has(i.type) && i.type == 'tablet')) &&
+          (!has(variables.vmSpec.networks) || variables.vmSpec.networks.all(n, has(n.pod) && !has(n.multus))) &&
+          (!has(variables.vmSpec.volumes) || variables.vmSpec.volumes.all(v,
+            v.all(k, k in ['name', 'persistentVolumeClaim']) && has(v.persistentVolumeClaim) && has(v.persistentVolumeClaim.claimName))))
+      message: "VirtualMachines: devices only disk (sata), masquerade interface, tablet and TPM; volumes only the namespace's own claims; no host devices, GPUs, host or container disks, cloud-init, secrets, config maps, service accounts, scheduling overrides"
+    - expression: >-
+        variables.vmSpec == null || (
+          has(variables.vmSpec.domain.cpu) && has(variables.vmSpec.domain.cpu.cores) &&
+          variables.vmSpec.domain.cpu.cores >= 1 && variables.vmSpec.domain.cpu.cores <= {{ int $p.vmMaxCores }} &&
+          (!has(variables.vmSpec.domain.cpu.sockets) || variables.vmSpec.domain.cpu.sockets <= 1) &&
+          (!has(variables.vmSpec.domain.cpu.threads) || variables.vmSpec.domain.cpu.threads <= 1) &&
+          !has(variables.vmSpec.domain.cpu.dedicatedCpuPlacement) && !has(variables.vmSpec.domain.cpu.numa) &&
+          !has(variables.vmSpec.domain.cpu.realtime) && !has(variables.vmSpec.domain.cpu.isolateEmulatorThread) &&
+          has(variables.vmSpec.domain.memory) && has(variables.vmSpec.domain.memory.guest) &&
+          quantity(string(variables.vmSpec.domain.memory.guest)).compareTo(quantity({{ $p.vmMaxMemory | toString | squote }})) <= 0 &&
+          !has(variables.vmSpec.domain.memory.hugepages) && !has(variables.vmSpec.domain.memory.maxGuest) &&
+          (!has(variables.vmSpec.domain.resources) || ['requests', 'limits'].all(t,
+            !(t in variables.vmSpec.domain.resources) || (
+              (!('memory' in variables.vmSpec.domain.resources[t]) ||
+                quantity(string(variables.vmSpec.domain.resources[t]['memory'])).compareTo(quantity({{ $p.vmMaxMemory | toString | squote }})) <= 0) &&
+              (!('cpu' in variables.vmSpec.domain.resources[t]) ||
+                quantity(string(variables.vmSpec.domain.resources[t]['cpu'])).compareTo(quantity({{ $p.vmMaxCores | toString | squote }})) <= 0)))))
+      message: "{{ printf "VirtualMachines: 1 to %v cores, guest memory of at most %v, no dedicated CPUs, huge pages or NUMA" $p.vmMaxCores $p.vmMaxMemory }}"
+    # Volume claims of a kubevirt-vm namespace: a clone of a golden image.
+    - expression: >-
+        variables.resource != 'persistentvolumeclaims' || request.operation == 'DELETE' || !variables.isVmNs || (
+          has(object.spec.storageClassName) && object.spec.storageClassName == {{ $p.vmStorageClass | squote }} &&
+          has(object.spec.resources) && has(object.spec.resources.requests) && 'storage' in object.spec.resources.requests &&
+          quantity(string(object.spec.resources.requests['storage'])).compareTo(quantity({{ $p.vmMaxDisk | toString | squote }})) <= 0 &&
+          (!has(object.spec.accessModes) || object.spec.accessModes.all(m, m == 'ReadWriteOnce')) &&
+          !has(object.spec.selector) && (request.operation != 'CREATE' || !has(object.spec.volumeName)) &&
+          (!has(object.spec.dataSource) || (
+            object.spec.dataSource.kind == 'PersistentVolumeClaim' &&
+            (!has(object.spec.dataSource.apiGroup) || object.spec.dataSource.apiGroup == '') &&
+            !has(object.spec.dataSource.namespace))) &&
+          (!has(object.spec.dataSourceRef) || (
+            object.spec.dataSourceRef.kind == 'PersistentVolumeClaim' &&
+            (!has(object.spec.dataSourceRef.apiGroup) || object.spec.dataSourceRef.apiGroup == '') &&
+            has(object.spec.dataSourceRef.namespace) &&
+            {{ toJson $p.vmImageNamespaces }}.exists(n, n == object.spec.dataSourceRef.namespace))))
+      message: "{{ printf "claims in a kubevirt-vm namespace: class %s, at most %v, ReadWriteOnce, cloned from a claim in %s only" $p.vmStorageClass $p.vmMaxDisk (join ", " $p.vmImageNamespaces) }}"
+    # --- ingress ----------------------------------------------------------
+    # Hosts are <workload>-<deployment>.<appDomain>, the deployment being this
+    # namespace's: a dep-* namespace can never route the platform's own hosts
+    # (appstore.<zone>, sso.<zone>, ...) or another deployment's.
+    - expression: >-
+        variables.resource != 'ingresses' || request.operation == 'DELETE' || (
+          has(object.spec.ingressClassName) && object.spec.ingressClassName == {{ $p.ingressClass | squote }} &&
+          !has(object.spec.defaultBackend) && has(object.spec.rules) && object.spec.rules.size() > 0 &&
+          object.spec.rules.all(r,
+            has(r.host) && r.host.endsWith(variables.hostSuffix) && r.host.size() > variables.hostSuffix.size() &&
+            r.host.substring(0, r.host.size() - variables.hostSuffix.size()).matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') &&
+            has(r.http) && r.http.paths.all(path,
+              has(path.pathType) && path.pathType == 'Prefix' && has(path.path) &&
+              path.path.matches('^/([A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/?)?$') &&
+              has(path.backend.service) && !has(path.backend.resource))) &&
+          (!has(object.spec.tls) || object.spec.tls.all(t, has(t.hosts) && t.hosts.all(h,
+            h.endsWith(variables.hostSuffix) && h.size() > variables.hostSuffix.size() &&
+            h.substring(0, h.size() - variables.hostSuffix.size()).matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')))))
+      message: "{{ printf "ingress: class %s, hosts <workload>-<deployment>.%s of this deployment only, plain Prefix paths, service backends" $p.ingressClass $appDomain }}"
+    - expression: >-
+        variables.resource != 'ingresses' || request.operation == 'DELETE' ||
+        !has(object.metadata.annotations) || object.metadata.annotations.all(k, k == 'cert-manager.io/cluster-issuer')
+      message: "ingress annotations: only cert-manager.io/cluster-issuer"
+    # --- network policies -------------------------------------------------
+    # Ingress only from the ingress controller (its namespace, and its pods when
+    # podApps.ingressPodLabels names them); egress only to kube-dns on port 53,
+    # or to "internet" that still excludes every private, cluster and multicast
+    # range and is open on podApps.egressTcpPorts only (a VM also on UDP 123).
+    # A rule without peers (= everything) is refused. The one podSelector peer
+    # allowed is the empty selector, alone in its rule, in the policy named
+    # allow-intra-namespace: the pods of the own namespace, any TCP or UDP port
+    # (the students' own servers and clients).
+    # In a kubevirt-vm namespace the policies select no pods or the pods with
+    # appstore.dhbw/role=vnc-proxy or =vm (render_vm), and two more shapes are
+    # accepted: allow-intra-namespace between the VMs (role=vm to role=vm), and
+    # allow-vnc-proxy-to-apiserver, egress of the proxy to the Kubernetes API
+    # (network.kubeApi.cidrs; any address where none are configured) on the
+    # ports 443 and 6443 only (the proxy reaches its VM through the API server).
+    - expression: >-
+        variables.resource != 'networkpolicies' || request.operation == 'DELETE' || (
+          (variables.isVmNs ?
+            (object.spec.podSelector == {} ||
+             object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vnc-proxy'}} ||
+             object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}}) :
+            (!has(object.spec.podSelector.matchLabels) && !has(object.spec.podSelector.matchExpressions))) &&
+          (!has(object.spec.ingress) || object.spec.ingress.all(rule,
+            has(rule.from) && rule.from.size() > 0 && (
+              rule.from.all(peer,
+                !has(peer.ipBlock) && has(peer.namespaceSelector) && {{ $ingressPeerPods }} &&
+                peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': {{ $p.ingressNamespace | squote }}}}) ||
+              (!variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && rule.from.size() == 1 &&
+               has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
+               rule.from[0].podSelector == {} &&
+               (!has(rule.ports) || rule.ports.all(port, (!has(port.protocol) || port.protocol in ['TCP', 'UDP']) && has(port.port) && type(port.port) == int && !has(port.endPort)))) ||
+              (variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}} && rule.from.size() == 1 &&
+               has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
+               rule.from[0].podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}})))) &&
+          (!has(object.spec.egress) || object.spec.egress.all(rule,
+            has(rule.to) && rule.to.size() > 0 && (
+              (!variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && rule.to.size() == 1 &&
+               has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
+               rule.to[0].podSelector == {} &&
+               (!has(rule.ports) || rule.ports.all(port, (!has(port.protocol) || port.protocol in ['TCP', 'UDP']) && has(port.port) && type(port.port) == int && !has(port.endPort)))) ||
+              (variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}} && rule.to.size() == 1 &&
+               has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
+               rule.to[0].podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}}) ||
+              (variables.isVmNs && object.metadata.name == 'allow-vnc-proxy-to-apiserver' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vnc-proxy'}} &&
+               rule.to.all(peer, has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) &&
+                 !has(peer.ipBlock.except) && {{ if $kubeApi }}peer.ipBlock.cidr in {{ toJson $kubeApi }}{{ else }}peer.ipBlock.cidr in ['0.0.0.0/0', '::/0']{{ end }}) &&
+               has(rule.ports) && rule.ports.size() > 0 &&
+               rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int &&
+                 port.port in [443, 6443] && !has(port.endPort))) ||
+              (rule.to.all(peer,
+                has(peer.namespaceSelector) && has(peer.podSelector) && !has(peer.ipBlock) &&
+                peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}} &&
+                peer.podSelector == {'matchLabels': {'k8s-app': 'kube-dns'}}) &&
+               has(rule.ports) && rule.ports.size() > 0 &&
+               rule.ports.all(port, (!has(port.protocol) || port.protocol in ['TCP', 'UDP']) && has(port.port) && type(port.port) == int &&
+                 port.port == 53 && !has(port.endPort))) ||
+              (rule.to.all(peer,
+                has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) && has(peer.ipBlock.except) && (
+                  (peer.ipBlock.cidr == '0.0.0.0/0' && {{ toJson $v4 }}.all(r, r in peer.ipBlock.except)) ||
+                  (peer.ipBlock.cidr == '::/0' && {{ toJson $v6 }}.all(r, r in peer.ipBlock.except)))) &&
+               has(rule.ports) && rule.ports.size() > 0 &&
+               rule.ports.all(port, has(port.port) && type(port.port) == int && !has(port.endPort) &&
+                 ((!has(port.protocol) || port.protocol == 'TCP') ?
+                    port.port in {{ toJson $egressPorts }} :
+                    (variables.isVmNs && port.protocol == 'UDP' && port.port == 123))))))))
+      message: "network policies: ingress from the ingress controller only (or, in allow-intra-namespace, from all pods of the namespace, TCP and UDP; in a kubevirt-vm namespace from the VMs), egress to DNS on port 53, to the internet without private, cluster and multicast ranges on the configured ports only (or, in allow-intra-namespace, to all pods of the namespace; in a kubevirt-vm namespace to the VMs, and from the proxy to the API server on 443 and 6443)"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" (dict "context" . "component" "pod-deployer") | nindent 4 }}
+spec:
+  policyName: {{ $name }}
+  validationActions: ["Deny"]

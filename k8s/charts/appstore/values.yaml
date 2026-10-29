@@ -1,0 +1,282 @@
+# The AppStore of one environment (.github#4, migration plan phase 4).
+#
+# Set per environment by its Argo CD application (k8s/argocd/apps-chart,
+# templates/appstore.yaml) from k8s/environments/<env>.yaml; the image tags
+# come from k8s/images/<env>.yaml, which CI writes. Nothing secret is in here:
+# k8s/bootstrap.sh creates the Secret named below.
+
+# Public hosts: the AppStore (the frontend, and the API under /api), Keycloak
+# and the second UI (selfServiceUi, one label below the zone: wildcard cert).
+host: ""
+ssoHost: ""
+selfServiceHost: ""
+# The installation. Labels the pod namespaces it creates (staging and prod
+# share one cluster) and names its cluster-wide objects. Empty: the release
+# namespace.
+environment: ""
+
+images:
+  registry: ghcr.io/dhbw-appstore-t3
+  pullPolicy: IfNotPresent
+  # Names of image pull Secrets in the namespace, if the packages are private.
+  pullSecrets: []
+  # Tag (sha-<commit>) or digest (sha256:...) of each image; CI writes them
+  # into k8s/images/<env>.yaml.
+  tags:
+    backend: ""
+    workerPods: ""
+    frontend: ""
+    # noVNC proxy of kubevirt-vm deployments. Empty: unpinned :latest until the
+    # first k8s-bump of component novnc-proxy.
+    novncProxy: ""
+    # Empty: the self-service-ui is not rolled out yet (no image to run).
+    selfServiceUi: ""
+
+# Created by k8s/bootstrap.sh. Keys: database-url (the owner role; API,
+# migrations, orphan check), worker-database-url (role appstore_worker; both
+# workers), credential-encryption-key (API),
+# results-encryption-key (API, both workers), keycloak-client-secret,
+# lti13-session-secret, self-service-cookie-secret (oauth2-proxy of the
+# self-service-ui).
+secretName: appstore-t3
+
+keycloak:
+  # How the API reaches Keycloak in the cluster (signing keys, user search).
+  serverUrl: http://keycloak:8080
+  realm: dhbw
+  frontendClientId: appstore-frontend
+  backendClientId: appstore-backend
+  # Public client (PKCE S256) of the self-service-ui; the API accepts its tokens
+  # (OIDC_ALLOWED_CLIENTS) while selfServiceUi.enabled. Created in realm dhbw by
+  # k8s/manifests/platform/files/dhbw-realm.json, or for a running realm by
+  # k8s/keycloak-self-service-client.sh.
+  selfServiceClientId: appstore-self-service
+  # The aud the realm's audience mapper puts into the frontend's tokens.
+  audience: appstore-api
+
+api:
+  replicas: 2
+  # hostAliases of the API pod: [{ip, hostnames}]. The LTI platform (Moodle) is
+  # served by this cluster, and a pod cannot reach the node's public address, so
+  # its host name points at the ingress controller's Service (the egress rule
+  # in networkpolicies.yaml then opens 443/8443 to the ingress namespace).
+  hostAliases: []
+  # uvicorn processes per pod
+  workers: 2
+  # Hosts app repositories may come from (comma-separated, exact names).
+  gitAllowedHosts: github.com
+  # LTI 1.3 launch from Moodle; off while clientId is empty.
+  lti:
+    platformIssuer: ""
+    clientId: ""
+    deploymentId: ""
+    jwksUrl: ""
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  # Scratch space for sparse clones of app repositories.
+  tmpSizeLimit: 2Gi
+  extraEnv: []
+
+# Apps that run as pods, one namespace dep-<id> per deployment.
+podApps:
+  zone: ""
+  # Hosts are <workload>-<deployment>.<appDomain>; empty: apps.<zone>.
+  appDomain: ""
+  # Images must be pinned by digest and start with one of these prefixes:
+  # the apps' packages (app-registry builds them as apps/<name>), not every
+  # package of the organisation (backend, worker, ...).
+  imageRegistryAllowlist:
+    - ghcr.io/dhbw-appstore-t3/apps/
+  # Ceilings per container and volume. An app can offer people a range up to
+  # these (resourceBounds in appstore.yaml); the node has 4 vCPU and 16 GiB.
+  maxCpu: "4"
+  maxMemory: 8Gi
+  maxStorage: 20Gi
+  # Namespaces a kubevirt-vm may clone its golden image from. The pod deployer
+  # grants each deployment's claim access to the image there (a ReferenceGrant
+  # per deployment, see rbac.yaml and admission-policy.yaml); an app naming any
+  # other namespace is refused. Needs CrossNamespaceVolumeDataSource
+  # (scripts/enable-cross-namespace-clone.sh).
+  vmImageNamespaces:
+    - vm-poc
+  # What a kubevirt-vm namespace may contain (admission-policy.yaml). The
+  # renderer never asks for more: VmSpec allows 1-16 cores, 2-32 GiB and
+  # 40-200 GiB of disk.
+  vmMaxCores: 16
+  vmMaxMemory: 32Gi
+  vmMaxDisk: 200Gi
+  vmStorageClass: cinder
+  # The noVNC proxy Deployment of a kubevirt-vm namespace: its image must be this
+  # repository, followed by nothing, a :tag or an @digest.
+  vncProxyImagePrefix: ghcr.io/dhbw-appstore-t3/novnc-proxy
+  # Workloads (one per team or person) per deployment, and per owner across
+  # their live pod deployments (0: no budget). Without a per-owner budget one
+  # compromised teacher account can start deployments until the node is full;
+  # 200 is three class-sized deployments of 60 people each, raise it per
+  # environment where a course needs more.
+  maxWorkloadsPerDeployment: 60
+  maxWorkloadsPerOwner: 200
+  ingressClass: traefik
+  # The ingress controller's namespace, the only one allowed to reach the pods.
+  ingressNamespace: kube-system
+  # The labels of the ingress controller's pods: with them only these pods, not every pod of
+  # that namespace (CoreDNS, the metrics server, CSI drivers, ...), reach the apps. The
+  # admission policy then demands exactly this selector. Empty: the whole namespace.
+  ingressPodLabels: {}
+  # The TCP ports "internet" is open on for student pods (web, package managers, Git over
+  # HTTPS). Not SMTP, SSH or the scanners' favourites; a Windows VM also gets NTP (UDP 123).
+  # The admission policy refuses an internet rule on any other port.
+  egressTcpPorts: [80, 443]
+  # A wildcard certificate Secret or a cert-manager ClusterIssuer; both empty:
+  # the ingress controller's default certificate.
+  tlsSecret: ""
+  clusterIssuer: ""
+  storageClass: ""
+  # Where student pods run: node labels and the taints they tolerate.
+  studentNodeSelector: {}
+  studentTolerations: []
+  # Cluster ranges student pods must not reach even with internet access, on
+  # top of the private ranges: pod and service CIDRs, the nodes' addresses.
+  extraEgressExcept: []
+  readyTimeoutSeconds: 600
+
+podDeployer:
+  replicas: 1
+  # Jobs at once (WORKER_CONCURRENCY), one thread each in one process.
+  concurrency: 4
+  # Measured on staging with the former Celery worker, one process per job:
+  # ~125 MiB idle and ~130 MiB more per process after its first job (the
+  # Kubernetes client is loaded per process), ~650 MiB once all four had
+  # worked; 512 MiB got it OOM-killed. The runner's threads share one client:
+  # measure again before lowering these.
+  resources:
+    requests: { cpu: 50m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+
+frontend:
+  replicas: 2
+  theme: t3
+  # Origins that may frame the AppStore (CSP frame-ancestors), e.g. the
+  # Moodle origin when it embeds the LTI launch; empty: nobody.
+  frameAncestors: ""
+  # Empty: the cluster's default IngressClass.
+  ingressClassName: ""
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+# The second UI (repository self-service-ui): oauth2-proxy + Caddy in one pod,
+# behind an Ingress on selfServiceHost. Rendered when enabled and
+# images.tags.selfServiceUi is set.
+selfServiceUi:
+  enabled: false
+  replicas: 1
+  # Empty: the cluster's default IngressClass.
+  ingressClassName: ""
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+  proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy
+    tag: v7.15.5
+    # Hard end of a browser session (the access token is renewed every minute
+    # while the tab is in use).
+    cookieExpire: 8h
+    # __Host-: browsers accept the cookie only from this very host (Secure,
+    # Path=/, no Domain), so a page of another host under the same site, e.g. a
+    # student app, cannot plant one (cookie tossing, review S3). Renaming it
+    # signs everybody out once.
+    cookieName: __Host-ssu_oauth2
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { cpu: 200m, memory: 64Mi }
+
+# alembic upgrade head before every sync (Helm pre-install/pre-upgrade hook,
+# an Argo CD PreSync hook).
+migrations:
+  enabled: true
+
+# Demo data after every sync (templates/seed-job.yaml, the backend's
+# `python -m app.cli seed`): the realm's users in the database, a demo course
+# (of the users it provisions: teachers teach it, students join it) and public
+# catalog apps (registered, owned by the first admin; a version without any
+# review is submitted and approved). Adds only what is missing and never undoes
+# a review or a course membership. Demo environments only: off in prod.
+seed:
+  enabled: false
+  courseName: Demo-Kurs
+  # name, description, gitLink (public repository), versions: tags that are submitted
+  # and approved. Needs the tag on a commit with appstore.yaml (runtime pods). The
+  # newest release of each app: those pin the images the Trivy gate passed.
+  apps:
+    - name: Online-IDE
+      description: Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Online-IDE
+      versions: [v2.2.0]
+    - name: Web-LaTeX
+      description: LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Web-LaTeX
+      versions: [v2.0.5]
+    - name: Jupyter-Notebook
+      description: JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person.
+      gitLink: https://github.com/DHBW-AppStore-T3/Jupyter-Notebook
+      versions: [v2.0.2]
+    - name: pgAdmin
+      description: pgAdmin mit PostgreSQL und Pagila-Beispieldatenbank, ein Pod pro Team.
+      gitLink: https://github.com/DHBW-AppStore-T3/pgAdmin
+      versions: [v2.0.3]
+    - name: template-app
+      description: Vorlage fuer neue AppStore-Apps (nginx-Pod).
+      gitLink: https://github.com/DHBW-AppStore-T3/template-app
+      versions: [v2.0.2]
+
+# Hourly report of dep-* namespaces without a live deployment (the Job fails
+# when it finds one).
+orphans:
+  enabled: true
+  schedule: "17 * * * *"
+
+network:
+  # NetworkPolicies for this chart's pods: deny by default, then only what
+  # each component needs. Off only to rule them out when debugging.
+  policies: true
+  postgresLabels:
+    cnpg.io/cluster: postgres-cluster
+  keycloakLabels:
+    app: keycloak
+  # The Kubernetes API as pods reach it: the "kubernetes" Service address and,
+  # after DNAT, the API server's own (kubectl get endpoints kubernetes).
+  kubeApi:
+    cidrs: []
+    ports: [443, 6443]
+  # Addresses the API and the VM executor may reach although they are in a
+  # private range (e.g. an internal OpenStack endpoint); CIDRs.
+  extraEgressAllow: []
+
+# ClamAV virus scanner for uploaded files. Disabled by default; enable per environment
+# once you have decided on resources (1-2 GiB RAM for the signature database) and who
+# watches the freshclam staleness alert. When enabled the API fails closed: a scanner
+# outage blocks all file uploads (503 upload_scan_unavailable).
+# See the API settings CLAMD_HOST / CLAMD_PORT / CLAMD_TIMEOUT and .github#13.
+clamav:
+  enabled: false
+  replicas: 2
+  # The signature database (~350 MiB, twice that while clamd reloads) on a volume
+  # of its own per replica (StatefulSet volumeClaimTemplates, ReadWriteOnce), so
+  # a restart does not download everything again. Expanding later is possible
+  # (the classes allow it), shrinking is not.
+  persistence:
+    size: 2Gi
+    # Explicit, no cluster default: "cinder" (k8s/cinder/storageclass.yaml) is
+    # block storage that outlives the node; "local-path" is k3s's node-local default.
+    storageClassName: local-path
+  # Pinned by digest (multi-arch index of clamav/clamav:1.4, checked 2026-10-26 with
+  # `docker buildx imagetools inspect clamav/clamav:1.4`). The tag is kept for readability;
+  # Kubernetes pulls by digest. Bump both together; tags: https://hub.docker.com/r/clamav/clamav/tags
+  image: "clamav/clamav:1.4@sha256:982e28f90061d0e66eb03276419f589a47c9fa601e985e472fc2f6c64b497ca0"
+  resources:
+    requests: { cpu: 100m, memory: 1536Mi }
+    # clamd holds the old and the new database side by side while it reloads
+    # after a freshclam update (~1 GiB in use, about double at the peak).
+    limits: { cpu: "1", memory: 3Gi }

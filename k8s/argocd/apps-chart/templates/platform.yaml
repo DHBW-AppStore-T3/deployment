@@ -1,0 +1,33 @@
+# PostgreSQL (CloudNativePG cluster) and Keycloak (the OIDC issuer).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.env.name }}-platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # CNPG's admission webhook defaults spec.managed.roles[*] (connectionLimit,
+    # ensure, inherit). Argo's client-side diff sees a list-item mismatch and
+    # reports OutOfSync forever; the server-side dry-run diff does not, and
+    # still shows every real change.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.env.branch }}
+    path: k8s/manifests/platform
+    helm:
+      values: |
+        appHost: {{ .Values.env.host }}
+        selfServiceHost: {{ .Values.env.selfServiceHost | default "" | quote }}
+        ssoHost: {{ .Values.env.ssoHost }}
+        {{- with .Values.platform }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.env.namespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

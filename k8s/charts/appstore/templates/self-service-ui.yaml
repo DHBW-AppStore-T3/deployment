@@ -1,0 +1,199 @@
+{{- define "appstore.ssuProxyConfig" -}}
+{{- $k := .Values.keycloak -}}
+{{- $issuer := printf "https://%s/realms/%s" (required "ssoHost is required" .Values.ssoHost) $k.realm -}}
+{{- $oidc := printf "%s/protocol/openid-connect" $issuer -}}
+{{- $oidcInternal := printf "%s/realms/%s/protocol/openid-connect" $k.serverUrl $k.realm -}}
+server:
+  BindAddress: "[::]:4180"
+upstreamConfig:
+  upstreams:
+    - id: ui
+      path: /
+      uri: http://127.0.0.1:8080
+# The ACCESS token, as the API expects it (azp and aud are checked there);
+# --pass-authorization-header would send the ID token.
+injectRequestHeaders:
+  - name: Authorization
+    values:
+      - claimSource:
+          claim: access_token
+          prefix: "Bearer "
+providers:
+  - id: keycloak
+    provider: oidc
+    clientID: {{ $k.selfServiceClientId | quote }}
+    # A public client has no secret and Keycloak ignores this value;
+    # oauth2-proxy refuses to start without one.
+    clientSecret: public-client-no-secret
+    code_challenge_method: S256
+    scope: openid email profile
+    # The browser goes to the public host; the proxy redeems the code and
+    # reads the keys inside the cluster, so it works without the public
+    # DNS name and without discovery at start-up. The issuer stays the
+    # public one: it is what the tokens say.
+    loginURL: {{ printf "%s/auth" $oidc | quote }}
+    redeemURL: {{ printf "%s/token" $oidcInternal | quote }}
+    oidcConfig:
+      issuerURL: {{ $issuer | quote }}
+      jwksURL: {{ printf "%s/certs" $oidcInternal | quote }}
+      skipDiscovery: true
+      emailClaim: email
+      audienceClaims: [aud, azp]
+      insecureAllowUnverifiedEmail: true
+{{- end }}
+{{- $v := .Values.selfServiceUi -}}
+{{- if and $v.enabled (index .Values.images.tags "selfServiceUi") -}}
+{{- $comp := dict "context" . "component" "self-service-ui" -}}
+{{- $name := include "appstore.name" $comp -}}
+{{- $k := .Values.keycloak -}}
+{{- $host := required "selfServiceHost is required with selfServiceUi.enabled" .Values.selfServiceHost -}}
+{{- $issuer := printf "https://%s/realms/%s" (required "ssoHost is required" .Values.ssoHost) $k.realm -}}
+{{- $oidc := printf "%s/protocol/openid-connect" $issuer -}}
+{{- $oidcInternal := printf "%s/realms/%s/protocol/openid-connect" $k.serverUrl $k.realm -}}
+# The second UI of the API: Pfisterer's self-service-ui (fork
+# DHBW-AppStore-T3/self-service-ui) with its App Store section. One pod, two
+# containers: oauth2-proxy (:4180, the only port the Ingress and the Service
+# know) signs people in at Keycloak (realm dhbw, the public client
+# k.selfServiceClientId, PKCE S256) and forwards to Caddy (:8080, the SPA and
+# /api/app-store/* -> the API) with the user's ACCESS token as the Bearer.
+# The browser holds only the proxy's cookie. Read-only root filesystem; the
+# runtime configuration goes to /run/appconfig, Caddy's state to /config, /data.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-proxy
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+data:
+  alpha.yaml: |
+    {{- include "appstore.ssuProxyConfig" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  replicas: {{ $v.replicas }}
+  selector:
+    matchLabels: {{- include "appstore.selectorLabels" $comp | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "appstore.labels" $comp | nindent 8 }}
+      annotations:
+        checksum/proxy: {{ include "appstore.ssuProxyConfig" . | sha256sum | trunc 16 | quote }}
+    spec:
+      {{- include "appstore.podDefaults" . | nindent 6 }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauth2-proxy
+          image: {{ $v.proxy.image }}:{{ $v.proxy.tag }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args:
+            - --alpha-config=/etc/oauth2-proxy/alpha.yaml
+            - --reverse-proxy=true
+            - --email-domain=*
+            - --skip-provider-button=true
+            - --footer=-
+            # An API call without a session gets 401, not the login page's HTML:
+            # the SPA turns that into its "sign in again" dialog.
+            - --api-route=^/api/
+            - --redirect-url=https://{{ $host }}/oauth2/callback
+            - --whitelist-domain={{ .Values.ssoHost }}
+            # Renew the 5-minute access token while the tab is in use.
+            - --cookie-refresh=1m
+            - --cookie-expire={{ $v.proxy.cookieExpire }}
+            - --cookie-name={{ $v.proxy.cookieName }}
+            - --cookie-secure=true
+            - --cookie-samesite=lax
+          env:
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom: { secretKeyRef: { name: {{ .Values.secretName }}, key: self-service-cookie-secret } }
+          ports:
+            - { name: http, containerPort: 4180, protocol: TCP }
+          securityContext: {{- include "appstore.restricted" . | nindent 12 }}
+          resources: {{- toYaml $v.proxy.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /ping, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ping, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - { name: proxy-config, mountPath: /etc/oauth2-proxy, readOnly: true }
+        - name: ui
+          image: {{ include "appstore.image" (dict "context" . "key" "selfServiceUi" "name" "self-service-ui") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - { name: OIDC_CLIENT_ID, value: {{ $k.selfServiceClientId | quote }} }
+            - { name: OIDC_ISSUER_URL, value: {{ $issuer | quote }} }
+            # Sign-out ends the Keycloak session too and comes back to /.
+            - { name: OIDC_END_SESSION_URL, value: {{ printf "%s/logout" $oidc | quote }} }
+            - { name: APP_STORE_ENABLED, value: "true" }
+            - { name: APP_STORE_UPSTREAM, value: {{ printf "%s:8000" (include "appstore.name" (dict "context" . "component" "api")) | quote }} }
+            # The React frontend, where the UI hands over what it cannot do itself.
+            - { name: APP_STORE_FRONTEND_URL, value: {{ printf "https://%s" (required "host is required" .Values.host) | quote }} }
+            - { name: CONFIG_DIR, value: /run/appconfig }
+          securityContext: {{- include "appstore.restricted" . | nindent 12 }}
+          resources: {{- toYaml $v.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - { name: appconfig, mountPath: /run/appconfig }
+            - { name: caddy-config, mountPath: /config }
+            - { name: caddy-data, mountPath: /data }
+      volumes:
+        - name: proxy-config
+          configMap: { name: {{ $name }}-proxy }
+        - name: appconfig
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+        - name: caddy-config
+          emptyDir: { sizeLimit: 16Mi }
+        - name: caddy-data
+          emptyDir: { sizeLimit: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  selector: {{- include "appstore.selectorLabels" $comp | nindent 4 }}
+  ports:
+    - { name: http, port: 4180, targetPort: http, protocol: TCP }
+---
+# TLS ends at the ingress controller; no secretName: its default certificate
+# (the cluster's wildcard certificate, which is why the host is one label below
+# the zone).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels: {{- include "appstore.labels" $comp | nindent 4 }}
+spec:
+  {{- with $v.ingressClassName }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ $host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port: { name: http }
+  tls:
+    - hosts: [{{ $host }}]
+{{- end }}
