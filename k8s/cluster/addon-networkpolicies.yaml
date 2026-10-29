@@ -22,7 +22,7 @@
 #   kubectl apply -f k8s/cluster/addon-networkpolicies.yaml
 #
 # Afterwards check what the add-ons do for the platform:
-#   kubectl -n cert-manager get certificate -A           # all Ready; cmctl/kubectl apply of a Certificate is admitted
+#   bash k8s/tests/netcheck/addon-health.sh     # before and after: the same answers (webhooks, metrics API, VMs, Argo CD)
 #   kubectl -n appstore-staging get cluster.postgresql.cnpg.io     # healthy, the operator still reaches it
 #   kubectl get vm,vmi -A ; kubectl top nodes             # KubeVirt API and the metrics API answer
 #   kubectl -n argocd get applications                    # synced / healthy
