@@ -116,6 +116,13 @@ through the AppStore and run as pods; see the app-registry repository.
   `k8s/tests/netcheck/netcheck.py` checks all of this on a real cluster (kind's
   CNI enforces nothing): run it on staging after changing the CNI, the node
   guard or the policies.
+- **Cluster add-ons** (cert-manager, CNPG operator, external-dns, Cinder CSI, KubeVirt, system-upgrade, CoreDNS,
+  Traefik, metrics-server, Argo CD ApplicationSet) had no ingress policy: every container port answered a pod that was
+  not (yet) firewalled. `k8s/cluster/addon-networkpolicies.yaml` (applied once by a cluster admin; the namespaces are not
+  managed by Argo CD) leaves them their own namespace, the node (webhooks, aggregated APIs and probes are the
+  apiserver and the kubelet, which a default-deny does not stop) and, for CoreDNS and Traefik, their public ports.
+  The kube-apiserver (6443) and the kubelet (10250) answer anonymous requests with 401; the only other port the node
+  offers to pods is SSH (22), so the start-up window needs no node-level rule.
 - **Admission policy** (`templates/admission-policy.yaml`, migration plan
   finding 3): the pod deployer may only touch `dep-<8 hex>` namespaces of its
   own installation (label `appstore.dhbw/environment`), each with Pod Security
