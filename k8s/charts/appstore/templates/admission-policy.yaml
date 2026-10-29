@@ -13,6 +13,11 @@
 {{- range $p.extraEgressExcept }}
 {{- if contains ":" . }}{{ $v6 = append $v6 . }}{{ else }}{{ $v4 = append $v4 . }}{{ end }}
 {{- end }}
+{{- $egressPorts := $p.egressTcpPorts -}}
+{{- /* The Kubernetes API as the noVNC proxy may reach it; empty: any address (on 443/6443). */ -}}
+{{- $kubeApi := .Values.network.kubeApi.cidrs -}}
+{{- /* The peer of an ingress rule: the ingress controller's namespace and, with their labels configured, only its pods. */ -}}
+{{- $ingressPeerPods := ternary (printf "(has(peer.podSelector) && peer.podSelector == {'matchLabels': %s})" (toJson $p.ingressPodLabels)) "!has(peer.podSelector)" (not (empty $p.ingressPodLabels)) -}}
 # What RBAC cannot express (.github#4 2.4, migration plan finding 3): the pod
 # deployer may touch only dep-* namespaces of its own installation, and only
 # objects that look like what app/k8s/render.py makes. RBAC limits the kinds
@@ -226,8 +231,8 @@ spec:
     - expression: >-
         variables.resource != 'resourcequotas' || request.operation == 'DELETE' || !has(object.spec.hard) ||
         ['pods', 'services', 'persistentvolumeclaims'].all(k, !(k in object.spec.hard) ||
-          int(string(object.spec.hard[k])) <= {{ int $p.maxWorkloadsPerDeployment }})
-      message: "{{ printf "the resource quota allows at most %v pods, services and volume claims" $p.maxWorkloadsPerDeployment }}"
+          int(string(object.spec.hard[k])) <= {{ int $p.maxWorkloadsPerDeployment }} + (k == 'services' ? 1 : 0))
+      message: "{{ printf "the resource quota allows at most %v pods and volume claims, and one more service than that (the one that names all pods)" $p.maxWorkloadsPerDeployment }}"
 {{- with $p.studentNodeSelector }}
     - expression: >-
         variables.podSpec == null || (has(variables.podSpec.nodeSelector) &&
@@ -378,15 +383,19 @@ spec:
         !has(object.metadata.annotations) || object.metadata.annotations.all(k, k == 'cert-manager.io/cluster-issuer')
       message: "ingress annotations: only cert-manager.io/cluster-issuer"
     # --- network policies -------------------------------------------------
-    # Ingress only from the ingress controller's namespace; egress only to
-    # kube-dns, or to "internet" that still excludes every private and
-    # cluster range. A rule without peers (= everything) is refused. The one
-    # podSelector peer allowed is the empty selector, alone in its rule, TCP
-    # only, in the policy named allow-intra-namespace (pods of the own namespace).
+    # Ingress only from the ingress controller (its namespace, and its pods when
+    # podApps.ingressPodLabels names them); egress only to kube-dns on port 53,
+    # or to "internet" that still excludes every private, cluster and multicast
+    # range and is open on podApps.egressTcpPorts only (a VM also on UDP 123).
+    # A rule without peers (= everything) is refused. The one podSelector peer
+    # allowed is the empty selector, alone in its rule, in the policy named
+    # allow-intra-namespace: the pods of the own namespace, any TCP or UDP port
+    # (the students' own servers and clients).
     # In a kubevirt-vm namespace the policies select no pods or the pods with
     # appstore.dhbw/role=vnc-proxy or =vm (render_vm), and two more shapes are
     # accepted: allow-intra-namespace between the VMs (role=vm to role=vm), and
-    # allow-vnc-proxy-to-apiserver, egress of the proxy to any address on the
+    # allow-vnc-proxy-to-apiserver, egress of the proxy to the Kubernetes API
+    # (network.kubeApi.cidrs; any address where none are configured) on the
     # ports 443 and 6443 only (the proxy reaches its VM through the API server).
     - expression: >-
         variables.resource != 'networkpolicies' || request.operation == 'DELETE' || (
@@ -398,12 +407,12 @@ spec:
           (!has(object.spec.ingress) || object.spec.ingress.all(rule,
             has(rule.from) && rule.from.size() > 0 && (
               rule.from.all(peer,
-                !has(peer.ipBlock) && !has(peer.podSelector) && has(peer.namespaceSelector) &&
+                !has(peer.ipBlock) && has(peer.namespaceSelector) && {{ $ingressPeerPods }} &&
                 peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': {{ $p.ingressNamespace | squote }}}}) ||
               (!variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && rule.from.size() == 1 &&
                has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
                rule.from[0].podSelector == {} &&
-               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort))) ||
+               (!has(rule.ports) || rule.ports.all(port, (!has(port.protocol) || port.protocol in ['TCP', 'UDP']) && has(port.port) && type(port.port) == int && !has(port.endPort)))) ||
               (variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}} && rule.from.size() == 1 &&
                has(rule.from[0].podSelector) && !has(rule.from[0].ipBlock) && !has(rule.from[0].namespaceSelector) &&
                rule.from[0].podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}})))) &&
@@ -412,24 +421,33 @@ spec:
               (!variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && rule.to.size() == 1 &&
                has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
                rule.to[0].podSelector == {} &&
-               has(rule.ports) && rule.ports.size() > 0 && rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int && !has(port.endPort))) ||
+               (!has(rule.ports) || rule.ports.all(port, (!has(port.protocol) || port.protocol in ['TCP', 'UDP']) && has(port.port) && type(port.port) == int && !has(port.endPort)))) ||
               (variables.isVmNs && object.metadata.name == 'allow-intra-namespace' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}} && rule.to.size() == 1 &&
                has(rule.to[0].podSelector) && !has(rule.to[0].ipBlock) && !has(rule.to[0].namespaceSelector) &&
                rule.to[0].podSelector == {'matchLabels': {'appstore.dhbw/role': 'vm'}}) ||
               (variables.isVmNs && object.metadata.name == 'allow-vnc-proxy-to-apiserver' && object.spec.podSelector == {'matchLabels': {'appstore.dhbw/role': 'vnc-proxy'}} &&
                rule.to.all(peer, has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) &&
-                 !has(peer.ipBlock.except) && peer.ipBlock.cidr in ['0.0.0.0/0', '::/0']) &&
+                 !has(peer.ipBlock.except) && {{ if $kubeApi }}peer.ipBlock.cidr in {{ toJson $kubeApi }}{{ else }}peer.ipBlock.cidr in ['0.0.0.0/0', '::/0']{{ end }}) &&
                has(rule.ports) && rule.ports.size() > 0 &&
                rule.ports.all(port, (!has(port.protocol) || port.protocol == 'TCP') && has(port.port) && type(port.port) == int &&
                  port.port in [443, 6443] && !has(port.endPort))) ||
-              rule.to.all(peer,
-              (has(peer.namespaceSelector) && has(peer.podSelector) && !has(peer.ipBlock) &&
-               peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}} &&
-               peer.podSelector == {'matchLabels': {'k8s-app': 'kube-dns'}}) ||
-              (has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) && has(peer.ipBlock.except) && (
-                (peer.ipBlock.cidr == '0.0.0.0/0' && {{ toJson $v4 }}.all(r, r in peer.ipBlock.except)) ||
-                (peer.ipBlock.cidr == '::/0' && {{ toJson $v6 }}.all(r, r in peer.ipBlock.except)))))))))
-      message: "network policies: ingress from the ingress controller only (or, in allow-intra-namespace, from all pods of the namespace over TCP; in a kubevirt-vm namespace from the VMs), egress to DNS, to the internet without private and cluster ranges (or, in allow-intra-namespace, to all pods of the namespace over TCP; in a kubevirt-vm namespace to the VMs, and from the proxy to the API server on 443 and 6443)"
+              (rule.to.all(peer,
+                has(peer.namespaceSelector) && has(peer.podSelector) && !has(peer.ipBlock) &&
+                peer.namespaceSelector == {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}} &&
+                peer.podSelector == {'matchLabels': {'k8s-app': 'kube-dns'}}) &&
+               has(rule.ports) && rule.ports.size() > 0 &&
+               rule.ports.all(port, (!has(port.protocol) || port.protocol in ['TCP', 'UDP']) && has(port.port) && type(port.port) == int &&
+                 port.port == 53 && !has(port.endPort))) ||
+              (rule.to.all(peer,
+                has(peer.ipBlock) && !has(peer.namespaceSelector) && !has(peer.podSelector) && has(peer.ipBlock.except) && (
+                  (peer.ipBlock.cidr == '0.0.0.0/0' && {{ toJson $v4 }}.all(r, r in peer.ipBlock.except)) ||
+                  (peer.ipBlock.cidr == '::/0' && {{ toJson $v6 }}.all(r, r in peer.ipBlock.except)))) &&
+               has(rule.ports) && rule.ports.size() > 0 &&
+               rule.ports.all(port, has(port.port) && type(port.port) == int && !has(port.endPort) &&
+                 ((!has(port.protocol) || port.protocol == 'TCP') ?
+                    port.port in {{ toJson $egressPorts }} :
+                    (variables.isVmNs && port.protocol == 'UDP' && port.port == 123))))))))
+      message: "network policies: ingress from the ingress controller only (or, in allow-intra-namespace, from all pods of the namespace, TCP and UDP; in a kubevirt-vm namespace from the VMs), egress to DNS on port 53, to the internet without private, cluster and multicast ranges on the configured ports only (or, in allow-intra-namespace, to all pods of the namespace; in a kubevirt-vm namespace to the VMs, and from the proxy to the API server on 443 and 6443)"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

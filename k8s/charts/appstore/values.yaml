@@ -120,6 +120,14 @@ podApps:
   ingressClass: traefik
   # The ingress controller's namespace, the only one allowed to reach the pods.
   ingressNamespace: kube-system
+  # The labels of the ingress controller's pods: with them only these pods, not every pod of
+  # that namespace (CoreDNS, the metrics server, CSI drivers, ...), reach the apps. The
+  # admission policy then demands exactly this selector. Empty: the whole namespace.
+  ingressPodLabels: {}
+  # The TCP ports "internet" is open on for student pods (web, package managers, Git over
+  # HTTPS). Not SMTP, SSH or the scanners' favourites; a Windows VM also gets NTP (UDP 123).
+  # The admission policy refuses an internet rule on any other port.
+  egressTcpPorts: [80, 443]
   # A wildcard certificate Secret or a cert-manager ClusterIssuer; both empty:
   # the ingress controller's default certificate.
   tlsSecret: ""
