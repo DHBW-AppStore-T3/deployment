@@ -71,5 +71,6 @@ deployment/
 | `k8s-chart.yml` | Änderungen in `k8s/**` | rendert Staging und Prod wie Argo CD, prüft gegen Kubernetes-Schemas, wertet die Admission-Policy aus, prüft RBAC in einem kind-Cluster |
 | `novnc-proxy.yml` | Änderungen in `docker/novnc-proxy/**` | baut und pusht das Proxy-Image |
 | `secret-scan.yml` | PRs und Pushes auf `main`/`dev` | Gitleaks |
+| `pr-checklist.yml` | PRs auf `main`/`dev` | ruft den Check aus `DHBW-AppStore-T3/.github` auf: blockiert den Merge, solange die Checkliste der PR-Beschreibung offen ist (Vorlagen: `.github/pull_request_template.md`, für Release-PRs `.github/pull_request_template/release.md`). Die Bump-PRs von `k8s-bump.yml` melden den Check selbst als erledigt |
 
-Promotion von Charts/Policy/Realm nach Produktion: `k8s/promote.sh` (PR `dev` → `main`).
+Promotion von Charts/Policy/Realm nach Produktion: `k8s/promote.sh` (PR `dev` → `main`, mit der Release-Checkliste als Beschreibung).
