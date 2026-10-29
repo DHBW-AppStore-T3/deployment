@@ -12,7 +12,7 @@ images:
 
     workerPods: "sha256:5473cdee8c5755ee6bee3ffc5c44a1afc93c93318e3a3e583f110812560e92c9"  # sha-695f64f
 
-    frontend: "sha256:c9d7583dbe02316235b388203bbffb98ac08ceabb5e0acfbce66c1b7aac0fe4a"  # sha-2f53246
+    frontend: "sha256:789f7f40d723964d3d7e8bdd3de0ec1965446bc1ff5656bb2fa565cc9322bf08"  # sha-2929ad4
 
     appstoreMcp: "sha256:2e88b8683f222c85a5acde4a7fb31156a171d3ce9cd6cab560cb1b9fde1e60d2"  # sha-0094804
 
