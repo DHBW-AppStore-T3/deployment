@@ -10,7 +10,7 @@ images:
   tags:
     backend: "sha256:f99549e9adf8e2349849ead3ae1a4bb8f2cdd5ca7f4ae959a818f38c2f2eeb59"  # sha-8274fa2
 
-    workerPods: "sha256:5473cdee8c5755ee6bee3ffc5c44a1afc93c93318e3a3e583f110812560e92c9"  # sha-695f64f
+    workerPods: "sha256:517f919023df949e349081b578b8d8442a963a0e572a3cd99794288a37178545"  # sha-6029049
 
     frontend: "sha256:874874ab37852e5586cdb442176a19f0160f7623688db8bafcc2b022b02e27cf"  # sha-d7136dd
 
