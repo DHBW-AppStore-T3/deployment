@@ -10,7 +10,7 @@ Closes #
 
 ## Prüfung
 
-<!-- Wie wurde geprüft? Z. B. `make dev-up` + `make health`, `python3 k8s/tests/render_env.py staging out.yaml`, Lauf von `k8s-chart.yml`, `kubectl`-/Argo-CD-Stand auf Staging (`staging_verdict`), `k8s/tests/netcheck/netcheck.py`. -->
+<!-- Wie wurde geprüft? Z. B. `make init` + `make health`, `python3 k8s/tests/render_env.py staging out.yaml`, Lauf von `k8s-chart.yml`, `kubectl`-/Argo-CD-Stand auf Staging (`staging_verdict`), `k8s/tests/netcheck/netcheck.py`. -->
 
 ## Checkliste
 
@@ -40,16 +40,16 @@ Cluster.
 **Funktionale Eignung**
 
 - [ ] Vollständigkeit: Alle Akzeptanzkriterien des verlinkten Issues sind umgesetzt; Abweichungen oder offene Punkte sind oben begründet
-- [ ] Lokal verifiziert: Bei Änderungen am lokalen Stack startet er (`make dev-up`), alle Container sind healthy (`make health`) und der geänderte Ablauf funktioniert; bei Änderungen am Chart rendern Staging und Prod (`python3 k8s/tests/render_env.py <staging|prod> out.yaml`) und der Diff der gerenderten Objekte ist erklärt
+- [ ] Lokal verifiziert: Bei Änderungen an Chart, Policy oder `k8s/local/` läuft der lokale k3d-Cluster damit (`make init` bzw. `make up`), `make health` meldet alle Dienste healthy und der geänderte Ablauf funktioniert; Staging und Prod rendern (`python3 k8s/tests/render_env.py <staging|prod> out.yaml`) und der Diff der gerenderten Objekte ist erklärt
 - [ ] Staging: Staging folgt `dev`, geprüft werden kann also erst nach dem Merge. Die Autorin oder der Autor prüft dann den Stand (Argo CD `Synced`/`Healthy`, `staging_verdict` über appstore-mcp, Skill `/verify-staging`; bei NetworkPolicies, CNI, Node-Guard oder Add-on-Policies zusätzlich `k8s/tests/netcheck/netcheck.py`) und trägt das Ergebnis im Release-PR ein
 
 **Betrieb & Konfiguration**
 
-- [ ] Konfiguration: Neue/geänderte Werte in `k8s/charts/appstore/values.yaml` und `k8s/environments/staging.yaml` **und** `prod.yaml` (oder begründet nur in einer), `.env.example` und `docker-compose.dev.yml` für den lokalen Stack sowie `docs/dev-setup.md` bzw. `k8s/README.md` nachgezogen
+- [ ] Konfiguration: Neue/geänderte Werte in `k8s/charts/appstore/values.yaml` und `k8s/environments/staging.yaml` **und** `prod.yaml` (oder begründet nur in einer), die Werte des lokalen Clusters in `k8s/local/up.sh` sowie `README.md`, `docs/dev-setup.md` und `k8s/README.md` nachgezogen
 - [ ] Images & Secrets: Image-Digests (`k8s/images/*.yaml`) nicht von Hand geändert (schreibt `k8s-bump.yml`); neue Secret-Schlüssel kommen aus `k8s/bootstrap.sh`, nicht aus dem Repository
 - [ ] Daten & Rollback: Keine Änderung löscht Volumes, Datenbanken oder Namespaces mit Daten; Backups gibt es noch nicht (`claude_docs/HANDOVER.md`, „Offen“), daher ist der Rückweg (Commit zurücknehmen; Digest in `k8s/images/<env>.yaml` zurücksetzen) im PR genannt
 
 **Sicherheit & Doku**
 
 - [ ] Sicherheit: Keine Secrets im Diff; neue `.gitleaksignore`-Einträge begründet; neu exponierte Ingress-Hosts, Ports, NetworkPolicies, RBAC-Rechte, Admission-Policy-Lockerungen oder Keycloak-Realm-/Client-Änderungen bewusst geprüft (neue Rechte des Pod-Deployers gehören in dessen ClusterRole **und** die Admission-Policy, Fälle in `k8s/tests/policy/make_cases.py`)
-- [ ] Doku: `claude_docs/HANDOVER.md` aktualisiert; `k8s/README.md` und Entscheidungen in `claude_docs/decisions/` nachgezogen, falls betroffen
+- [ ] Doku: `claude_docs/HANDOVER.md` aktualisiert; `README.md`, `docs/dev-setup.md`, `k8s/README.md` und Entscheidungen in `claude_docs/decisions/` nachgezogen, falls betroffen; bei geänderter Pipeline oder Architektur auch die Org-Doku in `DHBW-AppStore-T3/.github` unter `docs/` (`ci-cd/`, `c4/`, `technologiestack.md`)

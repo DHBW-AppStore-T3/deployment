@@ -50,3 +50,4 @@ Image-Provenance und der Chart-Check (`k8s-chart.yml`) laufen als CI-Checks.
 - [ ] Image-Digests: Der Diff ändert `k8s/images/prod.yaml` nicht (nur `k8s-bump.yml` auf `main` schreibt sie); Änderungen an `staging.yaml` sind erwartet
 - [ ] Manuelle Schritte: Alle "MANUELL"-Schritte stehen oben, mit Person und Zeitpunkt
 - [ ] Daten & Rollback: Keine Änderung löscht Produktionsdaten oder -Volumes; Backups gibt es noch nicht (`claude_docs/HANDOVER.md`, „Offen“); der Rückweg ist bekannt (Revert-PR auf `main`, den Argo CD synchronisiert)
+- [ ] Doku: `k8s/README.md`, `docs/dev-setup.md`, `claude_docs/HANDOVER.md` und die Org-Doku in `DHBW-AppStore-T3/.github` unter `docs/` (`ci-cd/`, `c4/`, `technologiestack.md`) beschreiben den Stand, der jetzt in Produktion geht
