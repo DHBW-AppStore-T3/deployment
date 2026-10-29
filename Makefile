@@ -1,260 +1,71 @@
 # ================================================================
-# Makefile for Multi-Repo Deployment
-# Manages frontend, backend, worker, keycloak, postgres services
-#
-# Local dev runs via docker-compose.dev.yml (simulate mode for
-# Kubernetes, local Keycloak on :8081 — .github#6).
-#
-# Staging and production run on Kubernetes (k8s/, rolled out by
-# Argo CD).
+# Makefile – Lokales Kubernetes-Setup (k3d + Helm)
 # ================================================================
 
-# ----------------------------------------------------------------
-# Configuration
-# ----------------------------------------------------------------
-DC_DEV := docker compose -f docker-compose.dev.yml
-
-# Host-Ports (must match ${...:-default} values in docker-compose.dev.yml)
-FRONTEND_PORT_DEV ?= 5173
-BACKEND_PORT      ?= 8000
-KEYCLOAK_PORT     ?= 8081
+K3D_CLUSTER ?= appstore-local
+KUBE_CTX    := k3d-$(K3D_CLUSTER)
+NS          ?= appstore-local
+KUBE        := kubectl --context $(KUBE_CTX) -n $(NS)
+SERVICE     ?= appstore-t3-api
 
 .DEFAULT_GOAL := help
 
-.PHONY: help \
-        env secret \
-        init dev dev-up dev-down dev-logs dev-build dev-rebuild dev-ps \
-        dev-restart dev-restart-backend dev-restart-frontend dev-restart-worker \
-        dev-logs-backend dev-logs-frontend dev-logs-worker dev-logs-keycloak \
-        shell-backend shell-worker shell-frontend shell-db \
-        seed-dev migrate-dev migration-create migration-history migration-current migration-downgrade \
-        db-reset-dev \
-        health status stats watch-dev top \
-        clean-dev clean-all prune \
-        test-backend test-backend-cov lint-backend lint-backend-fix format-backend \
-        up down logs build
+.PHONY: help init up down build status logs shell restart seed migrate health clean
 
-# ----------------------------------------------------------------
-# Help
-# ----------------------------------------------------------------
-help: ## Show this help message
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}'
-	@echo ""
-	@echo "Bootstrap: make init"
+help: ## Zeigt alle Befehle
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-# ----------------------------------------------------------------
-# Environment Setup
-# ----------------------------------------------------------------
-env: ## Create .env from template (auto-generates CREDENTIAL_ENCRYPTION_KEY if empty)
-	@if [ ! -f .env ]; then \
-		cp .env.example .env; \
-		KEY=$$(python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"); \
-		python3 -c "from pathlib import Path; p = Path('.env'); p.write_text(p.read_text().replace('CREDENTIAL_ENCRYPTION_KEY=\n', f'CREDENTIAL_ENCRYPTION_KEY={\"$$KEY\"}\n', 1))"; \
-		echo "✓ .env created from template (CREDENTIAL_ENCRYPTION_KEY auto-generated)"; \
+init: ## Lokale Images bauen, k3d-Cluster starten & Helm-Charts ausrollen
+	./k8s/local/up.sh
+
+up: ## k3d-Cluster starten & Helm-Charts anwenden (ohne Image-Rebuild)
+	SKIP_BUILD=1 ./k8s/local/up.sh
+
+down: ## k3d-Cluster stoppen (Zustand bleibt erhalten)
+	k3d cluster stop "$(K3D_CLUSTER)"
+
+build: ## Lokale Images neu bauen, in k3d importieren & Deployments neu starten
+	@if $(KUBE) get deployment appstore-t3-api >/dev/null 2>&1; then \
+		BUILD_ONLY=1 ./k8s/local/up.sh && \
+		$(KUBE) rollout restart deployment/appstore-t3-api deployment/appstore-t3-pod-deployer deployment/appstore-t3-frontend deployment/appstore-t3-self-service-ui deployment/moodle-web; \
 	else \
-		echo ".env already exists"; \
+		./k8s/local/up.sh; \
 	fi
 
-secret: ## Generate a new Fernet key (for CREDENTIAL_ENCRYPTION_KEY)
-	@python3 -c "import base64, os; print('CREDENTIAL_ENCRYPTION_KEY=' + base64.urlsafe_b64encode(os.urandom(32)).decode())"
+status: ## Pods, Services & Ingresses in appstore-local anzeigen
+	$(KUBE) get pods,svc,ingress
 
-# ----------------------------------------------------------------
-# Bootstrap
-# ----------------------------------------------------------------
-init: ## First start: env + up --build + migrate + seed
-	@$(MAKE) --no-print-directory env
-	$(DC_DEV) up -d --build
-	@echo "Warte auf Postgres..."
-	@$(DC_DEV) exec -T postgres sh -c 'until pg_isready -U postgres; do sleep 1; done'
-	@$(MAKE) --no-print-directory migrate-dev
-	@$(MAKE) --no-print-directory seed-dev
-	@echo ""
-	@echo "✓ Dev stack bereit."
-	@echo "  Frontend:         http://localhost:$(FRONTEND_PORT_DEV)"
-	@echo "  Backend API Docs: http://localhost:$(BACKEND_PORT)/docs"
-	@echo "  Keycloak Admin:   http://localhost:$(KEYCLOAK_PORT)  (admin / admin)"
-	@echo ""
-	@echo "  Keycloak Logins:  dozent.demo / admin.demo / student1.demo (Passwort: DevLocal1234!)"
-	@echo "  API Header-Auth:  X-Dev-User: prof@dhbw.de / student@dhbw.de / admin@dhbw.de"
-
-# ----------------------------------------------------------------
-# Development Environment
-# ----------------------------------------------------------------
-dev-up: ## Start dev stack (no rebuild/migrate/seed)
-	$(DC_DEV) up -d
-
-dev-down: ## Stop dev stack (keeps volumes)
-	$(DC_DEV) down
-
-dev-restart: ## Restart all dev containers
-	$(DC_DEV) restart
-
-dev-restart-backend: ## Restart backend only
-	$(DC_DEV) restart backend
-
-dev-restart-frontend: ## Restart frontend only
-	$(DC_DEV) restart frontend
-
-dev-restart-worker: ## Restart worker only
-	$(DC_DEV) restart worker
-
-dev-logs: ## Follow all dev logs
-	$(DC_DEV) logs -f
-
-dev-logs-backend: ## Follow backend logs
-	$(DC_DEV) logs -f backend
-
-dev-logs-frontend: ## Follow frontend logs
-	$(DC_DEV) logs -f frontend
-
-dev-logs-worker: ## Follow worker logs
-	$(DC_DEV) logs -f worker
-
-dev-logs-keycloak: ## Follow keycloak logs
-	$(DC_DEV) logs -f keycloak
-
-dev-build: ## Build all dev images
-	$(DC_DEV) build
-
-dev-rebuild: ## Rebuild from scratch and restart
-	$(DC_DEV) down
-	$(DC_DEV) build --no-cache
-	$(DC_DEV) up -d
-
-dev-ps: ## List dev containers
-	$(DC_DEV) ps
-
-# ----------------------------------------------------------------
-# Shell Access
-# ----------------------------------------------------------------
-shell-backend: ## bash in backend container
-	$(DC_DEV) exec backend bash
-
-shell-worker: ## bash in worker container
-	$(DC_DEV) exec worker bash
-
-shell-frontend: ## sh in frontend container
-	$(DC_DEV) exec frontend sh
-
-shell-db: ## psql in dev Postgres
-	$(DC_DEV) exec postgres psql -U postgres -d backend_dev
-
-# ----------------------------------------------------------------
-# Seed & Migrations
-# ----------------------------------------------------------------
-seed-dev: ## Re-run the dev seed (idempotent: Keycloak users + course + catalog apps)
-	$(DC_DEV) cp ./seed/seed_sim.py backend:/tmp/seed_sim.py
-	$(DC_DEV) exec -T backend poetry run python /tmp/seed_sim.py
-
-migrate-dev: ## Run Alembic migrations (dev) and configure appstore_worker DB role
-	$(DC_DEV) exec -T backend poetry run alembic upgrade head
-	$(DC_DEV) exec -T backend poetry run python -m app.worker_db_role
-	$(DC_DEV) restart worker
-
-migration-create: ## Autogenerate migration (usage: make migration-create MSG="...")
-	@if [ -z "$(MSG)" ]; then \
-		echo "Usage: make migration-create MSG='your message'"; exit 1; \
-	fi
-	$(DC_DEV) exec backend poetry run alembic revision --autogenerate -m "$(MSG)"
-
-migration-history: ## Show migration history
-	$(DC_DEV) exec backend poetry run alembic history
-
-migration-current: ## Show current revision
-	$(DC_DEV) exec backend poetry run alembic current
-
-migration-downgrade: ## Downgrade one revision
-	$(DC_DEV) exec backend poetry run alembic downgrade -1
-
-# ----------------------------------------------------------------
-# Database Management
-# ----------------------------------------------------------------
-db-reset-dev: ## ⚠️  Wipe dev DB (DROPS ALL DATA, re-runs migrations)
-	@echo "⚠️  This deletes all dev database data!"
-	@read -p "Continue? [y/N] " -n 1 -r; echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		$(DC_DEV) down -v; \
-		$(DC_DEV) up -d; \
-		sleep 5; \
-		$(MAKE) --no-print-directory migrate-dev; \
-		echo "✓ Dev DB reset complete"; \
+logs: ## Live-Logs (optional: make logs SERVICE=moodle-web)
+	@if [ "$(SERVICE)" = "all" ]; then \
+		$(KUBE) logs -f -l app.kubernetes.io/part-of=appstore-t3 --all-containers=true --max-log-requests=10; \
+	else \
+		$(KUBE) logs -f deployment/$(SERVICE) --all-containers=true; \
 	fi
 
-# ----------------------------------------------------------------
-# Health & Status
-# ----------------------------------------------------------------
-health: ## Check backend + frontend + keycloak health
-	@printf "  Backend:   "; curl -sf http://localhost:$(BACKEND_PORT)/health > /dev/null && echo "healthy" || echo "not healthy"
-	@printf "  Frontend:  "; curl -sf http://localhost:$(FRONTEND_PORT_DEV) > /dev/null && echo "healthy" || echo "not healthy"
-	@printf "  Keycloak:  "; curl -sf http://localhost:$(KEYCLOAK_PORT)/realms/dhbw/.well-known/openid-configuration > /dev/null && echo "healthy" || echo "not healthy"
+shell: ## Shell im Pod öffnen (optional: make shell SERVICE=moodle-web, oder SERVICE=db für psql)
+	@if [ "$(SERVICE)" = "db" ]; then \
+		$(KUBE) exec -it svc/postgres-cluster-rw -- psql -U postgres -d appstore_t3; \
+	else \
+		$(KUBE) exec -it deployment/$(SERVICE) -- sh; \
+	fi
 
-status: ## Show container status
-	$(DC_DEV) ps
+restart: ## Alle Deployments im Cluster neu starten
+	$(KUBE) rollout restart deployment/appstore-t3-api deployment/appstore-t3-pod-deployer deployment/appstore-t3-frontend deployment/appstore-t3-self-service-ui deployment/moodle-web
 
-stats: ## docker stats (all containers)
-	docker stats
+seed: ## Seed-Daten erneut in die Datenbank laden
+	$(KUBE) get cm appstore-t3-seed -o jsonpath='{.data.seed\.json}' | $(KUBE) exec -i deployment/appstore-t3-api -- python -m app.cli seed --config /dev/stdin
 
-watch-dev: ## Watch dev container status every 2s
-	watch -n 2 '$(DC_DEV) ps'
+migrate: ## Alembic-Migrationen im API-Pod ausführen
+	$(KUBE) exec deployment/appstore-t3-api -- python -m alembic upgrade head
 
-top: ## Show top processes per dev container
-	$(DC_DEV) top
+health: ## Prüft Erreichbarkeit von AppStore, Self-Service UI, Moodle, Keycloak & Cluster
+	@printf "  AppStore API:    "; curl -skf --resolve appstore.localhost:443:127.0.0.1 https://appstore.localhost/api/health > /dev/null && echo "healthy" || echo "not healthy"
+	@printf "  AppStore UI:     "; curl -skf --resolve appstore.localhost:443:127.0.0.1 https://appstore.localhost/ > /dev/null && echo "healthy" || echo "not healthy"
+	@printf "  Self-Service UI: "; curl -skf --resolve self-service.localhost:443:127.0.0.1 https://self-service.localhost/ping > /dev/null && echo "healthy" || echo "not healthy"
+	@printf "  Moodle LMS:      "; curl -skf --resolve moodle.localhost:443:127.0.0.1 https://moodle.localhost/login/index.php > /dev/null && echo "healthy" || echo "not healthy"
+	@printf "  Keycloak SSO:    "; curl -skf --resolve sso.localhost:443:127.0.0.1 https://sso.localhost/realms/dhbw/.well-known/openid-configuration > /dev/null && echo "healthy" || echo "not healthy"
+	@printf "  K8s Cluster:     "; kubectl --context "$(KUBE_CTX)" get nodes > /dev/null 2>&1 && echo "healthy" || echo "not healthy"
 
-# ----------------------------------------------------------------
-# Cleanup
-# ----------------------------------------------------------------
-clean-dev: ## ⚠️  down -v on dev (removes ALL volumes)
-	$(DC_DEV) down -v
+clean: ## ⚠️  Lokalen k3d-Cluster komplett löschen
+	k3d cluster delete "$(K3D_CLUSTER)"
 
-clean-all: ## ⚠️  down -v + remove local images
-	$(DC_DEV) down -v --rmi local
-
-prune: ## ⚠️  docker system prune -af --volumes
-	docker system prune -af --volumes
-
-# ----------------------------------------------------------------
-# Testing & Quality (Backend)
-# ----------------------------------------------------------------
-# Tests run in the own database `backend_test` with the environment of CI (the
-# container's own environment breaks the settings tests; the tests TRUNCATE their
-# database). Pass DB_USER / DB_PASSWORD / DB_NAME to make if compose runs with other values.
-# test_migrations sets the password of the cluster-wide role appstore_worker: the
-# targets restore the dev login afterwards, or new worker connections fail.
-DB_USER     ?= postgres
-DB_PASSWORD ?= postgres
-DB_NAME     ?= backend_dev
-BACKEND_TEST_ENV := env -i HOME=/root PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin \
-	DATABASE_URL=postgresql://$(DB_USER):$(DB_PASSWORD)@postgres:5432/backend_test \
-	CREDENTIAL_ENCRYPTION_KEY=Q1PNlFd4It9oQPtjCcXcmB7wGDkY4w8KwpIRNSF4u7U= DISABLE_BACKGROUND_TASKS=1 # gitleaks:allow (throwaway test key, same as backend CI)
-
-# pytest's exit code wins; a failed restore fails the target when the tests passed.
-define run-backend-tests
-	@$(DC_DEV) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -tc "SELECT 1 FROM pg_database WHERE datname='backend_test'" | grep -q 1 \
-		|| $(DC_DEV) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -c "CREATE DATABASE backend_test"
-	$(DC_DEV) exec -T backend $(BACKEND_TEST_ENV) poetry run pytest -m "unit or integration" -q $(1); rc=$$?; \
-		$(DC_DEV) exec -T backend poetry run python -m app.worker_db_role || { [ $$rc -ne 0 ] || rc=1; }; exit $$rc
-endef
-
-test-backend: ## Backend tests in the database backend_test
-	$(call run-backend-tests,--no-cov)
-
-test-backend-cov: ## Backend tests with HTML coverage (backend/htmlcov)
-	$(call run-backend-tests,--cov=. --cov-report=html)
-
-lint-backend: ## ruff check
-	$(DC_DEV) exec backend poetry run ruff check .
-
-lint-backend-fix: ## ruff check --fix
-	$(DC_DEV) exec backend poetry run ruff check --fix .
-
-format-backend: ## ruff format
-	$(DC_DEV) exec backend poetry run ruff format .
-
-# ----------------------------------------------------------------
-# Aliases
-# ----------------------------------------------------------------
-up: dev-up ## Alias for dev-up
-down: dev-down ## Alias for dev-down
-logs: dev-logs ## Alias for dev-logs
-build: dev-build ## Alias for dev-build
-dev: init ## Alias for init
