@@ -35,7 +35,7 @@ auseinanderlaufen.
 <!--
 Jeder Punkt wird abgehakt, bevor der PR gemergt werden kann. Trifft ein
 Punkt nicht zu: mit "n/a" markieren UND abhaken, z. B.
-- [x] n/a — Realm: keine Änderung an dhbw-realm.json
+- [x] n/a, Realm: keine Änderung an dhbw-realm.json
 
 Die Änderungs-Checklisten der enthaltenen PRs werden hier nicht wiederholt.
 Dieser PR prüft, ob der gesammelte Stand in Produktion darf. Gitleaks,
