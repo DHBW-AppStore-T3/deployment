@@ -4,7 +4,7 @@
 
 Closes #
 
-**Art der Änderung:** <!-- feat | fix | infra | config | ci | docs | chore — bei Änderungen, die manuelle Schritte im Cluster erfordern (z. B. `k8s/bootstrap.sh`, `k8s/cluster/`, Realm von Hand), zusätzlich "MANUELL" -->
+**Art der Änderung:** <!-- feat | fix | infra | config | ci | docs | chore; bei Änderungen, die manuelle Schritte im Cluster erfordern (z. B. `k8s/bootstrap.sh`, `k8s/cluster/`, Realm von Hand), zusätzlich "MANUELL" -->
 
 **Betroffene Umgebungen:** <!-- lokal | staging | prod | Cluster (manuell) -->
 
@@ -25,11 +25,9 @@ Jeder Punkt wird abgehakt, bevor der PR gemergt werden kann. Der CI-Check
 "PR Checklist" blockiert den Merge, solange hier noch ein offenes "- [ ]" steht.
 
 Trifft ein Punkt nicht zu: mit "n/a" markieren UND abhaken, z. B.
-- [x] n/a — Chart: keine Änderung unter k8s/
+- [x] n/a, Chart: keine Änderung unter k8s/
 
-Die reviewende Person prüft, dass die Häkchen stimmen, und bestätigt das mit
-ihrem Approval (auf `dev` ist keines erzwungen: dann prüft die Autorin oder der
-Autor die Häkchen selbst und die Fragen kommen im Release-PR zurück). Gitleaks,
+Gitleaks,
 Image-Provenance und bei Änderungen in `k8s/**` der Chart-Check (`k8s-chart.yml`:
 Render von Staging und Prod, Kubernetes-Schemas, Admission-Policy, RBAC in kind)
 laufen als CI-Checks und werden hier nicht wiederholt. kind erzwingt keine
