@@ -19,6 +19,29 @@ BUILD_ONLY="${BUILD_ONLY:-0}"
 
 CERT_DIR="${HERE}/.certs"
 
+# Python 3 for the secrets below. In Git Bash on Windows "python3" is often only the Microsoft Store stub
+# and the interpreter is "python": take the first name that really runs Python 3.
+PYTHON=""
+for candidate in python3 python; do
+  if "${candidate}" -c 'import sys; sys.exit(sys.version_info[0] != 3)' >/dev/null 2>&1; then
+    PYTHON="${candidate}"
+    break
+  fi
+done
+if [ -z "${PYTHON}" ]; then
+  echo "!! Python 3 is required (python3 or python on PATH)." >&2
+  exit 1
+fi
+
+# Runs a command without its output, but prints the output when it fails (set -e alone stops without a word).
+quiet() {
+  local out
+  if ! out="$("$@" 2>&1)"; then
+    printf '!! Failed: %s\n%s\n' "$1" "${out}" >&2
+    return 1
+  fi
+}
+
 ensure_local_certs() {
   mkdir -p "${CERT_DIR}"
   if [ ! -f "${CERT_DIR}/local-ca.crt" ] || [ ! -f "${CERT_DIR}/local-ca.key" ]; then
@@ -37,9 +60,9 @@ authorityKeyIdentifier = keyid:always,issuer
 basicConstraints = critical, CA:TRUE
 keyUsage = critical, keyCertSign, cRLSign
 EOF
-    openssl req -x509 -new -nodes -newkey rsa:2048 \
+    quiet openssl req -x509 -new -nodes -newkey rsa:2048 \
       -keyout "${CERT_DIR}/local-ca.key" -sha256 -days 3650 \
-      -out "${CERT_DIR}/local-ca.crt" -config "${CERT_DIR}/ca.cnf" >/dev/null 2>&1
+      -out "${CERT_DIR}/local-ca.crt" -config "${CERT_DIR}/ca.cnf"
   fi
 
   if [ ! -f "${CERT_DIR}/tls.crt" ] || ! openssl x509 -noout -text -in "${CERT_DIR}/tls.crt" 2>/dev/null | grep -q "DNS:\*.apps.localhost"; then
@@ -61,10 +84,20 @@ DNS.7 = *.apps.localhost
 IP.1 = 127.0.0.1
 IP.2 = ::1
 EOF
-    openssl req -new -nodes -newkey rsa:2048 -keyout "${CERT_DIR}/tls.key" \
-      -out "${CERT_DIR}/tls.csr" -subj "/CN=appstore.localhost/O=DHBW AppStore Local" >/dev/null 2>&1
-    openssl x509 -req -in "${CERT_DIR}/tls.csr" -CA "${CERT_DIR}/local-ca.crt" -CAkey "${CERT_DIR}/local-ca.key" \
-      -CAcreateserial -out "${CERT_DIR}/tls.crt" -days 825 -sha256 -extfile "${CERT_DIR}/ext.cnf" >/dev/null 2>&1
+    # The subject comes from a config file like the CA's: Git Bash on Windows would rewrite a
+    # "-subj /CN=..." argument into a file path (MSYS path conversion) and openssl would fail.
+    cat > "${CERT_DIR}/csr.cnf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+prompt = no
+[req_distinguished_name]
+CN = appstore.localhost
+O = DHBW AppStore Local
+EOF
+    quiet openssl req -new -nodes -newkey rsa:2048 -keyout "${CERT_DIR}/tls.key" \
+      -out "${CERT_DIR}/tls.csr" -config "${CERT_DIR}/csr.cnf"
+    quiet openssl x509 -req -in "${CERT_DIR}/tls.csr" -CA "${CERT_DIR}/local-ca.crt" -CAkey "${CERT_DIR}/local-ca.key" \
+      -CAcreateserial -out "${CERT_DIR}/tls.crt" -days 825 -sha256 -extfile "${CERT_DIR}/ext.cnf"
   fi
 }
 
@@ -154,7 +187,29 @@ build_with_progress() {
   printf "    ✓ [%s] %s built in %02dm:%02ds\n" "${step}" "${label}" $((total / 60)) $((total % 60))
 }
 
+# Shell scripts and server configs from a Windows checkout (core.autocrlf=true) have CRLF line endings; in a
+# Linux container such a script fails with "exec ...: no such file or directory". The repositories store
+# them with LF (their .gitattributes pin it), so converting the working copy changes nothing for git.
+# Checkouts on Linux and macOS have nothing to convert.
+ensure_lf_build_files() {
+  local repo file target
+  for repo in backend worker frontend self-service-ui moodle_appstore; do
+    [ -d "${ROOT_DIR}/${repo}" ] || continue
+    while IFS= read -r file; do
+      target="${ROOT_DIR}/${repo}/${file}"
+      # Compare bytes: grep in Git Bash drops a CR before matching and would never see one.
+      if [ -f "${target}" ] && ! tr -d '\r' < "${target}" | cmp -s - "${target}"; then
+        tr -d '\r' < "${target}" > "${target}.lf-tmp"
+        cat "${target}.lf-tmp" > "${target}"
+        rm -f "${target}.lf-tmp"
+        echo "    LF line endings: ${repo}/${file}"
+      fi
+    done < <(git -C "${ROOT_DIR}/${repo}" ls-files -- '*.sh' '*Caddyfile' '*nginx.conf' ':!:public/*' 2>/dev/null)
+  done
+}
+
 if [ "${SKIP_BUILD}" != "1" ]; then
+  ensure_lf_build_files
   echo "==> Building local images from sibling repositories..."
   build_with_progress "1/5" "backend" \
     docker build -t ghcr.io/dhbw-appstore-t3/backend:dev "${ROOT_DIR}/backend"
@@ -223,8 +278,8 @@ for ns in "${NS}" vm-poc; do
 done
 
 rand_hex()    { openssl rand -hex "$1"; }
-rand_urlsafe(){ python3 -c "import secrets; print(secrets.token_urlsafe($1), end='')"; }
-fernet_key()  { python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode(), end="")'; }
+rand_urlsafe(){ "${PYTHON}" -c "import secrets; print(secrets.token_urlsafe($1), end='')"; }
+fernet_key()  { "${PYTHON}" -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode(), end="")'; }
 
 ensure_basic_auth() {
   local name="$1" user="$2"
@@ -335,7 +390,7 @@ $KUBE -n "${NS}" wait --for=condition=complete job/keycloak-config --timeout=180
 recover_helm_release() {
   local rel="$1"
   local status
-  status="$(helm --kube-context "${KUBE_CONTEXT}" -n "${NS}" status "${rel}" -o json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("info",{}).get("status",""))' 2>/dev/null || true)"
+  status="$(helm --kube-context "${KUBE_CONTEXT}" -n "${NS}" status "${rel}" -o json 2>/dev/null | "${PYTHON}" -c 'import json,sys; print(json.load(sys.stdin).get("info",{}).get("status",""))' 2>/dev/null || true)"
   case "${status}" in
     pending-*|failed)
       echo "    cleaning up interrupted Helm release '${rel}' (${status})..."
@@ -421,5 +476,5 @@ echo " AppStore UI:      https://appstore.localhost"
 echo " Self-Service UI:  https://self-service.localhost"
 echo " Moodle LMS:       https://moodle.localhost"
 echo " Keycloak SSO:     https://sso.localhost"
-echo " Demo Password:    ${DEMO_PASSWORD} (users: admin.demo, dozent.demo, student1.demo, student2.demo)"
+echo " Demo Password:    ${DEMO_PASSWORD} (users: admin.demo, dozent.demo, student1.demo ... student4.demo)"
 echo "=================================================================="
