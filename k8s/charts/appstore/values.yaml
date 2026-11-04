@@ -211,15 +211,15 @@ seed:
   # newest release of each app: those pin the images the Trivy gate passed.
   apps:
     - name: Online-IDE
-      description: Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person oder pro Gruppe.
+      description: Browserbasierte IDE (code-server) mit Aufgaben fuer Studierende, ein Pod pro Person oder pro Team.
       gitLink: https://github.com/DHBW-AppStore-T3/Online-IDE
       versions: [v2.4.0]
     - name: Web-LaTeX
-      description: LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person oder pro Gruppe.
+      description: LaTeX-Editor im Browser mit PDF-Vorschau, ein Pod pro Person oder pro Team.
       gitLink: https://github.com/DHBW-AppStore-T3/Web-LaTeX
       versions: [v2.2.0]
     - name: Jupyter-Notebook
-      description: JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person oder pro Gruppe.
+      description: JupyterLab fuer Datenanalyse und Lehre, ein Pod pro Person oder pro Team.
       gitLink: https://github.com/DHBW-AppStore-T3/Jupyter-Notebook
       versions: [v2.2.0]
     - name: pgAdmin
